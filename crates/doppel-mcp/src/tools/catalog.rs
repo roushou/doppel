@@ -550,7 +550,7 @@ struct ActArgs {
 
 impl Tool for Act {
     const NAME: &'static str = "act";
-    const DESCRIPTION: &'static str = "Act on an element by its ref from the latest snapshot: press (buttons, links, menu items), select (rows in lists, tables, sidebars), focus, set_value (text fields; give value), show_menu, raise (windows), increment/decrement (sliders, steppers), confirm, cancel, pick. A ref from an older snapshot, or to an element that has gone, is an error: snapshot again. Effects are asynchronous: use wait_for or snapshot to see them.";
+    const DESCRIPTION: &'static str = "Act on an element by its ref from the latest snapshot: press (buttons, links, menu items), select (rows in lists, tables, sidebars; a cell or its text selects its row), focus, set_value (text fields; give value), show_menu, raise (windows), increment/decrement (sliders, steppers), confirm, cancel, pick. A ref from an older snapshot, or to an element that has gone, is an error: snapshot again. Effects are asynchronous: use wait_for or snapshot to see them.";
     type Args = ActArgs;
 
     fn call(args: ActArgs, at: &Parsing<'_>) -> Result<ToolCall, ArgumentError> {

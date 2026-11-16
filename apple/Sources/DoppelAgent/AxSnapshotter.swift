@@ -307,6 +307,20 @@ final class AxSnapshotter {
         return false
     }
 
+    /// The table or outline row `element` sits in, a few levels up at most;
+    /// `nil` for a row itself or an element outside one.
+    static func row(holding element: AXUIElement) -> AXUIElement? {
+        var current = element
+        for _ in 0..<3 {
+            guard let parent = Self.element(copyValue(current, "AXParent")) else { return nil }
+            var role: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(parent, "AXRole" as CFString, &role) == .success else { return nil }
+            if role as? String == "AXRow" { return parent }
+            current = parent
+        }
+        return nil
+    }
+
     func perform(_ request: Doppel_Agent_V1_PerformAxAction) throws {
         let stale = AgentError.staleReference(snapshotID: request.snapshotID, nodeIndex: request.nodeIndex)
         guard let snapshot = snapshots.last(where: { $0.id == request.snapshotID }) else { throw stale }
@@ -339,7 +353,11 @@ final class AxSnapshotter {
         case .focus:
             (what, result) = ("focus", AXUIElementSetAttributeValue(element, "AXFocused" as CFString, kCFBooleanTrue))
         case .select:
-            (what, result) = ("select", AXUIElementSetAttributeValue(element, "AXSelected" as CFString, kCFBooleanTrue))
+            // Selecting a row's cell selects the row: a list's cell (a
+            // file's name in Finder) takes AXSelected without selecting
+            // anything, so a model that picks the cell it read would
+            // otherwise be told it worked.
+            (what, result) = ("select", AXUIElementSetAttributeValue(Self.row(holding: element) ?? element, "AXSelected" as CFString, kCFBooleanTrue))
         case .setValue(let text):
             (what, result) = ("set_value", AXUIElementSetAttributeValue(element, "AXValue" as CFString, text as CFString))
         case nil:
