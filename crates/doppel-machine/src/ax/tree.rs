@@ -125,6 +125,7 @@ pub enum Role {
     Heading,
     WebArea,
     List,
+    RadioGroup,
     Table,
     Outline,
     Browser,
@@ -185,6 +186,7 @@ impl Role {
             | Self::Heading
             | Self::WebArea
             | Self::List
+            | Self::RadioGroup
             | Self::Table
             | Self::Browser
             | Self::Column
@@ -253,6 +255,7 @@ impl Role {
             "AXHeading" => Self::Heading,
             "AXWebArea" => Self::WebArea,
             "AXList" => Self::List,
+            "AXRadioGroup" => Self::RadioGroup,
             "AXTable" => Self::Table,
             "AXOutline" => Self::Outline,
             "AXBrowser" => Self::Browser,
@@ -308,6 +311,7 @@ impl Role {
             Self::Heading => "AXHeading",
             Self::WebArea => "AXWebArea",
             Self::List => "AXList",
+            Self::RadioGroup => "AXRadioGroup",
             Self::Table => "AXTable",
             Self::Outline => "AXOutline",
             Self::Browser => "AXBrowser",
@@ -379,6 +383,7 @@ impl Role {
             | Self::SplitGroup
             | Self::LayoutArea
             | Self::LayoutItem
+            | Self::RadioGroup
             | Self::Unknown(_) => RoleKind::Wrapper,
             Self::Splitter | Self::ScrollBar | Self::RulerMarker => RoleKind::Noise,
         }
@@ -415,6 +420,7 @@ impl Role {
             Self::Heading => "heading",
             Self::WebArea => "webarea",
             Self::List => "list",
+            Self::RadioGroup => "radiogroup",
             Self::Table => "table",
             Self::Outline => "outline",
             Self::Browser => "browser",
@@ -942,6 +948,7 @@ pub(crate) mod tests {
             "AXHeading",
             "AXWebArea",
             "AXList",
+            "AXRadioGroup",
             "AXTable",
             "AXOutline",
             "AXBrowser",

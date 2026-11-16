@@ -87,6 +87,7 @@ impl Kind {
             | Role::TabGroup
             | Role::WebArea
             | Role::List
+            | Role::RadioGroup
             | Role::Table
             | Role::Outline
             | Role::Browser

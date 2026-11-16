@@ -127,6 +127,7 @@ export function kindOf(role: string): Kind {
     case "AXTabGroup":
     case "AXWebArea":
     case "AXList":
+    case "AXRadioGroup":
     case "AXTable":
     case "AXOutline":
     case "AXBrowser":
