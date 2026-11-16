@@ -14,8 +14,7 @@ use crate::icons::Icon;
 use crate::screen::Picture;
 use crate::theme::{Hue, MONO, Theme};
 use crate::timeline::{
-    CALLOUT_FADE_MS, CalloutOn, CalloutShape, Family, Gesture, MARK_MS, Mark, Moment, Scene, Shown,
-    swept,
+    CALLOUT_FADE_MS, CalloutOn, CalloutShape, Family, Gesture, Mark, Moment, Scene, Shown, swept,
 };
 use crate::ui;
 
@@ -278,14 +277,8 @@ fn sweep(picture: Picture, sweep: f32, hue: Hue) -> Div {
 }
 
 fn mark_element(mark: &Mark, picture: Picture, now: f64, hue: Hue, theme: &Theme) -> AnyElement {
-    let since = match mark {
-        Mark::Ripple { since, .. }
-        | Mark::Box { since, .. }
-        | Mark::Path { since, .. }
-        | Mark::Failed { since, .. } => *since,
-    };
-    let age = ((now - since) / MARK_MS).clamp(0.0, 1.0);
-    let fading = (1.0 - age * age) as f32;
+    let since = mark.since();
+    let fading = mark.opacity(now) as f32;
     match mark {
         Mark::Ripple { at, gesture, .. } => {
             let (x, y) = picture.place(at.x(), at.y());

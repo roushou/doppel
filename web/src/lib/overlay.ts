@@ -322,12 +322,24 @@ export function parseActivity(activity: Activity): ActivityEvent | null {
   }
 }
 
-/** A mark a call left on the screen, fading after `MARK_MS`. */
+/**
+ * A mark a call left on the screen, showing from `since` until `until`: a
+ * frame over an element or a path just after its call ends, or when its
+ * agent's next call starts; a ripple for `MARK_MS`.
+ */
 export type Mark =
-  | { id: number; kind: "ripple"; at: DisplayPoint; gesture: Gesture; since: number }
-  | { id: number; kind: "box"; frame: Rect; label: string; since: number }
-  | { id: number; kind: "path"; from: DisplayPoint; to: DisplayPoint; since: number }
-  | { id: number; kind: "failed"; at: DisplayPoint; reason: string; since: number };
+  | { id: number; kind: "ripple"; at: DisplayPoint; gesture: Gesture; since: number; until: number }
+  | { id: number; kind: "box"; frame: Rect; label: string; since: number; until: number }
+  | { id: number; kind: "path"; from: DisplayPoint; to: DisplayPoint; since: number; until: number }
+  | { id: number; kind: "failed"; at: DisplayPoint; reason: string; since: number; until: number };
+
+/** How long a mark takes to fade, at its end. */
+export const MARK_FADE_MS = 150;
+
+/** How opaque `mark` is at `at`: whole, then fading to its end. */
+export function markOpacity(mark: Mark, at: number): number {
+  return Math.min(1, Math.max(0, (mark.until - at) / MARK_FADE_MS));
+}
 
 /** How long a mark stays. */
 /** The widest a pointer's caption gets, and how far right of its pointer it starts. */
@@ -340,6 +352,8 @@ export function captionSide(x: number, edge: number): "right" | "left" {
 }
 
 export const MARK_MS = 1600;
+/** How long a mark shows after its call ends: the screen changes then. */
+export const SETTLE_MS = 150;
 
 /** How long the reading band takes to sweep down the screen once. */
 export const SWEEP_MS = 1300;

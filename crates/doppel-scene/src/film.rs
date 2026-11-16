@@ -7,9 +7,7 @@
 
 use doppel_machine::geometry::{Point, Rect, Size};
 
-use crate::timeline::{
-    CALLOUT_FADE_MS, CalloutOn, CalloutShape, Gesture, MARK_MS, Mark, Moment, scene_at,
-};
+use crate::timeline::{CALLOUT_FADE_MS, CalloutOn, CalloutShape, Gesture, Mark, Moment, scene_at};
 
 /// A colour: red, green and blue in its low 24 bits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -256,6 +254,7 @@ impl Picture {
         for agent in &scene.agents {
             let (fill, ink) = hue(agent.session);
             for mark in &agent.marks {
+                let opacity = mark.opacity(at);
                 match mark {
                     Mark::Ripple {
                         at: point, since, ..
@@ -268,17 +267,11 @@ impl Picture {
                                 colour: fill,
                                 wash: 0.22,
                                 width: 2.5,
-                                opacity: 1.0 - f,
+                                opacity: (1.0 - f).min(opacity),
                             });
                         }
                     }
-                    Mark::Box {
-                        frame,
-                        label,
-                        since,
-                    } => {
-                        let age = ((at - since) / MARK_MS).clamp(0.0, 1.0);
-                        let opacity = 1.0 - age * age;
+                    Mark::Box { frame, label, .. } => {
                         shapes.push(Shape::Frame {
                             rect: *frame,
                             colour: fill,
@@ -300,23 +293,19 @@ impl Picture {
                             });
                         }
                     }
-                    Mark::Path { from, to, since } => {
-                        let age = ((at - since) / MARK_MS).clamp(0.0, 1.0);
+                    Mark::Path { from, to, .. } => {
                         shapes.push(Shape::Stroke {
                             from: Spot::from(*from),
                             to: Spot::from(*to),
                             colour: fill,
                             width: 3.0,
                             line: Line::Dashed,
-                            opacity: 1.0 - age * age,
+                            opacity,
                         });
                     }
                     Mark::Failed {
-                        at: point,
-                        reason,
-                        since,
+                        at: point, reason, ..
                     } => {
-                        let age = ((at - since) / MARK_MS).clamp(0.0, 1.0);
                         let centre = Spot::from(*point);
                         shapes.push(Shape::Ring {
                             centre,
@@ -324,7 +313,7 @@ impl Picture {
                             colour: FAILED,
                             wash: 0.2,
                             width: 2.5,
-                            opacity: 1.0 - age,
+                            opacity,
                         });
                         shapes.push(Shape::Tag {
                             at: Spot {
@@ -335,7 +324,7 @@ impl Picture {
                             text: reason.clone(),
                             ink: WHITE,
                             plate: FAILED,
-                            opacity: 1.0 - age * age,
+                            opacity,
                         });
                     }
                 }
@@ -416,6 +405,36 @@ impl Picture {
     }
 }
 
+/// `moments` with each agent call starting up to a glide early, never
+/// before that agent's previous call ended: a film knows what comes next,
+/// so its pointer arrives as the call lands rather than after the screen
+/// has already changed.
+fn ahead(moments: &[Moment]) -> Vec<Moment> {
+    let mut ended: Vec<(u64, f64)> = Vec::new();
+    moments
+        .iter()
+        .map(|moment| {
+            let mut moment = moment.clone();
+            if moment.person {
+                return moment;
+            }
+            let session = moment.call.key.session;
+            let free = ended
+                .iter()
+                .find(|(s, _)| *s == session)
+                .map_or(f64::NEG_INFINITY, |(_, end)| *end);
+            let start = moment.start_ms;
+            moment.start_ms = (start - GLIDE_MS).max(free).min(start);
+            let end = moment.end_ms.unwrap_or(start).max(start);
+            match ended.iter_mut().find(|(s, _)| *s == session) {
+                Some(slot) => slot.1 = end,
+                None => ended.push((session, end)),
+            }
+            moment
+        })
+        .collect()
+}
+
 /// A recording's pictures for one video: one per frame at `fps`, the
 /// first at `from_ms` in the session's time.
 #[derive(Debug, Clone, PartialEq)]
@@ -429,6 +448,7 @@ impl Reel {
     /// until `until_ms`.
     #[must_use]
     pub fn shoot(moments: &[Moment], display: Size, from_ms: f64, until_ms: f64, fps: u32) -> Self {
+        let moments = ahead(moments);
         let fps = fps.max(1);
         let step = 1000.0 / f64::from(fps);
         let mut pictures = Vec::new();
@@ -438,7 +458,7 @@ impl Reel {
             if at >= until_ms {
                 break;
             }
-            pictures.push(Picture::at(moments, display, at));
+            pictures.push(Picture::at(&moments, display, at));
             frame += 1;
         }
         Self { fps, pictures }
@@ -632,11 +652,26 @@ mod tests {
         let moments = [click(1, 0.0, 100.0, 100.0)];
         let reel = Reel::shoot(&moments, display(), 0.0, 1000.0, 30);
         assert_eq!(reel.pictures.len(), 30);
-        assert_eq!(reel.pictures[0], Picture::at(&moments, display(), 0.0));
+        assert_eq!(
+            reel.pictures[0],
+            Picture::at(&ahead(&moments), display(), 0.0)
+        );
         assert!(
             Reel::shoot(&moments, display(), 500.0, 500.0, 30)
                 .pictures
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn a_reel_brings_the_pointer_there_as_the_call_lands() {
+        let moments = [click(1, 0.0, 100.0, 100.0), click(2, 2000.0, 300.0, 100.0)];
+        let reel = Reel::shoot(&moments, display(), 0.0, 2100.0, 100);
+        let at = |ms: usize| pointer(&reel.pictures[ms / 10]).unwrap().0;
+        assert_eq!(at(2000), Spot { x: 300.0, y: 100.0 });
+        assert!(at(1700).x > 100.0, "already on its way");
+        // Never before the agent's previous call ended.
+        let close = [click(1, 0.0, 100.0, 100.0), click(2, 100.0, 300.0, 100.0)];
+        assert_eq!(ahead(&close)[1].start_ms, 50.0);
     }
 }

@@ -232,8 +232,13 @@ pub struct Moment {
 /// How many moments a timeline keeps for each machine.
 const KEPT: usize = 300;
 
-/// How long a mark stays.
+/// The longest a mark stays.
 pub const MARK_MS: f64 = 1600.0;
+/// How long a mark shows after its call ends: the screen changes then,
+/// and a mark left over what changed is noise.
+const SETTLE_MS: f64 = 150.0;
+/// How long a mark takes to fade, at its end.
+pub const MARK_FADE_MS: f64 = 150.0;
 
 /// A call too quick to see is shown under way for at least this long.
 const MIN_UNDER_WAY_MS: f64 = 600.0;
@@ -344,29 +349,82 @@ fn failure(ending: &Ending) -> Option<String> {
     }
 }
 
-/// A mark a call left on the screen, fading after [`MARK_MS`].
+/// A mark a call left on the screen, showing from `since` until `until`:
+/// a frame over an element or a path just after its call ends, or when its
+/// agent's next call starts; a ripple for [`MARK_MS`].
 #[derive(Debug, Clone, PartialEq)]
 pub enum Mark {
     Ripple {
         at: Point,
         gesture: Gesture,
         since: f64,
+        until: f64,
     },
     Box {
         frame: Rect,
         label: String,
         since: f64,
+        until: f64,
     },
     Path {
         from: Point,
         to: Point,
         since: f64,
+        until: f64,
     },
     Failed {
         at: Point,
         reason: String,
         since: f64,
+        until: f64,
     },
+}
+
+impl Mark {
+    /// When it showed.
+    pub const fn since(&self) -> f64 {
+        match self {
+            Self::Ripple { since, .. }
+            | Self::Box { since, .. }
+            | Self::Path { since, .. }
+            | Self::Failed { since, .. } => *since,
+        }
+    }
+
+    /// When it goes.
+    pub const fn until(&self) -> f64 {
+        match self {
+            Self::Ripple { until, .. }
+            | Self::Box { until, .. }
+            | Self::Path { until, .. }
+            | Self::Failed { until, .. } => *until,
+        }
+    }
+
+    /// How opaque it is at `at`: whole, then fading over [`MARK_FADE_MS`]
+    /// to its end.
+    pub fn opacity(&self, at: f64) -> f64 {
+        ((self.until() - at) / MARK_FADE_MS).clamp(0.0, 1.0)
+    }
+}
+
+/// When the mark of `moments[index]` goes: [`SETTLE_MS`] after its call
+/// ends, at once if its agent's next call starts sooner, and after
+/// [`MARK_MS`] at the latest.
+fn mark_until(moments: &[Moment], index: usize) -> f64 {
+    let Some(moment) = moments.get(index) else {
+        return f64::NEG_INFINITY;
+    };
+    let session = moment.call.key.session;
+    let next = moments
+        .iter()
+        .skip(index + 1)
+        .find(|later| !later.person && later.call.key.session == session)
+        .map_or(f64::INFINITY, |later| later.start_ms);
+    let settled = moment
+        .end_ms
+        .map_or(f64::INFINITY, |end| end.max(moment.start_ms) + SETTLE_MS);
+    settled.min(next).min(moment.start_ms + MARK_MS)
 }
 
 /// One machine's scene at an instant: each agent's, and the marks agents
@@ -481,22 +539,26 @@ pub enum Family {
 
 impl Call {
     /// The mark it leaves where it acted, if it leaves one.
-    fn leaves(&self, since: f64) -> Option<Mark> {
+    fn leaves(&self, since: f64, until: f64) -> Option<Mark> {
         match &self.target {
             Target::Element { frame, label } => Some(Mark::Box {
                 frame: *frame,
                 label: label.clone(),
                 since,
+                until,
             }),
             Target::Drag { from, to } => Some(Mark::Path {
                 from: *from,
                 to: *to,
                 since,
+                until,
             }),
+            // A pulse where it acted, over in a moment: not cut short.
             Target::Point(at) => self.gesture.marks_a_point().then_some(Mark::Ripple {
                 at: *at,
                 gesture: self.gesture,
                 since,
+                until: since + MARK_MS,
             }),
             Target::Nowhere => None,
         }
@@ -543,9 +605,10 @@ impl Call {
 /// calls that started or failed less than [`MARK_MS`] before.
 pub fn scene_at(moments: &[Moment], at: f64) -> Scene {
     let mut agents: Vec<AgentScene> = Vec::new();
-    for moment in moments
+    for (at_index, moment) in moments
         .iter()
-        .filter(|moment| !moment.person && moment.start_ms <= at)
+        .enumerate()
+        .filter(|(_, moment)| !moment.person && moment.start_ms <= at)
     {
         let session = moment.call.key.session;
         let index = match agents.iter().position(|agent| agent.session == session) {
@@ -579,8 +642,10 @@ pub fn scene_at(moments: &[Moment], at: f64) -> Scene {
         if moment.call.gesture == Gesture::Look && at < sweep_ends(moment.start_ms, moment.end_ms) {
             agent.scan = Some(moment.start_ms);
         }
-        if at - moment.start_ms < MARK_MS
-            && let Some(mark) = moment.call.leaves(moment.start_ms)
+        if let Some(mark) = moment
+            .call
+            .leaves(moment.start_ms, mark_until(moments, at_index))
+            .filter(|mark| at < mark.until())
         {
             agent.marks.push(mark);
         }
@@ -594,6 +659,7 @@ pub fn scene_at(moments: &[Moment], at: f64) -> Scene {
                     at: cursor,
                     reason: reason.clone(),
                     since: end,
+                    until: end + MARK_MS,
                 });
             }
         }
@@ -1195,6 +1261,43 @@ mod tests {
     }
 
     #[test]
+    fn a_mark_goes_just_after_its_call_ends_or_when_the_next_starts() {
+        let press = || {
+            call(
+                1,
+                Gesture::Act,
+                Target::Element {
+                    frame: Rect::new(10.0, 10.0, 80.0, 30.0).unwrap(),
+                    label: "Save".into(),
+                },
+            )
+        };
+        let mut moments = Vec::new();
+        record(&mut moments, ActivityEvent::Started(press()), 0.0);
+        let marks = |moments: &[Moment], at| scene_at(moments, at).of(1).unwrap().marks.len();
+        assert_eq!(marks(&moments, 900.0), 1, "under way, it shows");
+        record(&mut moments, ended(1, Ending::Done), 30.0);
+        let scene = scene_at(&moments, 100.0);
+        let shown = &scene.of(1).unwrap().marks[0];
+        assert_eq!(shown.until(), 30.0 + SETTLE_MS);
+        assert_eq!(shown.opacity(30.0 + SETTLE_MS - MARK_FADE_MS), 1.0);
+        assert_eq!(
+            marks(&moments, 30.0 + SETTLE_MS),
+            0,
+            "gone once the screen changed"
+        );
+
+        let mut moments = Vec::new();
+        record(&mut moments, ActivityEvent::Started(press()), 0.0);
+        record(
+            &mut moments,
+            ActivityEvent::Started(call(2, Gesture::Look, Target::Nowhere)),
+            80.0,
+        );
+        assert_eq!(marks(&moments, 90.0), 0, "the next call took over");
+    }
+
+    #[test]
     fn a_failure_marks_where_the_pointer_was() {
         let mut moments = Vec::new();
         record(
@@ -1217,6 +1320,7 @@ mod tests {
             at: at(5.0, 5.0),
             reason: "no focus".into(),
             since: 50.0,
+            until: 50.0 + MARK_MS,
         }));
         assert_eq!(
             scene

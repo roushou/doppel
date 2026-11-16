@@ -5,7 +5,7 @@
 // recording's trace, timed from the session's start. Pure.
 
 import type { Call as TraceCall } from "./recordings";
-import { type ActivityEvent, type AgentScene, type Call, type Gesture, type Mark, MARK_MS, type Scene, type Shown, type Target, aim, sweepEnds } from "./overlay";
+import { type ActivityEvent, type AgentScene, type Call, type Gesture, type Mark, MARK_MS, SETTLE_MS, type Scene, type Shown, type Target, aim, sweepEnds } from "./overlay";
 import type { TextRead } from "./reading";
 import type { Refs, Seen } from "./tree";
 
@@ -146,15 +146,16 @@ function outcomeWords(outcome: TraceCall["outcome"]): string {
 }
 
 /** The mark a call leaves where it acted, if it leaves one. */
-function leaves(call: Call, id: number, since: number): Mark | null {
+function leaves(call: Call, id: number, since: number, until: number): Mark | null {
   const target: Target = call.target;
   switch (target.kind) {
     case "element":
-      return { id, kind: "box", frame: target.frame, label: target.label, since };
+      return { id, kind: "box", frame: target.frame, label: target.label, since, until };
     case "drag":
-      return { id, kind: "path", from: target.from, to: target.to, since };
+      return { id, kind: "path", from: target.from, to: target.to, since, until };
     case "point":
-      return pointMark(call.gesture) ? { id, kind: "ripple", at: target.at, gesture: call.gesture, since } : null;
+      // A pulse where it acted, over in a moment: not cut short.
+      return pointMark(call.gesture) ? { id, kind: "ripple", at: target.at, gesture: call.gesture, since, until: since + MARK_MS } : null;
     case "none":
       return null;
     default: {
@@ -215,6 +216,20 @@ export function calloutsAt(moments: readonly Moment[], at: number): Shown[] {
 export const MIN_UNDER_WAY_MS = 600;
 
 /**
+ * When the mark of `moments[index]` goes: `SETTLE_MS` after its call ends,
+ * at once if its agent's next call starts sooner, and after `MARK_MS` at
+ * the latest.
+ */
+function markUntil(moments: readonly Moment[], index: number): number {
+  const moment = moments[index];
+  if (moment === undefined) return -Infinity;
+  const session = moment.call.session;
+  const next = moments.slice(index + 1).find((later) => !later.person && later.call.session === session);
+  const settled = moment.endMs === null ? Infinity : Math.max(moment.endMs, moment.startMs) + SETTLE_MS;
+  return Math.min(settled, next?.startMs ?? Infinity, moment.startMs + MARK_MS);
+}
+
+/**
  * The scene at `at`: the pointer where the latest call that had a place
  * acted, the call under way (the latest one started), and the marks of
  * calls that started or failed less than `MARK_MS` before. A person's
@@ -239,14 +254,12 @@ export function sceneAt(moments: readonly Moment[], at: number): Scene {
     const shownUntil = moment.endMs === null ? Infinity : Math.max(moment.endMs, moment.startMs + MIN_UNDER_WAY_MS);
     if (at < shownUntil) agent.current = { call: moment.call, since: moment.startMs };
     if (moment.call.gesture === "look" && at < sweepEnds(moment.startMs, moment.endMs)) agent.scan = moment.startMs;
-    if (at - moment.startMs < MARK_MS) {
-      const mark = leaves(moment.call, index * 2, moment.startMs);
-      if (mark !== null) agent.marks.push(mark);
-    }
+    const mark = leaves(moment.call, index * 2, moment.startMs, markUntil(moments, index));
+    if (mark !== null && at < mark.until) agent.marks.push(mark);
     if (moment.endMs !== null) {
       agent.active = Math.max(agent.active, Math.min(moment.endMs, at));
       if (moment.failed !== null && moment.endMs <= at && at - moment.endMs < MARK_MS && agent.cursor !== null) {
-        agent.marks.push({ id: index * 2 + 1, kind: "failed", at: agent.cursor, reason: moment.failed, since: moment.endMs });
+        agent.marks.push({ id: index * 2 + 1, kind: "failed", at: agent.cursor, reason: moment.failed, since: moment.endMs, until: moment.endMs + MARK_MS });
       }
     }
   });

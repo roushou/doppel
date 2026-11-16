@@ -155,26 +155,19 @@ fn callout(callout: &Callout) -> Value {
 }
 
 fn mark(mark: &Mark) -> Value {
+    let (since, until) = (mark.since(), mark.until());
     match mark {
-        Mark::Ripple {
-            at,
-            gesture: g,
-            since,
-        } => {
-            json!({ "kind": "ripple", "at": point(*at), "gesture": gesture(*g), "since": since })
+        Mark::Ripple { at, gesture: g, .. } => {
+            json!({ "kind": "ripple", "at": point(*at), "gesture": gesture(*g), "since": since, "until": until })
         }
-        Mark::Box {
-            frame,
-            label,
-            since,
-        } => {
-            json!({ "kind": "box", "frame": rect(*frame), "label": label, "since": since })
+        Mark::Box { frame, label, .. } => {
+            json!({ "kind": "box", "frame": rect(*frame), "label": label, "since": since, "until": until })
         }
-        Mark::Path { from, to, since } => {
-            json!({ "kind": "path", "from": point(*from), "to": point(*to), "since": since })
+        Mark::Path { from, to, .. } => {
+            json!({ "kind": "path", "from": point(*from), "to": point(*to), "since": since, "until": until })
         }
-        Mark::Failed { at, reason, since } => {
-            json!({ "kind": "failed", "at": point(*at), "reason": reason, "since": since })
+        Mark::Failed { at, reason, .. } => {
+            json!({ "kind": "failed", "at": point(*at), "reason": reason, "since": since, "until": until })
         }
     }
 }

@@ -18,7 +18,7 @@
   import type { DisplayPoint, Rect, Size } from "./lib/geometry";
   import { hue } from "./lib/hues";
   import { type Attention, pointerOf } from "./lib/attention";
-  import { type AgentScene, CALLOUT_FADE_MS, type Call, type Gesture, MARK_MS, type Scene, type Shown, arrowEnds, captionSide, describe, swept } from "./lib/overlay";
+  import { type AgentScene, CALLOUT_FADE_MS, type Call, type Gesture, type Scene, type Shown, arrowEnds, markOpacity, captionSide, describe, swept } from "./lib/overlay";
 
   interface Props {
     scene: Scene;
@@ -172,7 +172,7 @@
   {#each scene.agents as agent (agent.session)}
     <div class="agent" style={colours(agent)}>
   {#each agent.marks as mark (mark.id)}
-    {@const age = Math.min(1, (now - mark.since) / MARK_MS)}
+    {@const fading = markOpacity(mark, now)}
     {#if mark.kind === "ripple"}
       {@const at = px(mark.at)}
       <span class={["ripple", mark.gesture]} style:left="{at.x}px" style:top="{at.y}px"></span>
@@ -181,13 +181,13 @@
       {/if}
     {:else if mark.kind === "box"}
       {@const rect = box(mark.frame)}
-      <div class="box" style:left="{rect.left}px" style:top="{rect.top}px" style:width="{rect.width}px" style:height="{rect.height}px" style:opacity={1 - age * age}>
+      <div class="box" style:left="{rect.left}px" style:top="{rect.top}px" style:width="{rect.width}px" style:height="{rect.height}px" style:opacity={fading}>
         {#if mark.label !== ""}<span class="label">{mark.label}</span>{/if}
       </div>
     {:else if mark.kind === "path"}
       {@const from = px(mark.from)}
       {@const to = px(mark.to)}
-      <svg class="path" style:opacity={1 - age * age}>
+      <svg class="path" style:opacity={fading}>
         <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} />
         <circle cx={from.x} cy={from.y} r="4" />
         <circle cx={to.x} cy={to.y} r="6" class="end" />
@@ -195,7 +195,7 @@
     {:else}
       {@const at = px(mark.at)}
       <span class="ripple failed" style:left="{at.x}px" style:top="{at.y}px"></span>
-      <span class="reason" style:left="{at.x}px" style:top="{at.y}px" style:opacity={1 - age * age}>{mark.reason}</span>
+      <span class="reason" style:left="{at.x}px" style:top="{at.y}px" style:opacity={fading}>{mark.reason}</span>
     {/if}
   {/each}
 
