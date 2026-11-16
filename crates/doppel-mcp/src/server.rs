@@ -15,6 +15,7 @@ use rmcp::model::{
 };
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData, RoleServer, ServerHandler};
+use tokio::sync::OnceCell;
 use tokio_util::sync::CancellationToken;
 
 use doppel_machine::ax::refs::SnapshotRefs;
@@ -158,9 +159,11 @@ pub trait Runner: Send + Sync + 'static {
     /// `machine` as. Best effort: the model never hears of a failure.
     fn name(&self, machine: MachineName, refs: SnapshotRefs) -> impl Future<Output = ()> + Send;
 
-    /// The client introduced itself (`initialize`), by `client` when it gave
-    /// a name. Called before the handshake is answered, so before any call;
-    /// a failure fails the handshake, with its message.
+    /// The client introduced itself, by `client` when it gave a name. Called
+    /// once per connection, before any call runs: when a client that shakes
+    /// hands sends `initialize` (a failure fails the handshake), or else at
+    /// a stateless client's first call, by the name that call carries (a
+    /// failure fails that call, and the next call introduces it again).
     fn introduce(
         &self,
         client: Option<ClientName>,
@@ -172,6 +175,9 @@ pub struct Server<R> {
     runner: R,
     default_machine: Option<MachineName>,
     refs: Mutex<Refs>,
+    /// Set once the runner has been introduced to the client; empty until
+    /// an introduction succeeds.
+    introduced: OnceCell<()>,
 }
 
 impl<R: Runner> Server<R> {
@@ -181,12 +187,26 @@ impl<R: Runner> Server<R> {
             runner,
             default_machine,
             refs: Mutex::new(Refs::default()),
+            introduced: OnceCell::new(),
         }
     }
 
     /// The refs are plain data, valid after any panic that poisoned the lock.
     fn refs(&self) -> MutexGuard<'_, Refs> {
         self.refs.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Introduces the client to the runner, unless that's done: concurrent
+    /// first calls wait on one introduction, and a failed one is tried again.
+    async fn introduce(&self, client: Option<&Implementation>) -> Result<(), ErrorData> {
+        self.introduced
+            .get_or_try_init(|| {
+                self.runner
+                    .introduce(client.and_then(|client| ClientName::parse(&client.name)))
+            })
+            .await
+            .map(|&()| ())
+            .map_err(|error| ErrorData::internal_error(error.to_string(), None))
     }
 }
 
@@ -204,10 +224,7 @@ impl<R: Runner> ServerHandler for Server<R> {
         request: InitializeRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<InitializeResult, ErrorData> {
-        self.runner
-            .introduce(ClientName::parse(&request.client_info.name))
-            .await
-            .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+        self.introduce(Some(&request.client_info)).await?;
         context.peer.set_peer_info(request.clone());
         self.negotiate_initialize(&request)
     }
@@ -222,6 +239,8 @@ impl<R: Runner> ServerHandler for Server<R> {
 
     /// Unknown tools are protocol errors; bad arguments and failed runs are
     /// tool errors (`isError`), so the model sees them and can correct itself.
+    /// A stateless client never sends `initialize`: its first call
+    /// introduces it, by the name in the call's metadata.
     async fn call_tool(
         &self,
         request: CallToolRequestParams,
@@ -230,6 +249,7 @@ impl<R: Runner> ServerHandler for Server<R> {
         let tool: ToolName = request.name.parse().map_err(|()| {
             ErrorData::invalid_params(format!("unknown tool {}", request.name), None)
         })?;
+        self.introduce(context.client_info().as_ref()).await?;
         let arguments = request.arguments.unwrap_or_default();
         // Parse under the lock (refs resolve here), run without it.
         let parsed = ToolCall::parse(tool, arguments, self.default_machine.as_ref(), &self.refs());
@@ -523,11 +543,21 @@ mod tests {
         );
     }
 
-    /// Keeps the names it's introduced by, and answers each introduction with `answer`.
-    #[derive(Debug)]
+    /// Keeps the names it's introduced by, and answers introductions with
+    /// `answers` in turn, then with success.
+    #[derive(Debug, Default)]
     struct Introduced {
         names: std::sync::Arc<Mutex<Vec<Option<ClientName>>>>,
-        answer: Result<(), &'static str>,
+        answers: Mutex<std::collections::VecDeque<Result<(), &'static str>>>,
+    }
+
+    impl Introduced {
+        fn answering(answers: impl IntoIterator<Item = Result<(), &'static str>>) -> Self {
+            Self {
+                answers: Mutex::new(answers.into_iter().collect()),
+                ..Self::default()
+            }
+        }
     }
 
     impl Runner for Introduced {
@@ -535,11 +565,11 @@ mod tests {
 
         async fn introduce(&self, client: Option<ClientName>) -> Result<(), Self::Error> {
             self.names.lock().unwrap().push(client);
-            self.answer
+            self.answers.lock().unwrap().pop_front().unwrap_or(Ok(()))
         }
 
         async fn run(&self, _: ToolCall, _: Cancellation) -> Ran<Self::Error> {
-            ToolOutcome::Failed(Unconfirmed::Failed("unused")).into()
+            ToolOutcome::Failed(Unconfirmed::Failed("ran")).into()
         }
 
         async fn name(&self, _: MachineName, _: SnapshotRefs) {}
@@ -553,27 +583,67 @@ mod tests {
 
     #[tokio::test]
     async fn the_runner_hears_the_clients_name_before_the_handshake_is_answered() {
-        let names = std::sync::Arc::default();
-        let runner = Introduced {
-            names: std::sync::Arc::clone(&names),
-            answer: Ok(()),
-        };
+        let runner = Introduced::default();
+        let names = std::sync::Arc::clone(&runner.names);
         let mut wire = Wire::start(runner).await;
         let init = wire.request(hello("  agent one\n")).await;
         assert_eq!(init["result"]["serverInfo"]["name"], "doppel");
         assert_eq!(*names.lock().unwrap(), vec![ClientName::parse("agent one")]);
+        wire.send(json!({"jsonrpc":"2.0","method":"notifications/initialized"}))
+            .await;
+        let call = wire
+            .request(json!({"jsonrpc":"2.0","id":1,"method":"tools/call",
+                "params":{"name":"status","arguments":{}}}))
+            .await;
+        assert_eq!(call["result"]["isError"], true, "{call}");
+        assert_eq!(names.lock().unwrap().len(), 1, "introduced once");
     }
 
     #[tokio::test]
     async fn a_failed_introduction_fails_the_handshake_with_its_reason() {
-        let runner = Introduced {
-            names: std::sync::Arc::default(),
-            answer: Err("no daemon"),
-        };
+        let runner = Introduced::answering([Err("no daemon")]);
         let mut wire = Wire::start(runner).await;
         let init = wire.request(hello("agent")).await;
         assert!(init["result"].is_null());
         assert_eq!(init["error"]["message"], "no daemon");
+    }
+
+    /// A call from a stateless client (MCP 2026-07-28): no `initialize`;
+    /// the protocol version and the client ride in each request's metadata.
+    fn stateless_call(id: u32, client: &str) -> Value {
+        json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{
+            "name":"status","arguments":{},
+            "_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28",
+                "io.modelcontextprotocol/clientInfo":{"name":client,"version":"0"},
+                "io.modelcontextprotocol/clientCapabilities":{}}}})
+    }
+
+    #[tokio::test]
+    async fn a_stateless_client_is_introduced_once_by_the_name_its_calls_carry() {
+        let runner = Introduced::default();
+        let names = std::sync::Arc::clone(&runner.names);
+        let mut wire = Wire::start(runner).await;
+        let first = wire.request(stateless_call(1, "claude-code")).await;
+        let second = wire.request(stateless_call(2, "claude-code")).await;
+        for answer in [&first, &second] {
+            assert_eq!(answer["result"]["content"][0]["text"], "ran", "{answer}");
+        }
+        assert_eq!(
+            *names.lock().unwrap(),
+            vec![ClientName::parse("claude-code")]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_failed_introduction_fails_the_call_and_the_next_call_tries_again() {
+        let runner = Introduced::answering([Err("no daemon")]);
+        let names = std::sync::Arc::clone(&runner.names);
+        let mut wire = Wire::start(runner).await;
+        let refused = wire.request(stateless_call(1, "agent")).await;
+        assert_eq!(refused["error"]["message"], "no daemon", "{refused}");
+        let ran = wire.request(stateless_call(2, "agent")).await;
+        assert_eq!(ran["result"]["content"][0]["text"], "ran", "{ran}");
+        assert_eq!(names.lock().unwrap().len(), 2);
     }
 
     #[test]
