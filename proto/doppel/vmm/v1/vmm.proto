@@ -276,14 +276,24 @@ message Reel {
   // The display's size in points, the space the shapes are in.
   doppel.common.v1.Size display = 2;
   repeated Picture pictures = 3;
+  // The recorded videos it plays, in order: one machine's display,
+  // split where the recording restarted (a rollback, a restart).
+  repeated Source sources = 4;
+}
+
+// A recorded video, and when it starts on the session's clock.
+message Source {
+  // Absolute path.
+  string path = 1;
+  double start_ms = 2;
 }
 
 message Picture {
   repeated Shape shapes = 1;
-  // Which moment of the source video it goes over, in ms from its start:
-  // never earlier than the picture before's. The video's latest frame by
-  // then shows under it.
-  double video_ms = 2;
+  // The moment on the session's clock it goes over: never earlier than the
+  // picture before's. The latest frame of the sources by then shows under
+  // it; between two sources, the first one's last frame holds.
+  double at_ms = 2;
 }
 
 // A place in points; unlike a common Point, it may lie off the display.

@@ -60,19 +60,19 @@ private func redFrame() -> Doppel_Vmm_V1_Shape {
 }
 
 @Suite struct ExportCommand {
-    @Test func parsesItsThreePaths() throws {
-        let command = try Command(arguments: ["export", "--video", "/a.mp4", "--reel", "/r.pb", "--out", "/o.mp4"])
-        guard case .export(let video, let reel, let out) = command else {
+    @Test func parsesItsTwoPaths() throws {
+        let command = try Command(arguments: ["export", "--reel", "/r.pb", "--out", "/o.mp4"])
+        guard case .export(let reel, let out) = command else {
             Issue.record("parsed as \(command)")
             return
         }
-        #expect((video.path, reel.path, out.path) == ("/a.mp4", "/r.pb", "/o.mp4"))
+        #expect((reel.path, out.path) == ("/r.pb", "/o.mp4"))
     }
 
     @Test(arguments: [
-        ["export", "--video", "/a.mp4", "--reel", "/r.pb"],
-        ["export", "--video", "a.mp4", "--reel", "/r.pb", "--out", "/o.mp4"],
-        ["export", "--video", "/a.mp4", "--reel", "/r.pb", "--out", "/o.mp4", "--spec", "/s"],
+        ["export", "--reel", "/r.pb"],
+        ["export", "--reel", "r.pb", "--out", "/o.mp4"],
+        ["export", "--reel", "/r.pb", "--out", "/o.mp4", "--video", "/a.mp4"],
     ])
     func refusesMissingRelativeOrStrayPaths(arguments: [String]) {
         #expect(throws: UsageError.self) { try Command(arguments: arguments) }
@@ -161,43 +161,62 @@ private func redFrame() -> Doppel_Vmm_V1_Shape {
     }
 }
 
-@Test func anExportPlaysTheVideoAtTheReelsPaceWithItsPicturesOver() async throws {
-    // A 2 s recording of a grey 320×200 screen.
-    let video = scratch("source")
-    let out = scratch("out")
-    defer {
-        try? FileManager.default.removeItem(at: video)
-        try? FileManager.default.removeItem(at: out)
-    }
+/// A 320×200 recording of grey frames, one shade every 250 ms from `lead`
+/// seconds in, `seconds` long. Each frame waits for the encoder, which
+/// drops one it isn't ready for, so a busy machine keeps them all.
+private func recording(_ name: String, shades: [UInt8], seconds: Double, lead: Double = 0) async throws -> URL {
+    let video = scratch(name)
     let origin = CMTime(seconds: 50, preferredTimescale: 600)
     let recorder = try Recorder(url: video, width: 320, height: 200, origin: origin)
-    for i in 0..<4 {
+    for (i, shade) in shades.enumerated() {
         // The buffer owns the surface: it lives until the recorder has copied it.
-        let frame = try buffer(width: 320, height: 200, shade: UInt8(40 + 40 * i))
+        let frame = try buffer(width: 320, height: 200, shade: shade)
         let surface = try #require(CVPixelBufferGetIOSurface(frame)?.takeUnretainedValue())
-        withExtendedLifetime(frame) {
-            recorder.append(surface, at: CMTimeAdd(origin, CMTime(value: Int64(i) * 150, timescale: 600)))
+        let deadline = ContinuousClock.now + .seconds(10)
+        while !recorder.isReady, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(5))
         }
-        try await Task.sleep(for: .milliseconds(10))
+        try #require(recorder.isReady, "the encoder took no frame for ten seconds")
+        withExtendedLifetime(frame) {
+            recorder.append(surface, at: CMTimeAdd(origin, CMTime(value: Int64(lead * 600) + Int64(i) * 150, timescale: 600)))
+        }
     }
-    _ = try await recorder.finish(at: CMTimeAdd(origin, CMTime(seconds: 2, preferredTimescale: 600)))
+    _ = try await recorder.finish(at: CMTimeAdd(origin, CMTime(seconds: seconds, preferredTimescale: 600)))
+    return video
+}
 
-    // A 160×100 display; 20 pictures playing the video's first second at
-    // half speed, the first ten with a frame drawn.
+@Test func anExportPlaysItsVideosAtTheReelsPaceWithItsPicturesOver() async throws {
+    // Two recordings of one display, split by a restart: the first from
+    // 1 s to 3 s of the session, the second from 4 s, its first frame half
+    // a second in.
+    let first = try await recording("first", shades: [40, 80, 120, 160], seconds: 2)
+    let second = try await recording("second", shades: [220], seconds: 1, lead: 0.5)
+    let out = scratch("out")
+    defer {
+        for url in [first, second, out] { try? FileManager.default.removeItem(at: url) }
+    }
     var reel = Doppel_Vmm_V1_Reel()
     reel.fps = 10
     reel.display.width = 160
     reel.display.height = 100
-    reel.pictures = (0..<20).map { index in
+    reel.sources = [(first, 1000.0), (second, 4000.0)].map { url, start in
+        var source = Doppel_Vmm_V1_Source()
+        source.path = url.path
+        source.startMs = start
+        return source
+    }
+    // 20 pictures over the first's first second at half speed, the first ten
+    // with a frame drawn; then the gap; then the second.
+    let moments = (0..<20).map { 1000 + Double($0) * 50 } + [3500, 4100, 4500]
+    reel.pictures = moments.enumerated().map { index, at in
         var picture = Doppel_Vmm_V1_Picture()
         if index < 10 { picture.shapes = [redFrame()] }
-        picture.videoMs = Double(index) * 50
+        picture.atMs = at
         return picture
     }
 
-    let exported = try await Exporter.export(video: video, reel: reel, to: out)
-    #expect(exported.frames == 20)
-    #expect(abs(exported.seconds - 2) < 0.01)
+    let exported = try await Exporter.export(reel: reel, to: out)
+    #expect(exported.frames == 23)
 
     let asset = AVURLAsset(url: out)
     let track = try #require(try await asset.loadTracks(withMediaType: .video).first)
@@ -213,12 +232,14 @@ private func redFrame() -> Doppel_Vmm_V1_Shape {
         reds.append(red > 200 && blue < 60)
         shades.append(Int(pixel(image, x: 300, y: 190).0))
     }
-    #expect(reds.count == 20)
+    #expect(reds.count == 23)
     #expect(reds.prefix(10).allSatisfy { $0 }, "\(reds)")
-    #expect(reds.suffix(10).allSatisfy { !$0 }, "\(reds)")
-    // At half speed, each recorded frame (one every 250 ms) shows for five.
-    let recorded = [40, 80, 120, 160]
+    #expect(reds.suffix(13).allSatisfy { !$0 }, "\(reds)")
+    // At half speed, each recorded frame (one every 250 ms) shows for five;
+    // once the first has ended, the second's first frame shows, across the
+    // gap and until it comes.
+    let expected = [40, 80, 120, 160].flatMap { Array(repeating: $0, count: 5) } + [220, 220, 220]
     for (index, shade) in shades.enumerated() {
-        #expect(abs(shade - recorded[index / 5]) < 12, "frame \(index): \(shades)")
+        #expect(abs(shade - expected[index]) < 12, "frame \(index): \(shades)")
     }
 }

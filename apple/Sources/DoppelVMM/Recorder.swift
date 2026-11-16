@@ -103,6 +103,10 @@ final class Recorder: @unchecked Sendable {
         session = created
     }
 
+    /// Whether the encoder takes a frame now: `append(_:at:)` drops one it
+    /// doesn't.
+    var isReady: Bool { input.isReadyForMoreMediaData }
+
     /// The frame shown from host time `time` on. Copied out of `surface`
     /// first: VZ draws into it again while the encoder still works. Dropped
     /// when the encoder is behind.

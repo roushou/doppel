@@ -47,26 +47,43 @@ fn chosen<'a>(recording: &'a Recording, named: Option<&str>) -> Result<&'a Video
     }
 }
 
-/// The reel for `video` of `recording`, the display it's drawn over, and
-/// when the video started in the session's time:
-/// its machine's calls, from the video's start until the last call's
+/// The machine's run that `video` is part of: every video of its machine,
+/// in the order they started, each with when it started in the session's
+/// time. A rollback or a restart splits a run into several.
+fn run_of<'a>(recording: &'a Recording, video: &Video) -> Result<Vec<(&'a Video, f64)>> {
+    let mut run = recording
+        .videos
+        .iter()
+        .filter(|other| other.machine == video.machine)
+        .map(|other| {
+            let Some(start) = other.start_ms else {
+                bail!(
+                    "{} didn't keep when it started, so its calls can't be lined up with it",
+                    other.file.as_str()
+                );
+            };
+            #[expect(clippy::cast_precision_loss, reason = "milliseconds of a recording")]
+            Ok((other, start as f64))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    run.sort_by(|a, b| a.1.total_cmp(&b.1));
+    Ok(run)
+}
+
+/// The reel for the run of `recording`'s machine starting at `from`, on a
+/// display of `display`: its calls, from `from` until the last call's
 /// pointer has faded. `snapshot` reads the snapshot a trace line kept, for
 /// what the agent took in; one it can't read is left out.
 pub(crate) fn reel_of(
     recording: &Recording,
     video: &Video,
+    from: f64,
     fps: u32,
     snapshot: impl Fn(u32) -> Option<AxSnapshot>,
-) -> Result<(Reel, Size, f64)> {
+) -> Result<(Reel, Size)> {
     let Some(display) = video.points else {
         bail!(
             "{} didn't keep its display's size, so its calls can't be placed on it",
-            video.file.as_str()
-        );
-    };
-    let Some(from) = video.start_ms else {
-        bail!(
-            "{} didn't keep when it started, so its calls can't be lined up with it",
             video.file.as_str()
         );
     };
@@ -78,29 +95,29 @@ pub(crate) fn reel_of(
     }
     #[expect(clippy::cast_precision_loss, reason = "milliseconds of a recording")]
     let until = recording.traced_ms() as f64 + POINTER_MS;
-    #[expect(clippy::cast_precision_loss, reason = "milliseconds of a recording")]
-    let from = from as f64;
-    Ok((
-        Reel::shoot(&moments, display, from, until, fps),
-        display,
-        from,
-    ))
+    Ok((Reel::shoot(&moments, display, from, until, fps), display))
 }
 
-/// Writes `video` (at `source`) with `recording`'s overlay to `out`, by
-/// way of the VMM binary at `vmm`.
+/// Writes the run `named` is part of (each video at `source`), with
+/// `recording`'s overlay, to `out`, by way of the VMM binary at `vmm`.
 pub(crate) fn export(
     recording: &Recording,
     named: Option<&str>,
-    source: impl FnOnce(&Video) -> Result<PathBuf>,
+    source: impl Fn(&Video) -> Result<PathBuf>,
     out: &Path,
     fps: u32,
     vmm: &Path,
     snapshot: impl Fn(u32) -> Option<AxSnapshot>,
 ) -> Result<Exported> {
     let video = chosen(recording, named)?;
-    let (shot, display, video_from) = reel_of(recording, video, fps, snapshot)?;
-    let film = reel::to_wire(&shot, display, video_from);
+    let run = run_of(recording, video)?;
+    let from = run.first().map_or(0.0, |(_, start)| *start);
+    let (shot, display) = reel_of(recording, video, from, fps, snapshot)?;
+    let sources = run
+        .iter()
+        .map(|(video, start)| Ok((source(video)?, *start)))
+        .collect::<Result<Vec<_>>>()?;
+    let film = reel::to_wire(&shot, display, &sources);
     let path = std::path::absolute(out)
         .with_context(|| format!("{} has no absolute path", out.display()))?;
     if path.exists() {
@@ -115,8 +132,6 @@ pub(crate) fn export(
         .with_context(|| format!("can't write {}", reel_path.display()))?;
     let ran = Command::new(vmm)
         .arg("export")
-        .arg("--video")
-        .arg(source(video)?)
         .arg("--reel")
         .arg(&reel_path)
         .arg("--out")
@@ -134,4 +149,52 @@ pub(crate) fn export(
         path,
         summary: String::from_utf8_lossy(&ran.stdout).trim().to_owned(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use doppel_scene::recordings::{RecordingId, VideoName};
+
+    use super::*;
+
+    fn video(file: &str, machine: &str, start_ms: Option<u64>) -> Video {
+        Video {
+            file: VideoName::new(file.into()),
+            machine: machine.parse().unwrap(),
+            start_ms,
+            points: Size::new(1280.0, 800.0).ok(),
+        }
+    }
+
+    fn recording(videos: Vec<Video>) -> Recording {
+        Recording {
+            id: RecordingId::new("r".into()),
+            videos,
+            trace: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_run_is_every_video_of_its_machine_in_order() {
+        let recording = recording(vec![
+            video("live-002.mp4", "live", Some(54_020)),
+            video("dev-001.mp4", "dev", Some(100)),
+            video("live-001.mp4", "live", Some(339)),
+        ]);
+        let run = run_of(&recording, &recording.videos[0]).unwrap();
+        let files: Vec<(&str, f64)> = run
+            .iter()
+            .map(|(video, start)| (video.file.as_str(), *start))
+            .collect();
+        assert_eq!(files, [("live-001.mp4", 339.0), ("live-002.mp4", 54_020.0)]);
+    }
+
+    #[test]
+    fn a_run_needs_to_know_when_each_video_started() {
+        let recording = recording(vec![
+            video("live-001.mp4", "live", Some(339)),
+            video("live-002.mp4", "live", None),
+        ]);
+        assert!(run_of(&recording, &recording.videos[0]).is_err());
+    }
 }

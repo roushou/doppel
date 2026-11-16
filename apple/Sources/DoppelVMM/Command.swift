@@ -6,13 +6,13 @@ public enum Command: Sendable {
     case serve(MachineFiles, socket: String, boot: Boot, window: WindowMode)
     case install(MachineFiles, ipsw: URL)
     /// Burns a reel (the overlay) into a recorded video.
-    case export(video: URL, reel: URL, out: URL)
+    case export(reel: URL, out: URL)
 }
 
 public enum UsageError: Error, Equatable, CustomStringConvertible {
     case usage(String)
     public var description: String {
-        switch self { case .usage(let detail): "\(detail)\nusage: doppel-vmm serve|install --spec S --disk D --aux A ... | export --video V --reel R --out O" }
+        switch self { case .usage(let detail): "\(detail)\nusage: doppel-vmm serve|install --spec S --disk D --aux A ... | export --reel R --out O" }
     }
 }
 
@@ -36,8 +36,8 @@ extension Command {
             return URL(fileURLWithPath: value)
         }
         if verb == "export" {
-            self = .export(video: try path("video"), reel: try path("reel"), out: try path("out"))
-            guard options.isEmpty, flags.isEmpty else { throw UsageError.usage("export takes --video, --reel and --out only") }
+            self = .export(reel: try path("reel"), out: try path("out"))
+            guard options.isEmpty, flags.isEmpty else { throw UsageError.usage("export takes --reel and --out only") }
             return
         }
         let files = MachineFiles(spec: try path("spec"), disk: try path("disk"), aux: try path("aux"))

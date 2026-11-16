@@ -130,8 +130,12 @@ viewers replay a recording beside its trace, the call under the playhead
 highlighted. `doppel record start NAME FILE.mp4` records one machine's
 display to a file, outside any session.
 
-`doppel record export RECORDING OUT.mp4` writes one of a recording's videos
-(the first, or `--video NAME`) with what its agent did burned in. As each
+`doppel record export RECORDING OUT.mp4` writes one machine's run in a
+recording (the first video's machine, or `--video NAME`'s) with what its
+agent did burned in. A rollback or a restart splits a run into several
+videos; the export plays them one after another on the session's clock.
+Across the gap the next video's first frame shows, as the machine is
+already in that state. As each
 snapshot lands, the screen dims but for the elements its model was given
 refs for, which light top to bottom with their refs; when the agent goes
 for one, the rest let go and brackets close in on it. Then the pointer

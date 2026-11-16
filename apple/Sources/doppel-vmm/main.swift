@@ -28,8 +28,8 @@ Task { @MainActor in
         case .install(let files, let ipsw):
             await Installer(files: files, restoreImage: ipsw).run()
             exit(0)
-        case .export(let video, let reel, let out):
-            let exported = try await Exporter.export(video: video, reel: try Exporter.reel(at: reel), to: out)
+        case .export(let reel, let out):
+            let exported = try await Exporter.export(reel: try Exporter.reel(at: reel), to: out)
             print("exported \(exported.frames) frames (\(String(format: "%.1f", exported.seconds)) s)")
             exit(0)
         }

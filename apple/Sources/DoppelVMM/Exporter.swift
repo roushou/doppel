@@ -253,31 +253,91 @@ struct Painter {
 public enum Exporter {
     private static let bitsPerSecond = 12_000_000
 
-    /// Writes `video` with `reel` drawn over it to `out`, at the reel's
-    /// rate: a frame for each picture, over the video's latest frame by the
-    /// moment the picture names (`video_ms`). The reel sets the pace: a
-    /// stretch of the video can play faster or slower than it was recorded.
-    public static func export(video: URL, reel: Doppel_Vmm_V1_Reel, to out: URL) async throws -> Exported {
+    /// A frame of a source: its image, its moment on the session's clock,
+    /// and when its source ends there.
+    private struct Frame {
+        let image: CVPixelBuffer
+        let at: Double
+        let until: Double
+    }
+
+    /// The frames of the reel's sources in order, each at its moment on the
+    /// session's clock: one source after the other.
+    private final class Frames {
+        private var sources: [Doppel_Vmm_V1_Source]
+        private var reader: AVAssetReader?
+        private var output: AVAssetReaderTrackOutput?
+        /// Where the source shows nothing: a file starts its clock before its
+        /// first frame, and that stretch reads back as black.
+        private var empty: [CMTimeRange] = []
+        private var startMs: Double = 0
+        private var endMs: Double = 0
+        private(set) var size: CGSize = .zero
+
+        init(_ sources: [Doppel_Vmm_V1_Source]) async throws {
+            guard !sources.isEmpty else { throw ExportError.reel("it names no video") }
+            self.sources = sources.sorted { $0.startMs < $1.startMs }
+            try await open()
+        }
+
+        /// Opens the next source, if one is left.
+        private func open() async throws {
+            reader?.cancelReading()
+            (reader, output) = (nil, nil)
+            guard !sources.isEmpty else { return }
+            let source = sources.removeFirst()
+            let asset = AVURLAsset(url: URL(fileURLWithPath: source.path))
+            guard let track = try await asset.loadTracks(withMediaType: .video).first else {
+                throw ExportError.video("\(source.path) has no video track")
+            }
+            if size == .zero { size = try await track.load(.naturalSize) }
+            empty = try await track.load(.segments).filter(\.isEmpty).map(\.timeMapping.target)
+            startMs = source.startMs
+            endMs = source.startMs + CMTimeGetSeconds(try await track.load(.timeRange).end) * 1000
+            let reader: AVAssetReader
+            do { reader = try AVAssetReader(asset: asset) } catch { throw ExportError.video(error.localizedDescription) }
+            let output = AVAssetReaderTrackOutput(track: track, outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
+            output.alwaysCopiesSampleData = false
+            reader.add(output)
+            guard reader.startReading() else {
+                throw ExportError.video(reader.error?.localizedDescription ?? "couldn't start reading \(source.path)")
+            }
+            (self.reader, self.output) = (reader, output)
+        }
+
+        /// The next frame and its moment on the session's clock, or nil at the end.
+        func next() async throws -> Frame? {
+            while let output {
+                if let sample = output.copyNextSampleBuffer() {
+                    let presented = CMSampleBufferGetPresentationTimeStamp(sample)
+                    guard let image = CMSampleBufferGetImageBuffer(sample),
+                          !empty.contains(where: { $0.containsTime(presented) })
+                    else { continue }
+                    // A source's clock starts at its `start_ms`.
+                    return Frame(image: image, at: startMs + CMTimeGetSeconds(presented) * 1000, until: endMs)
+                }
+                try await open()
+            }
+            return nil
+        }
+
+        func cancel() { reader?.cancelReading() }
+    }
+
+    /// Writes the reel's videos with its pictures drawn over them to `out`,
+    /// at the reel's rate: a frame for each picture, over the latest frame
+    /// by the moment the picture names (`at_ms`). The reel sets the pace: a
+    /// stretch can play faster or slower than it was recorded.
+    public static func export(reel: Doppel_Vmm_V1_Reel, to out: URL) async throws -> Exported {
         guard reel.fps > 0, reel.display.width > 0, reel.display.height > 0 else {
             throw ExportError.reel("it has no frame rate or display size")
         }
-        let asset = AVURLAsset(url: video)
-        guard let track = try await asset.loadTracks(withMediaType: .video).first else {
-            throw ExportError.video("it has no video track")
-        }
-        let natural = try await track.load(.naturalSize)
-        let duration = try await asset.load(.duration).seconds
-        let (width, height) = (Int(natural.width), Int(natural.height))
-        guard width > 0, height > 0, duration.isFinite, duration > 0 else {
+        let frames = try await Frames(reel.sources)
+        let (width, height) = (Int(frames.size.width), Int(frames.size.height))
+        guard width > 0, height > 0 else {
             throw ExportError.video("it has no frames")
         }
-
-        let reader: AVAssetReader
-        do { reader = try AVAssetReader(asset: asset) } catch { throw ExportError.video(error.localizedDescription) }
         let format = kCVPixelFormatType_32BGRA
-        let source = AVAssetReaderTrackOutput(track: track, outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: format])
-        source.alwaysCopiesSampleData = false
-        reader.add(source)
 
         let writer: AVAssetWriter
         do { writer = try AVAssetWriter(outputURL: out, fileType: .mp4) } catch { throw ExportError.writer(error.localizedDescription) }
@@ -298,25 +358,27 @@ public enum Exporter {
         ])
         guard writer.canAdd(input) else { throw ExportError.writer("can't add a video track") }
         writer.add(input)
-        guard reader.startReading() else { throw ExportError.video(reader.error?.localizedDescription ?? "couldn't start reading") }
         guard writer.startWriting() else { throw ExportError.writer(writer.error?.localizedDescription ?? "couldn't start writing") }
         writer.startSession(atSourceTime: .zero)
 
         let painter = Painter(scale: CGFloat(width) / reel.display.width)
         let fps = Int32(reel.fps)
         let count = reel.pictures.count
-        var shown: CMSampleBuffer?
-        var next = source.copyNextSampleBuffer()
+        var shown: Frame?
+        var next = try await frames.next()
         for frame in 0..<count {
             let at = CMTime(value: CMTimeValue(frame), timescale: fps)
             let picture = reel.pictures[frame]
-            let from = CMTime(seconds: picture.videoMs / 1000, preferredTimescale: 600)
-            // The latest frame of the video by the moment the picture names.
-            while let candidate = next, CMTimeCompare(CMSampleBufferGetPresentationTimeStamp(candidate), from) <= 0 {
+            // The latest frame of the videos by the moment the picture names.
+            // Once a video has ended, what comes next shows: across a gap
+            // (a rollback, a restart), the machine is already as the next
+            // video starts it.
+            while let candidate = next,
+                  candidate.at <= picture.atMs || (shown.map { $0.until <= picture.atMs } ?? false) {
                 shown = candidate
-                next = source.copyNextSampleBuffer()
+                next = try await frames.next()
             }
-            guard let shown, let image = CMSampleBufferGetImageBuffer(shown) else { continue }
+            guard let image = shown?.image else { continue }
             while !input.isReadyForMoreMediaData {
                 try await Task.sleep(nanoseconds: 2_000_000)
             }
@@ -331,7 +393,7 @@ public enum Exporter {
                 throw ExportError.writer(writer.error?.localizedDescription ?? "frame \(frame) refused")
             }
         }
-        reader.cancelReading()
+        frames.cancel()
         input.markAsFinished()
         await writer.finishWriting()
         guard writer.status == .completed else {

@@ -1,5 +1,7 @@
 //! The scene's reel in the VMM's words, for `doppel-vmm export` to burn in.
 
+use std::path::PathBuf;
+
 use doppel_machine::geometry::{Rect, Size};
 use doppel_protocol::pb::common::v1 as common;
 use doppel_protocol::pb::vmm::v1 as wire;
@@ -176,26 +178,29 @@ fn shape(shape: &Shape) -> wire::Shape {
     }
 }
 
-fn picture(picture: &Picture, video_from: f64) -> wire::Picture {
+fn picture(picture: &Picture) -> wire::Picture {
     wire::Picture {
         shapes: picture.shapes.iter().map(shape).collect(),
-        video_ms: (picture.at - video_from).max(0.0),
+        at_ms: picture.at,
     }
 }
 
-/// `reel`, drawn over a display of `display`, as the VMM reads it; its
-/// video started at `video_from` in the session's time.
-pub(crate) fn to_wire(reel: &Reel, display: Size, video_from: f64) -> wire::Reel {
+/// `reel`, drawn over a display of `display`, as the VMM reads it, over
+/// `sources`: each video's path and when it started in the session's time.
+pub(crate) fn to_wire(reel: &Reel, display: Size, sources: &[(PathBuf, f64)]) -> wire::Reel {
     wire::Reel {
         fps: reel.fps,
         display: Some(common::Size {
             width: display.width(),
             height: display.height(),
         }),
-        pictures: reel
-            .pictures
+        pictures: reel.pictures.iter().map(picture).collect(),
+        sources: sources
             .iter()
-            .map(|shown| picture(shown, video_from))
+            .map(|(path, start_ms)| wire::Source {
+                path: path.display().to_string(),
+                start_ms: *start_ms,
+            })
             .collect(),
     }
 }
@@ -222,8 +227,13 @@ mod tests {
                 at: 1500.0,
             }],
         };
-        let wire = to_wire(&reel, Size::new(1280.0, 800.0).unwrap(), 500.0);
-        assert_eq!(wire.pictures[0].video_ms, 1000.0);
+        let sources = [(PathBuf::from("/r/live-001.mp4"), 500.0)];
+        let wire = to_wire(&reel, Size::new(1280.0, 800.0).unwrap(), &sources);
+        assert_eq!(wire.pictures[0].at_ms, 1500.0);
+        assert_eq!(
+            (wire.sources[0].path.as_str(), wire.sources[0].start_ms),
+            ("/r/live-001.mp4", 500.0)
+        );
         assert_eq!(wire.fps, 30);
         assert_eq!(wire.display.unwrap().width, 1280.0);
         let shape = &wire.pictures[0].shapes[0];
