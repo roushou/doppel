@@ -934,6 +934,26 @@ impl Handle for daemon::DeleteMachine {
     }
 }
 
+impl Handle for daemon::DeleteCheckpoint {
+    const ASKERS: Askers = Askers::Anyone;
+    const TURN: Turn = Turn::Waits;
+    // Only files beside the image: the guest isn't touched.
+    const GUEST: Guest = Guest::Kept;
+
+    fn machine(&self) -> Option<&str> {
+        Some(&self.name)
+    }
+
+    fn run<C: WallClock + Clone + Send + Sync, F: Filesystem + Sync>(
+        self,
+        daemon: &Daemon<C, F>,
+        call: &Call,
+        _link: &Link,
+    ) -> Result<Self::Answer, Refusal> {
+        daemon.delete_checkpoint_request(&self, call)
+    }
+}
+
 impl Handle for daemon::WatchActivity {
     const ASKERS: Askers = Askers::Anyone;
     const TURN: Turn = Turn::Skips;

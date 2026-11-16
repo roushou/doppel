@@ -185,6 +185,7 @@ const COMMANDS: &[&[&str]] = &[
     &["stop", "dev", "--force"],
     &["checkpoint", "dev", "clean"],
     &["restore", "dev", "clean", "--discard-current"],
+    &["forget-checkpoint", "dev", "clean"],
     &["fork", "dev", "clean", "copy"],
     &["ls"],
 ];

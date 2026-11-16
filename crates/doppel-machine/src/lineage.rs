@@ -110,6 +110,36 @@ impl RecordedLineage {
     pub fn template(&self) -> Option<&CheckpointLabel> {
         self.known().and_then(Lineage::template)
     }
+
+    /// Whether the machine can let `checkpoint` go. Only its own role keeps
+    /// one: a golden image keeps its template. Forks never need their
+    /// source's checkpoint (they are clones), so their lineage keeps none.
+    ///
+    /// # Errors
+    /// [`CheckpointKept`]: it is the template, or the lineage can't be read,
+    /// so it may be.
+    pub fn may_delete(&self, checkpoint: &CheckpointLabel) -> Result<(), CheckpointKept> {
+        match self {
+            Self::Known(lineage) => match lineage.template() {
+                Some(template) if template == checkpoint => Err(CheckpointKept::Template),
+                Some(_) | None => Ok(()),
+            },
+            Self::Unreadable(why) => Err(CheckpointKept::LineageUnreadable(why.clone())),
+        }
+    }
+}
+
+/// Why a machine keeps one of its checkpoints.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum CheckpointKept {
+    #[error(
+        "it is the template new machines start from; `doppel golden unmark` it, or `doppel golden mark` another checkpoint, first"
+    )]
+    Template,
+    #[error(
+        "its lineage file can't be read ({0}), so it may be a golden image's template; fix or remove the file first"
+    )]
+    LineageUnreadable(String),
 }
 
 /// How `ls` and the viewers say it: `golden (template ready)`, `from
@@ -145,6 +175,28 @@ mod tests {
 
     fn label(s: &str) -> CheckpointLabel {
         s.parse().unwrap()
+    }
+
+    #[test]
+    fn only_a_golden_image_s_template_or_an_unreadable_lineage_keeps_a_checkpoint() {
+        let golden = RecordedLineage::Known(Lineage::default().with_role(Role::Golden {
+            template: label("ready"),
+        }));
+        assert_eq!(
+            golden.may_delete(&label("ready")),
+            Err(CheckpointKept::Template)
+        );
+        assert_eq!(golden.may_delete(&label("old")), Ok(()));
+        let fork = RecordedLineage::Known(Lineage::forked("base".parse().unwrap(), label("ready")));
+        assert_eq!(fork.may_delete(&label("ready")), Ok(()));
+        assert_eq!(
+            RecordedLineage::Known(Lineage::default()).may_delete(&label("ready")),
+            Ok(())
+        );
+        assert_eq!(
+            RecordedLineage::Unreadable("truncated".into()).may_delete(&label("old")),
+            Err(CheckpointKept::LineageUnreadable("truncated".into()))
+        );
     }
 
     #[test]

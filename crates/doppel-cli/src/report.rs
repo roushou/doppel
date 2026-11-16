@@ -110,6 +110,10 @@ pub enum Report {
         name: MachineName,
         label: CheckpointLabel,
     },
+    CheckpointForgotten {
+        name: MachineName,
+        label: CheckpointLabel,
+    },
     Screenshot {
         path: PathBuf,
         /// How image pixels map to input coordinates.
@@ -340,6 +344,9 @@ impl fmt::Display for Report {
             ),
             Self::Restored { name, label } => {
                 writeln!(f, "{name} restored to {label}; next start resumes there")
+            }
+            Self::CheckpointForgotten { name, label } => {
+                writeln!(f, "{name}: checkpoint {label} deleted")
             }
             Self::Screenshot { path, note } => writeln!(f, "{}: {note}", path.display()),
             Self::InputSent(name) => writeln!(f, "{name}: sent"),

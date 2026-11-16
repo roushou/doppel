@@ -1239,6 +1239,96 @@ fn a_token_holder_reaches_the_daemon_through_the_listener() {
 }
 
 #[test]
+fn a_checkpoint_is_deleted_unless_it_is_a_golden_image_s_template() {
+    let scratch = Scratch::new("forget");
+    scratch.machine("gold", &golden_spec());
+    scratch.machine("fork", &golden_spec());
+    let store = scratch.store();
+    let gold = store.bundle(&"gold".parse().unwrap());
+    let fork = store.bundle(&"fork".parse().unwrap());
+    let label = |s: &str| -> doppel_machine::bundle::CheckpointLabel { s.parse().unwrap() };
+    for (bundle, name) in [
+        (&gold, "ready"),
+        (&gold, "stale"),
+        (&gold, "other"),
+        (&fork, "own"),
+    ] {
+        let cp = bundle.checkpoint(&label(name));
+        fs::create_dir_all(&cp.dir).unwrap();
+        fs::write(&cp.image.disk, b"a disk").unwrap();
+        fs::write(&cp.memory, b"a memory").unwrap();
+    }
+    // Half-written: only a disk. It goes too.
+    let half = gold.checkpoint(&label("half"));
+    fs::create_dir_all(&half.dir).unwrap();
+    fs::write(&half.image.disk, b"a disk").unwrap();
+    let golden = Lineage::made(Origin::Installed).with_role(Role::Golden {
+        template: label("ready"),
+    });
+    store.write_lineage(&gold.lineage(), &golden).unwrap();
+    // A fork of `gold`'s template doesn't keep it.
+    store
+        .write_lineage(
+            &fork.lineage(),
+            &Lineage::forked("gold".parse().unwrap(), label("ready")),
+        )
+        .unwrap();
+    let socket = serve(&scratch);
+    let client = Client::connect(&socket, SystemClock, soon()).unwrap();
+    let (gold_name, fork_name) = (gold.name().clone(), fork.name().clone());
+    let listed = |name: &MachineName| -> Vec<String> {
+        client
+            .report(name, soon())
+            .unwrap()
+            .checkpoints
+            .iter()
+            .map(ToString::to_string)
+            .collect()
+    };
+
+    client
+        .delete_checkpoint(&gold_name, &label("stale"), soon())
+        .unwrap();
+    client
+        .delete_checkpoint(&gold_name, &label("half"), soon())
+        .unwrap();
+    assert!(!gold.checkpoint(&label("stale")).dir.exists());
+    assert!(!gold.checkpoints_dir().join(".deleting").exists());
+    assert_eq!(listed(&gold_name), ["other", "ready"]);
+
+    // Gone: an unknown label, and nothing else changes.
+    let again = machine_failure(client.delete_checkpoint(&gold_name, &label("stale"), soon()));
+    assert!(again.message().contains("no checkpoint 'stale'"), "{again}");
+    assert_eq!(again.certainty(), Certainty::NotDone);
+
+    // The template stays.
+    let template = machine_failure(client.delete_checkpoint(&gold_name, &label("ready"), soon()));
+    assert!(template.message().contains("template"), "{template}");
+    assert_eq!(template.certainty(), Certainty::NotDone);
+    assert!(gold.checkpoint(&label("ready")).memory.exists());
+
+    // A fork's own checkpoint goes; its lineage names gold's, which it never needs.
+    client
+        .delete_checkpoint(&fork_name, &label("own"), soon())
+        .unwrap();
+    assert!(listed(&fork_name).is_empty());
+
+    // A lineage nobody can read may name any checkpoint as the template.
+    fs::write(gold.lineage(), b"\xff\xff").unwrap();
+    let unreadable = machine_failure(client.delete_checkpoint(&gold_name, &label("other"), soon()));
+    assert!(unreadable.message().contains("lineage"), "{unreadable}");
+    assert_eq!(listed(&gold_name), ["other", "ready"]);
+
+    // No such machine.
+    let missing = machine_failure(client.delete_checkpoint(
+        &"nobody".parse().unwrap(),
+        &label("ready"),
+        soon(),
+    ));
+    assert_eq!(missing.certainty(), Certainty::NotDone);
+}
+
+#[test]
 fn a_stopped_machine_is_deleted_whole_and_only_once() {
     use daemon::daemon_request::Operation;
     use daemon::daemon_response::Outcome;

@@ -58,6 +58,11 @@ exit: 1
 stderr:
 Error: machine 'dev' has no checkpoint 'clean'
 
+$ doppel forget-checkpoint dev clean
+exit: 1
+stderr:
+Error: machine 'dev' has no checkpoint 'clean'
+
 $ doppel fork dev clean copy
 exit: 1
 stderr:

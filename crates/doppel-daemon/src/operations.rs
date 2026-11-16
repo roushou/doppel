@@ -475,6 +475,19 @@ where
         Ok(claim.delete(self.machines.deadline())?)
     }
 
+    /// Deletes one checkpoint for good, after the calls on its machine
+    /// before.
+    pub(crate) fn delete_checkpoint(
+        &self,
+        machine: &MachineName,
+        checkpoint: &CheckpointLabel,
+        call: &Call,
+    ) -> Result<(), CallError> {
+        let _turn = self.lifecycle_turn(machine, call)?;
+        let claim = self.machines.claim(machine, self.claim_deadline())?;
+        Ok(claim.delete_checkpoint(checkpoint)?)
+    }
+
     pub(crate) fn start(
         &self,
         machine: &MachineName,

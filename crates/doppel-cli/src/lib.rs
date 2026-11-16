@@ -102,6 +102,7 @@ impl Command {
             | Self::Fork { .. }
             | Self::ForkRun { .. }
             | Self::Restore { .. }
+            | Self::ForgetCheckpoint { .. }
             | Self::Sessions { .. }
             | Self::Mcp { .. } => Reach::Daemon,
             Self::Create { .. }
@@ -257,6 +258,12 @@ enum Command {
     Checkpoints {
         name: MachineName,
     },
+    /// Delete one of a machine's checkpoints, for good. Refused for the
+    /// checkpoint a golden image's new machines start from.
+    ForgetCheckpoint {
+        name: MachineName,
+        label: CheckpointLabel,
+    },
     /// Create a new machine that resumes from a checkpoint of another.
     Fork {
         source: MachineName,
@@ -334,7 +341,8 @@ enum Command {
     },
     /// doppeld, the daemon that owns your machines (docs/doppeld.md): `ls`,
     /// `status`, `start`, `login`, `stop`, `pause`, `resume`, `checkpoint`,
-    /// `fork`, `fork-run`, `restore`, `sessions` and `mcp` go through it. `install` has
+    /// `forget-checkpoint`, `fork`, `fork-run`, `restore`, `sessions` and
+    /// `mcp` go through it. `install` has
     /// launchd start it when they need it.
     #[command(subcommand)]
     Daemon(DaemonCommand),
@@ -1095,6 +1103,16 @@ fn run(cli: Cli) -> Result<Report> {
             let (n, l) = (raw, raw_label);
             daemon()?.connect()?.restore(&n, &l, within(LIFECYCLE))?;
             Report::Restored { name: n, label: l }
+        }
+        Command::ForgetCheckpoint {
+            name: raw,
+            label: raw_label,
+        } => {
+            let (n, l) = (raw, raw_label);
+            daemon()?
+                .connect()?
+                .delete_checkpoint(&n, &l, within(LIFECYCLE))?;
+            Report::CheckpointForgotten { name: n, label: l }
         }
         Command::Screenshot { name: raw, output } => {
             let by = machines.deadline();

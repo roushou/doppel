@@ -102,6 +102,7 @@ message DaemonRequest {
     ObserveElements observe_elements = 54;
     ObserveText observe_text = 55;
     MarkScreen mark_screen = 56;
+    DeleteCheckpoint delete_checkpoint = 57;
   }
 }
 
@@ -544,6 +545,14 @@ message WebFailed {
 
 // The stopped machine's next start resumes at the checkpoint.
 message RestoreMachine {
+  string name = 1;
+  string label = 2;
+}
+
+// Deletes one of a machine's checkpoints, for good, whether it runs or not.
+// Refused for the checkpoint a golden image's new machines start from, and
+// while the machine's lineage can't be read. Answered with Done.
+message DeleteCheckpoint {
   string name = 1;
   string label = 2;
 }

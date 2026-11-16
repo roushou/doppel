@@ -141,6 +141,7 @@ operations! {$
     ObserveElements => AxSnapshot(agent::AxSnapshot),
     ObserveText => ScreenText(vmm::RecognizedText),
     MarkScreen => Done(daemon::Done),
+    DeleteCheckpoint => Done(daemon::Done),
 }
 
 #[cfg(test)]

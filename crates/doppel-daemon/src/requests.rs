@@ -524,6 +524,17 @@ where
         Ok(daemon::Done {})
     }
 
+    pub(super) fn delete_checkpoint_request(
+        &self,
+        request: &daemon::DeleteCheckpoint,
+        call: &Call,
+    ) -> Result<daemon::Done, Refusal> {
+        let name = Refusal::name("name", &request.name)?;
+        let label = Refusal::label("label", &request.label)?;
+        self.delete_checkpoint(&name, &label, call)?;
+        Ok(daemon::Done {})
+    }
+
     pub(super) fn fork_request(
         &self,
         request: &daemon::ForkMachine,

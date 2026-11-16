@@ -1152,6 +1152,26 @@ impl<C: Clock> Client<C> {
         )
     }
 
+    /// Deletes one of a machine's checkpoints, for good, running or not.
+    ///
+    /// # Errors
+    /// See [`ClientError`]: refused for an unknown label, for a golden
+    /// image's template, and while the machine's lineage can't be read.
+    pub fn delete_checkpoint<'a>(
+        &self,
+        name: &MachineName,
+        label: &CheckpointLabel,
+        call: impl Into<Call<'a>>,
+    ) -> Result<(), ClientError> {
+        self.done(
+            daemon::DeleteCheckpoint {
+                name: name.to_string(),
+                label: label.to_string(),
+            },
+            call,
+        )
+    }
+
     /// Powers off, restores the checkpoint, starts hidden and waits for the
     /// desktop.
     ///

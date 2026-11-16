@@ -216,3 +216,35 @@ fn an_interrupted_import_either_never_appears_or_is_complete() {
         }
     });
 }
+
+#[test]
+fn an_interrupted_checkpoint_delete_leaves_it_whole_or_gone() {
+    let b = bundle("work");
+    let mut start = Disk::default();
+    let i = b.image();
+    start.write(i.spec, "spec");
+    start.write(i.disk, "disk");
+    start.write(i.aux, "aux");
+    with_checkpoint(&mut start, &b, "stale");
+    with_checkpoint(&mut start, &b, "keep");
+    let stale = b.checkpoint(&"stale".parse().unwrap()).dir;
+    let whole = start.files_under(&stale);
+    let keep = b.checkpoint(&"keep".parse().unwrap()).dir;
+    let kept = start.files_under(&keep);
+    let before = image(&start, &b);
+    let steps = Step::ops(b.delete_checkpoint(&"stale".parse().unwrap()));
+    every_interruption(&start, &steps, &[&b], |crash, disk| {
+        assert_eq!(image(disk, &b), before, "crash {crash}");
+        assert_eq!(disk.files_under(&keep), kept, "crash {crash}");
+        let now = disk.files_under(&stale);
+        if crash == 0 {
+            assert_eq!(now, whole, "crash {crash}");
+        } else {
+            assert!(now.is_empty(), "crash {crash}: {now:?}");
+        }
+        assert!(
+            !disk.any_under(&b.checkpoints_dir().join(".deleting")),
+            "crash {crash}"
+        );
+    });
+}

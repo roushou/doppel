@@ -16,7 +16,8 @@ files. People watch and take over from a desktop or browser viewer.
 
 - **Machines:** create from an IPSW with no person (macOS 27 hosts: the
   account is made on first boot, logged in, SSH on), import, start, stop,
-  pause, resume, checkpoint, fork, restore; delete from the viewers. Golden images with a
+  pause, resume, checkpoint, fork, restore; delete from the viewers; delete a
+  checkpoint (`doppel forget-checkpoint`). Golden images with a
   template checkpoint; forks resume agent-ready in about 11 s.
 - **The agent's tools over MCP:** `status`, `screenshot`, `snapshot` with
   refs, `act`, `click`, `type`, `key`, `find_text`, `wait_for`, `exec`,

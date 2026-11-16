@@ -61,13 +61,13 @@ The same framing as the other channels (`[u32 length][protobuf]`, `Hello`
 first, unknown messages kept). Its own package, since the VMM speaks for one
 VM and the daemon for the host.
 
-| Group      | Requests                                                                                          | Events                                           |
-| ---------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| Machines   | list, status, create, import, start, stop, pause, resume, checkpoint, fork, restore, set password | machine state changed                            |
-| Calls      | run a typed tool call, cancel it                                                                  | call started, call finished (outcome, certainty) |
-| Sessions   | open, list, attach, pause, take control, hand back, close                                         | session state changed                            |
-| Display    | open a stream (shared memory or encoded), host input                                              | frames                                           |
-| Recordings | start, stop, list, open a recording and its trace                                                 | recording started, finished                      |
+| Group      | Requests                                                                                                                     | Events                                           |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| Machines   | list, status, create, import, start, stop, pause, resume, checkpoint, delete checkpoint, fork, restore, delete, set password | machine state changed                            |
+| Calls      | run a typed tool call, cancel it                                                                                             | call started, call finished (outcome, certainty) |
+| Sessions   | open, list, attach, pause, take control, hand back, close                                                                    | session state changed                            |
+| Display    | open a stream (shared memory or encoded), host input                                                                         | frames                                           |
+| Recordings | start, stop, list, open a recording and its trace                                                                            | recording started, finished                      |
 
 It is protobuf over a sans-IO codec that Rust and Swift produce
 byte-identically, pinned by golden fixtures. A browser needs only a transport
@@ -257,6 +257,17 @@ the protocol can change without changing bundles. The pure types are
   working one: the list carries `lineage_unreadable` with why, `ls` prints
   it, the viewers say "Lineage unreadable", and `golden mark`/`unmark`
   refuse to overwrite it.
+- **Deleting a checkpoint.** `doppel forget-checkpoint NAME LABEL`
+  (`DeleteCheckpoint`) removes one, running or not, after the calls on the
+  machine before it. It refuses an unknown label, the template of a golden
+  image (unmark it or mark another first), and any checkpoint while the
+  lineage is unreadable, since that may be the template. Nothing else keeps
+  one: restores and forks clone its files, and a fork's `Forked { from,
+  checkpoint }` may name one that has gone. The checkpoint leaves the
+  listing in one rename to `checkpoints/.deleting`, which the next claim
+  removes if a crash left it. It is not an MCP tool: an agent checkpoints to
+  undo its own steps, while a machine's checkpoints are the person's to keep,
+  and a deletion can't be undone.
 - **The viewers** list golden images in a group of their own, whatever their
   state. A stopped golden image's main action is "New machine from it" (a
   fresh fork, the new-copy dialog with its template chosen); Start is in its

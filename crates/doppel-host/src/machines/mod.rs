@@ -18,7 +18,7 @@ use doppel_machine::checkpoint::{
 use doppel_machine::deadline::{Deadline, Remaining};
 use doppel_machine::exec::{ExecError, ExecOutput, ExecRequest, Termination};
 use doppel_machine::guest_path::GuestPathError;
-use doppel_machine::lineage::{Lineage, Origin, RecordedLineage, Role};
+use doppel_machine::lineage::{CheckpointKept, Lineage, Origin, RecordedLineage, Role};
 use doppel_machine::login::{LoginOutcome, LoginPolicy};
 use doppel_machine::machine::{
     Hardware, HardwareModel, MacAddress, MachineIdentifier, MachineName, MachineSpec, Platform,
@@ -129,6 +129,12 @@ pub enum MachineError {
     NoSuchCheckpoint { machine: MachineName, label: String },
     #[error("machine '{machine}' already has a checkpoint '{label}'")]
     CheckpointExists { machine: MachineName, label: String },
+    #[error("machine '{machine}' keeps checkpoint '{label}': {why}")]
+    CheckpointKept {
+        machine: MachineName,
+        label: CheckpointLabel,
+        why: CheckpointKept,
+    },
     #[error(
         "machine '{machine}' has a lineage file that can't be read ({reason}); its role can't be changed until it's fixed or removed"
     )]
@@ -229,6 +235,7 @@ impl Failure for MachineError {
             | Self::IdentityInUse { .. }
             | Self::NoSuchCheckpoint { .. }
             | Self::CheckpointExists { .. }
+            | Self::CheckpointKept { .. }
             | Self::LineageUnreadable { .. }
             | Self::InvalidBlob { .. }
             | Self::StartupFailed { .. }
@@ -412,6 +419,18 @@ impl<C: Clock, F: Filesystem> Claim<'_, C, F> {
     /// commit marker may exist: the next claim of the machine finishes it.
     pub fn restore(&self, label: &CheckpointLabel, by: Deadline) -> Outcome<(), MachineError> {
         self.machines.restore(self, label, by)
+    }
+
+    /// Deletes one of the machine's checkpoints, running or not, unless the
+    /// machine keeps it as its golden image's template.
+    ///
+    /// # Errors
+    /// [`StoreError::NoSuchMachine`], [`MachineError::NoSuchCheckpoint`],
+    /// [`MachineError::CheckpointKept`], or a failure moving or removing its
+    /// files; a failure after the move leaves it gone from the list, and the
+    /// next claim removes the rest.
+    pub fn delete_checkpoint(&self, label: &CheckpointLabel) -> Result<(), MachineError> {
+        self.machines.delete_checkpoint(self, label)
     }
 
     /// Makes `into` from this machine's checkpoint `label`. It resumes
@@ -1379,6 +1398,39 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
             Trash::NoFolder
         };
         self.files.apply_all(&bundle.delete(&trash, there))?;
+        Ok(())
+    }
+
+    /// Deletes one checkpoint of a machine, unless its lineage keeps it.
+    /// Any of its files may be missing: a half-written one goes too.
+    ///
+    /// # Errors
+    /// See [`Claim::delete_checkpoint`].
+    fn delete_checkpoint(
+        &self,
+        claim: &Claim<'_, C, F>,
+        label: &CheckpointLabel,
+    ) -> Result<(), MachineError> {
+        let bundle = &claim.bundle;
+        let name = bundle.name();
+        if !self.files.exists(bundle.dir())? {
+            return Err(StoreError::NoSuchMachine(name.clone()).into());
+        }
+        if !self.files.exists(&bundle.checkpoint(label).dir)? {
+            return Err(MachineError::NoSuchCheckpoint {
+                machine: name.clone(),
+                label: label.as_str().to_owned(),
+            });
+        }
+        self.store
+            .read_lineage(bundle)
+            .may_delete(label)
+            .map_err(|why| MachineError::CheckpointKept {
+                machine: name.clone(),
+                label: label.clone(),
+                why,
+            })?;
+        self.files.apply_all(&bundle.delete_checkpoint(label))?;
         Ok(())
     }
 

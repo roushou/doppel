@@ -25,7 +25,8 @@
 //! writes a commit marker first, so an interruption at any point leaves
 //! [`Leftovers`] that settle to the state before or the state after, never a
 //! mix. New bundles are assembled in `.<name>.staging` and checkpoints in
-//! `checkpoints/.staging`; dot names are invisible to listings.
+//! `checkpoints/.staging`; a deleted checkpoint leaves through
+//! `checkpoints/.deleting`. Dot names are invisible to listings.
 
 use crate::login::Credentials;
 use std::collections::BTreeSet;
@@ -243,6 +244,12 @@ impl MachineBundle {
     #[must_use]
     pub fn checkpoint_staging(&self) -> CheckpointFiles {
         CheckpointFiles::in_dir(self.checkpoints_dir().join(".staging"))
+    }
+
+    /// Where a deleted checkpoint goes, in one rename, before it is removed.
+    /// One at a time per machine: whoever deletes it holds the lock.
+    fn checkpoint_trash(&self) -> PathBuf {
+        self.checkpoints_dir().join(".deleting")
     }
 
     /// Present while a restore replaces the image: every staged file is
@@ -637,6 +644,7 @@ impl Leftovers {
         let mut probes = vec![
             b.staging().dir,
             b.checkpoint_staging().dir,
+            b.checkpoint_trash(),
             b.restore_marker(),
             b.resume_attempt().kept,
         ];
@@ -677,13 +685,18 @@ impl Leftovers {
     /// probes exist:
     ///
     /// - an unfinished new bundle or checkpoint never committed: removed;
+    /// - a checkpoint deleted but not yet removed: removed;
     /// - a restore past its commit marker: finished;
     /// - a restore before its marker: its staged clones removed.
     #[must_use]
     pub fn settle(&self, present: &BTreeSet<PathBuf>) -> Vec<FileOp> {
         let b = &self.bundle;
         let mut ops = Vec::new();
-        for dir in [b.staging().dir, b.checkpoint_staging().dir] {
+        for dir in [
+            b.staging().dir,
+            b.checkpoint_staging().dir,
+            b.checkpoint_trash(),
+        ] {
             if present.contains(&dir) {
                 ops.push(FileOp::RemoveTree { path: dir });
             }
@@ -714,6 +727,27 @@ pub enum GuestRepair {
     Leave,
     /// An interrupted checkpoint left it paused.
     Resume,
+}
+
+impl MachineBundle {
+    /// Deletes one checkpoint: it leaves the listing in one rename to
+    /// `checkpoints/.deleting`, so it is gone whole or not at all, and is
+    /// then removed. Interrupted after the rename, it leaves only the trash,
+    /// which [`Leftovers`] removes. Nothing else needs its files: a restore
+    /// or fork clones them, and a fork's lineage names a checkpoint that may
+    /// since have gone. Whether the machine keeps it as a golden image's
+    /// template is [`crate::lineage::RecordedLineage::may_delete`]'s call.
+    #[must_use]
+    pub fn delete_checkpoint(&self, label: &CheckpointLabel) -> Vec<FileOp> {
+        let trash = self.checkpoint_trash();
+        vec![
+            FileOp::Rename {
+                from: self.checkpoint(label).dir,
+                to: trash.clone(),
+            },
+            FileOp::RemoveTree { path: trash },
+        ]
+    }
 }
 
 /// What is already at a machine's place in `deleting/`, before it is
@@ -780,7 +814,8 @@ pub enum FileOp {
     /// that must survive a crash.
     CreateFile { path: PathBuf },
     /// Deletes a directory and everything in it. Only for uncommitted
-    /// staging directories and a deleted machine's folder in `deleting/`.
+    /// staging directories, a deleted machine's folder in `deleting/` and a
+    /// deleted checkpoint's in `checkpoints/.deleting`.
     RemoveTree { path: PathBuf },
 }
 
@@ -831,6 +866,22 @@ mod tests {
         assert_eq!(
             work.delete(&trash, Trash::Leftover),
             vec![removed.clone(), renamed, removed]
+        );
+    }
+
+    #[test]
+    fn a_checkpoint_leaves_the_list_in_one_rename_then_is_removed() {
+        let b = bundle("work");
+        let trash = PathBuf::from("/data/machines/work/checkpoints/.deleting");
+        assert_eq!(
+            b.delete_checkpoint(&"stale".parse().unwrap()),
+            vec![
+                FileOp::Rename {
+                    from: "/data/machines/work/checkpoints/stale".into(),
+                    to: trash.clone(),
+                },
+                FileOp::RemoveTree { path: trash },
+            ]
         );
     }
 

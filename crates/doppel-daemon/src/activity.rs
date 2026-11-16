@@ -198,7 +198,8 @@ pub(crate) fn started(
         | Operation::RestoreMachine(_)
         | Operation::ForkMachine(_)
         | Operation::RunForks(_)
-        | Operation::DeleteMachine(_) => (Gesture::Lifecycle, None),
+        | Operation::DeleteMachine(_)
+        | Operation::DeleteCheckpoint(_) => (Gesture::Lifecycle, None),
         Operation::ListMachines(_)
         | Operation::GetDaemonInfo(_)
         | Operation::OpenSession(_)

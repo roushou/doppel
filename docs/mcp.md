@@ -123,7 +123,9 @@ recording goes: keep secrets out of it.
 `stop` and `rollback` discard the running state: open apps and unsaved work
 are lost. `checkpoint` first to keep it. A fork shares its source's identity,
 so it can't run while its source or another fork of it runs, and Apple runs
-at most two macOS machines at once.
+at most two macOS machines at once. There's no tool to delete a checkpoint: they
+are the person's to keep, and a deletion can't be undone. People use `doppel
+forget-checkpoint`.
 
 ## What's never recorded
 
