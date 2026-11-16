@@ -144,12 +144,21 @@ text cursor for typing, an hourglass with a slow breath around the pointer
 while it waits, a terminal for a command), a press dents in where it lands
 and, if it worked, the badge turns into a check. The marks its calls
 leave go as the screen changes, and its marks for the people watching
-show. A film knows what comes next, so each
+show. A checkpoint plants a flag on the pointer; a rollback dims the
+screen behind a rewind sign until the machine is back. A film knows what comes next, so each
 call starts up to a glide early: the pointer arrives as the call lands.
 
 The film plays to its own clock (`doppel_scene::film::pacing`): pauses
-where the agent thinks go by fast, with the speed in a corner, and the
-agent's own moves play slower. `doppel_scene::film` decides what is drawn at
+where the agent thinks go by four times fast, with the speed in a corner, and the
+agent's own moves play slower as they land and as the screen answers; a
+call that keeps working in between (an app slow to open) plays that part
+as a pause, and a short gap between moves plays as it happened, so a
+burst of moves reads as one gesture. A call on the machine itself (a
+start, a checkpoint, a rollback) plays in about a second, or four times
+fast if it took longer. Nothing plays faster than four times: the film
+shows the agent's pace, not a flattering one. What moves on its own (a
+wait's breath) moves at the film's pace. The speed eases from one stretch into the next over a fraction of a
+second rather than jumping. `doppel_scene::film` decides what is drawn at
 each frame, as shapes in display points (`doppel_scene::attention` decides
 what was taken in, from the snapshots the recording kept); `doppel-vmm
 export` paints them on the frames and encodes the result, at `--fps` (30

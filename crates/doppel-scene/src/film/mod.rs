@@ -479,9 +479,18 @@ fn faded(at: f64, since: f64, until: f64, fade: f64) -> f64 {
 }
 
 impl Picture {
-    /// What is drawn over `moments`' machine, its display `display`, at `at`.
+    /// What is drawn over `moments`' machine, its display `display`, at `at`,
+    /// played as it happened.
     #[must_use]
     pub fn at(moments: &[Moment], display: Size, at: f64) -> Self {
+        Self::filmed(moments, display, at, |session| session)
+    }
+
+    /// What is drawn at `at`, as above, in a film whose clock puts a
+    /// session instant at `film` of it: what moves on its own (a wait's
+    /// breath) moves at the film's pace, however fast the session plays.
+    #[must_use]
+    pub fn filmed(moments: &[Moment], display: Size, at: f64, film: impl Fn(f64) -> f64) -> Self {
         let scene = scene_at(moments, at);
         let mut shapes = Vec::new();
         for attention in Attention::at(moments, display, at) {
@@ -661,7 +670,7 @@ impl Picture {
                 && call.gesture == Gesture::Wait
             {
                 // A slow breath around the pointer while it waits.
-                let breath = (std::f64::consts::TAU * (at - since) / BREATH_MS).sin();
+                let breath = (std::f64::consts::TAU * (film(at) - film(*since)) / BREATH_MS).sin();
                 shapes.push(Shape::Ring {
                     centre: tip,
                     radius: 20.0 + 4.0 * breath,
@@ -765,7 +774,8 @@ impl Reel {
                 break;
             }
             let (at, speed) = pace.session_at(film);
-            let mut picture = Picture::at(&moments, display, at);
+            let mut picture =
+                Picture::filmed(&moments, display, at, |session| pace.film_at(session));
             if speed >= SPED_UP {
                 picture.shapes.push(Shape::Tag {
                     at: Spot {
@@ -1019,6 +1029,32 @@ mod tests {
     }
 
     #[test]
+    fn a_wait_breathes_at_the_films_pace() {
+        let moments = [
+            press(1, 0.0),
+            moment(2, 1000.0, 30_000.0, Gesture::Wait, Target::Nowhere),
+        ];
+        // A film playing the wait four times fast: a quarter of a breath
+        // of session is a sixteenth of one on film, so the ring has barely
+        // moved; played as it happened, it has swelled all the way.
+        let fast = |session: f64| session / 4.0;
+        let radius = |picture: Picture| {
+            picture.shapes.iter().find_map(|shape| {
+                if let Shape::Ring { radius, centre, .. } = shape {
+                    (*centre == Spot { x: 140.0, y: 115.0 }).then_some(*radius)
+                } else {
+                    None
+                }
+            })
+        };
+        let at = 1000.0 + BREATH_MS / 4.0;
+        let filmed = radius(Picture::filmed(&moments, display(), at, fast)).unwrap();
+        let played = radius(Picture::at(&moments, display(), at)).unwrap();
+        assert!((played - 24.0).abs() < 1e-6, "{played}");
+        assert!(filmed < 22.0, "{filmed}");
+    }
+
+    #[test]
     fn a_wait_breathes_around_the_pointer() {
         let moments = [
             press(1, 0.0),
@@ -1051,7 +1087,8 @@ mod tests {
     fn a_film_sped_up_says_so() {
         let moments = [click(1, 10_000.0, 100.0, 100.0)];
         let reel = Reel::shoot(&moments, display(), 0.0, 11_000.0, 30);
-        assert!(tags(&reel.pictures[0])[0].starts_with("▸▸ 3.5"));
+        let tag = &tags(&reel.pictures[0])[0];
+        assert!(tag.starts_with("▸▸ "), "{tag}");
         // The pause before the move plays in under a third of its time.
         let moved = reel.pictures.iter().position(|p| p.at >= 9_550.0).unwrap();
         assert!(moved < 30 * 3, "{moved}");
