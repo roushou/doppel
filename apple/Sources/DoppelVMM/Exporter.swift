@@ -55,6 +55,13 @@ struct Painter {
         CGPoint(x: spot.x * scale, y: spot.y * scale)
     }
 
+    private func rect(_ rect: Doppel_Common_V1_Rect) -> CGRect {
+        CGRect(
+            x: rect.origin.x * scale, y: rect.origin.y * scale,
+            width: rect.size.width * scale, height: rect.size.height * scale
+        )
+    }
+
     /// Draws `picture` on `context`, whose y grows downwards.
     func paint(_ picture: Doppel_Vmm_V1_Picture, on context: CGContext) {
         for shape in picture.shapes where shape.opacity > 0 {
@@ -87,6 +94,27 @@ struct Painter {
                 pointed(at: point(pointer.tip), colour: colour(shape.colour, opacity), opacity: opacity, on: context)
             case .tag(let tag):
                 tagged(tag, plate: colour(shape.colour, opacity), ink: colour(tag.ink, opacity), on: context)
+            case .veil(let veil):
+                // Even-odd: the whole picture, less each hole.
+                context.addRect(context.boundingBoxOfClipPath)
+                for hole in veil.holes { context.addRect(rect(hole)) }
+                context.setFillColor(colour(shape.colour, opacity))
+                context.fillPath(using: .evenOdd)
+            case .brackets(let brackets):
+                let r = rect(brackets.rect)
+                let arm = min(brackets.arm * scale, r.width / 2, r.height / 2)
+                for (corner, dx, dy) in [
+                    (CGPoint(x: r.minX, y: r.minY), 1.0, 1.0), (CGPoint(x: r.maxX, y: r.minY), -1.0, 1.0),
+                    (CGPoint(x: r.minX, y: r.maxY), 1.0, -1.0), (CGPoint(x: r.maxX, y: r.maxY), -1.0, -1.0),
+                ] {
+                    context.move(to: CGPoint(x: corner.x + dx * arm, y: corner.y))
+                    context.addLine(to: corner)
+                    context.addLine(to: CGPoint(x: corner.x, y: corner.y + dy * arm))
+                }
+                context.setStrokeColor(colour(shape.colour, opacity))
+                context.setLineWidth(brackets.width * scale)
+                context.setLineCap(.square)
+                context.strokePath()
             case nil:
                 // A shape a newer doppel added: nothing to draw.
                 break

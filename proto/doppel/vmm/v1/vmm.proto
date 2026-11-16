@@ -297,7 +297,19 @@ message Shape {
     StrokeShape stroke = 5;
     PointerShape pointer = 6;
     TagShape tag = 7;
+    VeilShape veil = 8;
+    BracketsShape brackets = 9;
   }
+}
+
+// The whole picture dimmed by the shape's colour, but for `holes`.
+message VeilShape { repeated doppel.common.v1.Rect holes = 1; }
+
+// A rectangle's four corners, each an arm `arm` long, `width` thick.
+message BracketsShape {
+  doppel.common.v1.Rect rect = 1;
+  double arm = 2;
+  double width = 3;
 }
 
 // A rectangle's outline, its inside washed with the shape's colour.

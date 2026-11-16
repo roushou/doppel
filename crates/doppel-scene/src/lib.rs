@@ -5,6 +5,7 @@
 //!
 //! Pure: no window toolkit, no threads, no clock; time comes in as values.
 
+pub mod attention;
 pub mod elements;
 pub mod encoded;
 pub mod film;

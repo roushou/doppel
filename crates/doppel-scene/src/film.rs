@@ -7,7 +7,10 @@
 
 use doppel_machine::geometry::{Point, Rect, Size};
 
-use crate::timeline::{CALLOUT_FADE_MS, CalloutOn, CalloutShape, Gesture, Mark, Moment, scene_at};
+use crate::attention::{Attention, Glance, LET_GO_MS, LOCK_MS};
+use crate::timeline::{
+    CALLOUT_FADE_MS, CalloutOn, CalloutShape, Gesture, MARK_FADE_MS, Mark, Moment, scene_at,
+};
 
 /// A colour: red, green and blue in its low 24 bits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -109,6 +112,22 @@ pub enum Shape {
         colour: Rgb,
         opacity: f64,
     },
+    /// The screen dimmed by `colour`, but for `holes`: what the agent
+    /// takes in, lit through it.
+    Veil {
+        holes: Vec<Rect>,
+        colour: Rgb,
+        opacity: f64,
+    },
+    /// A rectangle's four corners, each an arm `arm` long: an element taken
+    /// in, or closed in on.
+    Brackets {
+        rect: Rect,
+        arm: f64,
+        colour: Rgb,
+        width: f64,
+        opacity: f64,
+    },
     /// One line of words on a plate, `at` being its `corner`.
     Tag {
         at: Spot,
@@ -124,6 +143,114 @@ pub enum Shape {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Picture {
     pub shapes: Vec<Shape>,
+}
+
+/// The veil over what an agent doesn't take in: its colour, how dark at
+/// most, and how long it takes to fall.
+const VEIL: Rgb = Rgb(0x05_0612);
+const VEIL_DARK: f64 = 0.3;
+const VEIL_IN_MS: f64 = 220.0;
+/// An element taken in lights fully, then settles to `FLOOR` over this.
+const AFTERGLOW_MS: f64 = 500.0;
+const FLOOR: f64 = 0.4;
+/// An element's ref shows this long as it is taken in.
+const READOUT_MS: f64 = 320.0;
+/// The lock starts this far out from its element, and ends this close.
+const LOCK_FROM: f64 = 36.0;
+const LOCK_TO: f64 = 4.0;
+/// How long a lock stays once its call ends: the screen changes then.
+const LOCK_SETTLE_MS: f64 = 150.0;
+
+/// `rect` grown by `by` on every side.
+fn grown(rect: Rect, by: f64) -> Rect {
+    Rect::new(
+        rect.left() - by,
+        rect.top() - by,
+        rect.width() + 2.0 * by,
+        rect.height() + 2.0 * by,
+    )
+    .unwrap_or(rect)
+}
+
+/// What `attention` draws at `at`: the screen veiled but for what was taken
+/// in, each lit in turn and bracketed with its ref; then, once the agent
+/// goes for one, the rest let go and brackets close in on that one.
+fn taken_in(attention: &Attention, at: f64, shapes: &mut Vec<Shape>) {
+    let (fill, ink) = hue(attention.session);
+    let landing = ((at - attention.since) / VEIL_IN_MS).clamp(0.0, 1.0);
+    let rest = attention
+        .moved_on
+        .filter(|moved| at >= *moved)
+        .map_or(1.0, |moved| {
+            (1.0 - (at - moved) / LET_GO_MS).clamp(0.0, 1.0)
+        });
+    let lock = attention.lock.filter(|lock| at >= lock.since).map(|lock| {
+        let shown = lock.until.map_or(1.0, |until| {
+            ((until + LOCK_SETTLE_MS - at) / MARK_FADE_MS).clamp(0.0, 1.0)
+        });
+        (lock, shown)
+    });
+    let lit: Vec<&Glance> = attention
+        .glances
+        .iter()
+        .filter(|glance| glance.at <= at)
+        .collect();
+
+    let veiled = match lock {
+        Some((_, shown)) => shown,
+        None => rest,
+    } * landing;
+    if veiled > 0.0 {
+        let holes = match lock {
+            Some((lock, _)) => vec![grown(lock.frame, LOCK_TO)],
+            None => lit.iter().map(|glance| grown(glance.frame, 3.0)).collect(),
+        };
+        shapes.push(Shape::Veil {
+            holes,
+            colour: VEIL,
+            opacity: VEIL_DARK * veiled,
+        });
+    }
+    if rest > 0.0 {
+        for glance in &lit {
+            let age = at - glance.at;
+            let glow = FLOOR + (1.0 - FLOOR) * (1.0 - age / AFTERGLOW_MS).clamp(0.0, 1.0);
+            let frame = glance.frame;
+            shapes.push(Shape::Brackets {
+                rect: grown(frame, 2.0),
+                arm: 8.0_f64
+                    .min(frame.width() / 3.0)
+                    .min(frame.height() / 3.0)
+                    .max(3.0),
+                colour: fill,
+                width: 1.5,
+                opacity: glow * rest,
+            });
+            if age < READOUT_MS {
+                shapes.push(Shape::Tag {
+                    at: Spot {
+                        x: frame.right() + 4.0,
+                        y: frame.top(),
+                    },
+                    corner: Corner::TopLeft,
+                    text: glance.reference.to_string(),
+                    ink: WHITE,
+                    plate: ink,
+                    opacity: (1.0 - age / READOUT_MS) * rest,
+                });
+            }
+        }
+    }
+    if let Some((lock, shown)) = lock {
+        let closing = ease((at - lock.since) / LOCK_MS);
+        shapes.push(Shape::Brackets {
+            rect: grown(lock.frame, LOCK_FROM + (LOCK_TO - LOCK_FROM) * closing),
+            arm: 12.0,
+            colour: fill,
+            width: 2.5,
+            opacity: shown * closing.max(0.35),
+        });
+    }
 }
 
 /// How long the pointer takes to glide to where it acts next.
@@ -178,6 +305,9 @@ impl Picture {
     pub fn at(moments: &[Moment], display: Size, at: f64) -> Self {
         let scene = scene_at(moments, at);
         let mut shapes = Vec::new();
+        for attention in Attention::at(moments, display, at) {
+            taken_in(&attention, at, &mut shapes);
+        }
 
         for shown in &scene.callouts {
             let opacity = faded(at, shown.since, shown.until, CALLOUT_FADE_MS);

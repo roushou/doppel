@@ -919,7 +919,13 @@ fn run(cli: Cli) -> Result<Report> {
                     )
                     .map_err(|error| anyhow::anyhow!("{error}"))
             };
-            let exported = export::export(&opened, video.as_deref(), source, &out, fps, &vmm)?;
+            let snapshot = |line| {
+                client
+                    .seen_snapshot(&recording, line, within(CALL_TIMEOUT))
+                    .ok()
+            };
+            let exported =
+                export::export(&opened, video.as_deref(), source, &out, fps, &vmm, snapshot)?;
             Report::Exported {
                 path: exported.path,
                 summary: exported.summary,

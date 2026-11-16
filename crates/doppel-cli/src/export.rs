@@ -4,12 +4,14 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Arc;
 
 use anyhow::{Context as _, Result, bail};
+use doppel_machine::ax::tree::AxSnapshot;
 use doppel_machine::geometry::Size;
 use doppel_scene::film::{POINTER_MS, Reel};
 use doppel_scene::recordings::{Recording, Video};
-use doppel_scene::timeline::from_trace;
+use doppel_scene::timeline::{Seen, from_trace};
 use prost::Message as _;
 
 use crate::reel;
@@ -47,8 +49,14 @@ fn chosen<'a>(recording: &'a Recording, named: Option<&str>) -> Result<&'a Video
 
 /// The reel for `video` of `recording`, and the display it's drawn over:
 /// its machine's calls, from the video's start until the last call's
-/// pointer has faded.
-pub(crate) fn reel_of(recording: &Recording, video: &Video, fps: u32) -> Result<(Reel, Size)> {
+/// pointer has faded. `snapshot` reads the snapshot a trace line kept, for
+/// what the agent took in; one it can't read is left out.
+pub(crate) fn reel_of(
+    recording: &Recording,
+    video: &Video,
+    fps: u32,
+    snapshot: impl Fn(u32) -> Option<AxSnapshot>,
+) -> Result<(Reel, Size)> {
     let Some(display) = video.points else {
         bail!(
             "{} didn't keep its display's size, so its calls can't be placed on it",
@@ -61,7 +69,12 @@ pub(crate) fn reel_of(recording: &Recording, video: &Video, fps: u32) -> Result<
             video.file.as_str()
         );
     };
-    let moments = from_trace(recording, &video.machine);
+    let mut moments = from_trace(recording, &video.machine);
+    for moment in &mut moments {
+        if let Some(Seen::Recorded(line)) = moment.seen {
+            moment.seen = snapshot(line).map(|kept| Seen::Live(Arc::new(kept)));
+        }
+    }
     #[expect(clippy::cast_precision_loss, reason = "milliseconds of a recording")]
     let until = recording.traced_ms() as f64 + POINTER_MS;
     #[expect(clippy::cast_precision_loss, reason = "milliseconds of a recording")]
@@ -78,9 +91,10 @@ pub(crate) fn export(
     out: &Path,
     fps: u32,
     vmm: &Path,
+    snapshot: impl Fn(u32) -> Option<AxSnapshot>,
 ) -> Result<Exported> {
     let video = chosen(recording, named)?;
-    let (shot, display) = reel_of(recording, video, fps)?;
+    let (shot, display) = reel_of(recording, video, fps, snapshot)?;
     let film = reel::to_wire(&shot, display);
     let path = std::path::absolute(out)
         .with_context(|| format!("{} has no absolute path", out.display()))?;

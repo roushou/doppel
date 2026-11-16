@@ -1,12 +1,25 @@
 //! The scene's reel in the VMM's words, for `doppel-vmm export` to burn in.
 
-use doppel_machine::geometry::Size;
+use doppel_machine::geometry::{Rect, Size};
 use doppel_protocol::pb::common::v1 as common;
 use doppel_protocol::pb::vmm::v1 as wire;
 use doppel_scene::film::{Corner, Line, Picture, Reel, Shape, Spot};
 
 fn spot(at: Spot) -> wire::Spot {
     wire::Spot { x: at.x, y: at.y }
+}
+
+fn rect(rect: Rect) -> common::Rect {
+    common::Rect {
+        origin: Some(common::Point {
+            x: rect.left(),
+            y: rect.top(),
+        }),
+        size: Some(common::Size {
+            width: rect.width(),
+            height: rect.height(),
+        }),
+    }
 }
 
 fn shape(shape: &Shape) -> wire::Shape {
@@ -22,16 +35,7 @@ fn shape(shape: &Shape) -> wire::Shape {
             *colour,
             *opacity,
             Kind::Frame(wire::FrameShape {
-                rect: Some(common::Rect {
-                    origin: Some(common::Point {
-                        x: rect.left(),
-                        y: rect.top(),
-                    }),
-                    size: Some(common::Size {
-                        width: rect.width(),
-                        height: rect.height(),
-                    }),
-                }),
+                rect: Some(self::rect(*rect)),
                 wash: *wash,
                 width: *width,
             }),
@@ -84,6 +88,32 @@ fn shape(shape: &Shape) -> wire::Shape {
             *opacity,
             Kind::Pointer(wire::PointerShape {
                 tip: Some(spot(*tip)),
+            }),
+        ),
+        Shape::Veil {
+            holes,
+            colour,
+            opacity,
+        } => (
+            *colour,
+            *opacity,
+            Kind::Veil(wire::VeilShape {
+                holes: holes.iter().map(|hole| self::rect(*hole)).collect(),
+            }),
+        ),
+        Shape::Brackets {
+            rect,
+            arm,
+            colour,
+            width,
+            opacity,
+        } => (
+            *colour,
+            *opacity,
+            Kind::Brackets(wire::BracketsShape {
+                rect: Some(self::rect(*rect)),
+                arm: *arm,
+                width: *width,
             }),
         ),
         Shape::Tag {

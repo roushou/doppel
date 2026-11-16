@@ -131,13 +131,19 @@ highlighted. `doppel record start NAME FILE.mp4` records one machine's
 display to a file, outside any session.
 
 `doppel record export RECORDING OUT.mp4` writes one of a recording's videos
-(the first, or `--video NAME`) with what its agent did burned in: the
-pointer gliding to where it acts and what it's doing, the marks its calls
-leave, its marks for the people watching, why it acts when it said, and a
-chip while it runs a command or moves a file. `doppel_scene::film` decides what is drawn at each
-frame, as shapes in display points; `doppel-vmm export` paints them on the
-frames and encodes the result, at `--fps` (30 by default). It doesn't yet
-draw which elements the agent reads.
+(the first, or `--video NAME`) with what its agent did burned in. As each
+snapshot lands, the screen dims but for the elements its model was given
+refs for, which light top to bottom with their refs; when the agent goes
+for one, the rest let go and brackets close in on it. Then the pointer
+glides there, saying what it does and why when it said, the marks its calls
+leave go as the screen changes, and its marks for the people watching
+show, with a chip while it runs a command or moves a file. A film knows
+what comes next, so each call starts up to a glide early: the pointer
+arrives as the call lands. `doppel_scene::film` decides what is drawn at
+each frame, as shapes in display points (`doppel_scene::attention` decides
+what was taken in, from the snapshots the recording kept); `doppel-vmm
+export` paints them on the frames and encodes the result, at `--fps` (30
+by default). The viewers don't yet show what was taken in this way.
 
 A recorded session is a folder in the data directory's `recordings/`, named
 for when it started and its session: `2026-11-13T21-04-05Z-s3/`. It holds:

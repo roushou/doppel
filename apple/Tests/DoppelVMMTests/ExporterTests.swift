@@ -102,6 +102,40 @@ private func redFrame() -> Doppel_Vmm_V1_Shape {
         let (_, _, red) = pixel(frame, x: 50, y: 40)
         #expect(red > 100 && red < 160, "\(red)")
     }
+
+    @Test func aVeilDimsAllButItsHoles() throws {
+        let frame = try buffer(width: 200, height: 100, shade: 255)
+        var shape = Doppel_Vmm_V1_Shape()
+        shape.opacity = 1
+        shape.colour = 0x000000
+        var veil = Doppel_Vmm_V1_VeilShape()
+        veil.holes = [redFrame().frame.rect]
+        shape.veil = veil
+        var picture = Doppel_Vmm_V1_Picture()
+        picture.shapes = [shape]
+        Exporter.draw(picture, with: Painter(scale: 2), on: frame)
+        #expect(pixel(frame, x: 50, y: 40) == (255, 255, 255))
+        #expect(pixel(frame, x: 150, y: 90) == (0, 0, 0))
+    }
+
+    @Test func bracketsDrawOnlyTheCorners() throws {
+        let frame = try buffer(width: 200, height: 100, shade: 0)
+        var shape = Doppel_Vmm_V1_Shape()
+        shape.opacity = 1
+        shape.colour = 0xff0000
+        var brackets = Doppel_Vmm_V1_BracketsShape()
+        brackets.rect = redFrame().frame.rect
+        brackets.arm = 5
+        brackets.width = 2
+        shape.brackets = brackets
+        var picture = Doppel_Vmm_V1_Picture()
+        picture.shapes = [shape]
+        Exporter.draw(picture, with: Painter(scale: 2), on: frame)
+        // The top-left corner, in pixels (20, 20), is drawn; the top edge's middle isn't.
+        #expect(pixel(frame, x: 22, y: 20) == (0, 0, 255))
+        #expect(pixel(frame, x: 60, y: 20) == (0, 0, 0))
+        #expect(pixel(frame, x: 50, y: 40) == (0, 0, 0), "nothing inside")
+    }
 }
 
 @Test func anExportIsTheVideoAtTheReelsRateWithItsPicturesOver() async throws {
