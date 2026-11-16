@@ -48,6 +48,45 @@ It's early: the [roadmap](docs/roadmap.md) says what works.
 - **Remote:** another Mac's machines over SSH, or the browser viewer over TLS
   with tokens.
 
+## Get started
+
+You need:
+
+- An Apple silicon Mac on macOS 27, with Xcode 27
+- Rust (pinned in `rust-toolchain.toml`), Node.js with pnpm, and
+  [`buf`](https://buf.build/docs/installation)
+- A macOS restore image (`.ipsw`)
+- An Apple Development signing identity (recommended: the guest's permission
+  grants follow the agent's signature)
+
+Then:
+
+- Build, and make a machine:
+
+  ```sh
+  scripts/build.sh
+  export PATH="$PWD/target/debug:$PATH"
+  doppel daemon install
+  doppel create dev --ipsw path/to/macOS.ipsw --user doppel
+  doppel agent bootstrap dev --user doppel
+  ```
+
+- Grant the agent Accessibility and Screen & System Audio Recording: open
+  `doppel view dev`, take control, and allow both in the guest's System
+  Settings. The account's password is in
+  `~/Library/Application Support/Doppel/machines/dev/login-password`.
+
+- Make it a golden image, fork it, and hand the fork to an agent:
+
+  ```sh
+  doppel golden prepare dev
+  doppel fork dev ready work
+  doppel start work
+  claude mcp add doppel -- "$PWD/target/debug/doppel" mcp --machine work
+  ```
+
+- `doppel --help` lists every command.
+
 ## Screenshots
 
 ### Browser
@@ -102,45 +141,6 @@ It's early: the [roadmap](docs/roadmap.md) says what works.
     alt="The desktop viewer showing a machine live, with an agent's mark over a note"
   >
 </details>
-
-## Get started
-
-You need:
-
-- An Apple silicon Mac on macOS 27, with Xcode 27
-- Rust (pinned in `rust-toolchain.toml`), Node.js with pnpm, and
-  [`buf`](https://buf.build/docs/installation)
-- A macOS restore image (`.ipsw`)
-- An Apple Development signing identity (recommended: the guest's permission
-  grants follow the agent's signature)
-
-Then:
-
-- Build, and make a machine:
-
-  ```sh
-  scripts/build.sh
-  export PATH="$PWD/target/debug:$PATH"
-  doppel daemon install
-  doppel create dev --ipsw path/to/macOS.ipsw --user doppel
-  doppel agent bootstrap dev --user doppel
-  ```
-
-- Grant the agent Accessibility and Screen & System Audio Recording: open
-  `doppel view dev`, take control, and allow both in the guest's System
-  Settings. The account's password is in
-  `~/Library/Application Support/Doppel/machines/dev/login-password`.
-
-- Make it a golden image, fork it, and hand the fork to an agent:
-
-  ```sh
-  doppel golden prepare dev
-  doppel fork dev ready work
-  doppel start work
-  claude mcp add doppel -- "$PWD/target/debug/doppel" mcp --machine work
-  ```
-
-- `doppel --help` lists every command.
 
 ## Documentation
 
