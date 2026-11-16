@@ -146,21 +146,27 @@ fn shape(shape: &Shape) -> wire::Shape {
     }
 }
 
-fn picture(picture: &Picture) -> wire::Picture {
+fn picture(picture: &Picture, video_from: f64) -> wire::Picture {
     wire::Picture {
         shapes: picture.shapes.iter().map(shape).collect(),
+        video_ms: (picture.at - video_from).max(0.0),
     }
 }
 
-/// `reel`, drawn over a display of `display`, as the VMM reads it.
-pub(crate) fn to_wire(reel: &Reel, display: Size) -> wire::Reel {
+/// `reel`, drawn over a display of `display`, as the VMM reads it; its
+/// video started at `video_from` in the session's time.
+pub(crate) fn to_wire(reel: &Reel, display: Size, video_from: f64) -> wire::Reel {
     wire::Reel {
         fps: reel.fps,
         display: Some(common::Size {
             width: display.width(),
             height: display.height(),
         }),
-        pictures: reel.pictures.iter().map(picture).collect(),
+        pictures: reel
+            .pictures
+            .iter()
+            .map(|shown| picture(shown, video_from))
+            .collect(),
     }
 }
 
@@ -183,9 +189,11 @@ mod tests {
                     width: 2.0,
                     opacity: 0.5,
                 }],
+                at: 1500.0,
             }],
         };
-        let wire = to_wire(&reel, Size::new(1280.0, 800.0).unwrap());
+        let wire = to_wire(&reel, Size::new(1280.0, 800.0).unwrap(), 500.0);
+        assert_eq!(wire.pictures[0].video_ms, 1000.0);
         assert_eq!(wire.fps, 30);
         assert_eq!(wire.display.unwrap().width, 1280.0);
         let shape = &wire.pictures[0].shapes[0];

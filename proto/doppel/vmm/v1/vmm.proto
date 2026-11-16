@@ -271,14 +271,20 @@ message GuestStopped {
 // picture per frame, each the shapes to draw over it, bottom first. Shapes
 // are in the display's points; the exporter scales them to the video.
 message Reel {
-  // Pictures per second: picture n is drawn from n/fps s into the video.
+  // Pictures per second: picture n is frame n of the export, n/fps s in.
   uint32 fps = 1;
   // The display's size in points, the space the shapes are in.
   doppel.common.v1.Size display = 2;
   repeated Picture pictures = 3;
 }
 
-message Picture { repeated Shape shapes = 1; }
+message Picture {
+  repeated Shape shapes = 1;
+  // Which moment of the source video it goes over, in ms from its start:
+  // never earlier than the picture before's. The video's latest frame by
+  // then shows under it.
+  double video_ms = 2;
+}
 
 // A place in points; unlike a common Point, it may lie off the display.
 message Spot {
@@ -300,6 +306,8 @@ message Shape {
     VeilShape veil = 8;
     BracketsShape brackets = 9;
   }
+  // Not to be used again: older reels may hold it.
+  reserved 10;
 }
 
 // The whole picture dimmed by the shape's colour, but for `holes`.

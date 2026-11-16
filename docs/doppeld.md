@@ -135,11 +135,13 @@ display to a file, outside any session.
 snapshot lands, the screen dims but for the elements its model was given
 refs for, which light top to bottom with their refs; when the agent goes
 for one, the rest let go and brackets close in on it. Then the pointer
-glides there, saying what it does and why when it said, the marks its calls
-leave go as the screen changes, and its marks for the people watching
-show, with a chip while it runs a command or moves a file. A film knows
-what comes next, so each call starts up to a glide early: the pointer
-arrives as the call lands. `doppel_scene::film` decides what is drawn at
+glides there, the marks its calls leave go as the screen changes, and its
+marks for the people watching show. A film knows what comes next, so each
+call starts up to a glide early: the pointer arrives as the call lands.
+
+The film plays to its own clock (`doppel_scene::film::pacing`): pauses
+where the agent thinks go by fast, with the speed in a corner, and the
+agent's own moves play slower. `doppel_scene::film` decides what is drawn at
 each frame, as shapes in display points (`doppel_scene::attention` decides
 what was taken in, from the snapshots the recording kept); `doppel-vmm
 export` paints them on the frames and encodes the result, at `--fps` (30

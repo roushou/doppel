@@ -47,7 +47,8 @@ fn chosen<'a>(recording: &'a Recording, named: Option<&str>) -> Result<&'a Video
     }
 }
 
-/// The reel for `video` of `recording`, and the display it's drawn over:
+/// The reel for `video` of `recording`, the display it's drawn over, and
+/// when the video started in the session's time:
 /// its machine's calls, from the video's start until the last call's
 /// pointer has faded. `snapshot` reads the snapshot a trace line kept, for
 /// what the agent took in; one it can't read is left out.
@@ -56,7 +57,7 @@ pub(crate) fn reel_of(
     video: &Video,
     fps: u32,
     snapshot: impl Fn(u32) -> Option<AxSnapshot>,
-) -> Result<(Reel, Size)> {
+) -> Result<(Reel, Size, f64)> {
     let Some(display) = video.points else {
         bail!(
             "{} didn't keep its display's size, so its calls can't be placed on it",
@@ -79,7 +80,11 @@ pub(crate) fn reel_of(
     let until = recording.traced_ms() as f64 + POINTER_MS;
     #[expect(clippy::cast_precision_loss, reason = "milliseconds of a recording")]
     let from = from as f64;
-    Ok((Reel::shoot(&moments, display, from, until, fps), display))
+    Ok((
+        Reel::shoot(&moments, display, from, until, fps),
+        display,
+        from,
+    ))
 }
 
 /// Writes `video` (at `source`) with `recording`'s overlay to `out`, by
@@ -94,8 +99,8 @@ pub(crate) fn export(
     snapshot: impl Fn(u32) -> Option<AxSnapshot>,
 ) -> Result<Exported> {
     let video = chosen(recording, named)?;
-    let (shot, display) = reel_of(recording, video, fps, snapshot)?;
-    let film = reel::to_wire(&shot, display);
+    let (shot, display, video_from) = reel_of(recording, video, fps, snapshot)?;
+    let film = reel::to_wire(&shot, display, video_from);
     let path = std::path::absolute(out)
         .with_context(|| format!("{} has no absolute path", out.display()))?;
     if path.exists() {

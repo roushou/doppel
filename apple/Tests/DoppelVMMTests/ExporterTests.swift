@@ -138,7 +138,7 @@ private func redFrame() -> Doppel_Vmm_V1_Shape {
     }
 }
 
-@Test func anExportIsTheVideoAtTheReelsRateWithItsPicturesOver() async throws {
+@Test func anExportPlaysTheVideoAtTheReelsPaceWithItsPicturesOver() async throws {
     // A 2 s recording of a grey 320×200 screen.
     let video = scratch("source")
     let out = scratch("out")
@@ -150,7 +150,7 @@ private func redFrame() -> Doppel_Vmm_V1_Shape {
     let recorder = try Recorder(url: video, width: 320, height: 200, origin: origin)
     for i in 0..<4 {
         // The buffer owns the surface: it lives until the recorder has copied it.
-        let frame = try buffer(width: 320, height: 200, shade: 90)
+        let frame = try buffer(width: 320, height: 200, shade: UInt8(40 + 40 * i))
         let surface = try #require(CVPixelBufferGetIOSurface(frame)?.takeUnretainedValue())
         withExtendedLifetime(frame) {
             recorder.append(surface, at: CMTimeAdd(origin, CMTime(value: Int64(i) * 150, timescale: 600)))
@@ -159,14 +159,18 @@ private func redFrame() -> Doppel_Vmm_V1_Shape {
     }
     _ = try await recorder.finish(at: CMTimeAdd(origin, CMTime(seconds: 2, preferredTimescale: 600)))
 
-    // A 160×100 display; its pictures cover the first second only.
+    // A 160×100 display; 20 pictures playing the video's first second at
+    // half speed, the first ten with a frame drawn.
     var reel = Doppel_Vmm_V1_Reel()
     reel.fps = 10
     reel.display.width = 160
     reel.display.height = 100
-    var picture = Doppel_Vmm_V1_Picture()
-    picture.shapes = [redFrame()]
-    reel.pictures = Array(repeating: picture, count: 10)
+    reel.pictures = (0..<20).map { index in
+        var picture = Doppel_Vmm_V1_Picture()
+        if index < 10 { picture.shapes = [redFrame()] }
+        picture.videoMs = Double(index) * 50
+        return picture
+    }
 
     let exported = try await Exporter.export(video: video, reel: reel, to: out)
     #expect(exported.frames == 20)
@@ -180,12 +184,18 @@ private func redFrame() -> Doppel_Vmm_V1_Shape {
     reader.add(output)
     #expect(reader.startReading())
     var reds: [Bool] = []
+    var shades: [Int] = []
     while let sample = output.copyNextSampleBuffer(), let image = CMSampleBufferGetImageBuffer(sample) {
         let (blue, _, red) = pixel(image, x: 60, y: 40)
         reds.append(red > 200 && blue < 60)
+        shades.append(Int(pixel(image, x: 300, y: 190).0))
     }
     #expect(reds.count == 20)
-    // Drawn over the first second's frames, not over the second's.
     #expect(reds.prefix(10).allSatisfy { $0 }, "\(reds)")
     #expect(reds.suffix(10).allSatisfy { !$0 }, "\(reds)")
+    // At half speed, each recorded frame (one every 250 ms) shows for five.
+    let recorded = [40, 80, 120, 160]
+    for (index, shade) in shades.enumerated() {
+        #expect(abs(shade - recorded[index / 5]) < 12, "frame \(index): \(shades)")
+    }
 }

@@ -7,9 +7,12 @@
 
 use doppel_machine::geometry::{Point, Rect, Size};
 
+pub mod pacing;
+
+use self::pacing::Pace;
 use crate::attention::{Attention, Glance, LET_GO_MS, LOCK_MS};
 use crate::timeline::{
-    CALLOUT_FADE_MS, CalloutOn, CalloutShape, Gesture, MARK_FADE_MS, Mark, Moment, scene_at,
+    CALLOUT_FADE_MS, CalloutOn, CalloutShape, MARK_FADE_MS, Mark, Moment, scene_at,
 };
 
 /// A colour: red, green and blue in its low 24 bits.
@@ -139,10 +142,12 @@ pub enum Shape {
     },
 }
 
-/// What is drawn over one frame, bottom first.
+/// What is drawn over one frame, bottom first, and the instant of the
+/// session it shows.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Picture {
     pub shapes: Vec<Shape>,
+    pub at: f64,
 }
 
 /// The veil over what an agent doesn't take in: its colour, how dark at
@@ -460,36 +465,11 @@ impl Picture {
                 }
             }
 
-            let current = agent.current.as_ref().map(|(call, _)| call);
-            // Work off the screen shows as a chip in the corner, not at the pointer.
-            let running = current.filter(|call| call.gesture == Gesture::Run);
-            if let Some(call) = running {
-                shapes.push(Shape::Tag {
-                    at: Spot {
-                        x: 12.0,
-                        y: display.height() - 12.0,
-                    },
-                    corner: Corner::BottomLeft,
-                    text: {
-                        let what = if call.caption.is_empty() {
-                            call.describe()
-                        } else {
-                            call.caption.clone()
-                        };
-                        match &call.why {
-                            Some(why) => format!("{what} · {why}"),
-                            None => what,
-                        }
-                    },
-                    ink: WHITE,
-                    plate: ink,
-                    opacity: 1.0,
-                });
-            }
+            // The pointer carries no words: what it does shows in how it moves.
             let Some(tip) = pointer_at(moments, agent.session, at) else {
                 continue;
             };
-            let opacity = if current.is_some() {
+            let opacity = if agent.current.is_some() {
                 1.0
             } else {
                 ((agent.active + POINTER_MS + POINTER_FADE_MS - at) / POINTER_FADE_MS)
@@ -503,35 +483,8 @@ impl Picture {
                 colour: fill,
                 opacity,
             });
-            if let Some(call) = current.filter(|_| running.is_none()) {
-                shapes.push(Shape::Tag {
-                    at: Spot {
-                        x: tip.x + 18.0,
-                        y: tip.y + 20.0,
-                    },
-                    corner: Corner::TopLeft,
-                    text: call.describe().to_uppercase(),
-                    ink: WHITE,
-                    plate: ink,
-                    opacity,
-                });
-                // Why it does it, in its own words, under what it does.
-                if let Some(why) = &call.why {
-                    shapes.push(Shape::Tag {
-                        at: Spot {
-                            x: tip.x + 18.0,
-                            y: tip.y + 42.0,
-                        },
-                        corner: Corner::TopLeft,
-                        text: why.clone(),
-                        ink,
-                        plate: fill,
-                        opacity,
-                    });
-                }
-            }
         }
-        Self { shapes }
+        Self { shapes, at }
     }
 }
 
@@ -565,30 +518,51 @@ fn ahead(moments: &[Moment]) -> Vec<Moment> {
         .collect()
 }
 
-/// A recording's pictures for one video: one per frame at `fps`, the
-/// first at `from_ms` in the session's time.
+/// A recording's pictures for one video: one per frame at `fps`, on the
+/// film's clock ([`Pace`]): pauses fast, the agent's moves slower. Each
+/// picture says which instant of the session it shows.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Reel {
     pub fps: u32,
     pub pictures: Vec<Picture>,
 }
 
+/// A film sped up at least this much says so in a corner.
+const SPED_UP: f64 = 1.5;
+
 impl Reel {
     /// The pictures over `moments`, on a display `display`, from `from_ms`
-    /// until `until_ms`.
+    /// until `until_ms` of the session.
     #[must_use]
     pub fn shoot(moments: &[Moment], display: Size, from_ms: f64, until_ms: f64, fps: u32) -> Self {
         let moments = ahead(moments);
+        let pace = Pace::of(&moments, from_ms, until_ms);
         let fps = fps.max(1);
         let step = 1000.0 / f64::from(fps);
+        let length = pace.length();
         let mut pictures = Vec::new();
         let mut frame: u32 = 0;
         loop {
-            let at = from_ms + f64::from(frame) * step;
-            if at >= until_ms {
+            let film = f64::from(frame) * step;
+            if film >= length {
                 break;
             }
-            pictures.push(Picture::at(&moments, display, at));
+            let (at, speed) = pace.session_at(film);
+            let mut picture = Picture::at(&moments, display, at);
+            if speed >= SPED_UP {
+                picture.shapes.push(Shape::Tag {
+                    at: Spot {
+                        x: display.width() - 12.0,
+                        y: 12.0,
+                    },
+                    corner: Corner::TopRight,
+                    text: format!("▸▸ {speed:.1}×"),
+                    ink: WHITE,
+                    plate: Rgb(0x20_2233),
+                    opacity: 0.85,
+                });
+            }
+            pictures.push(picture);
             frame += 1;
         }
         Self { fps, pictures }
@@ -600,6 +574,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
+    use crate::timeline::Gesture;
     use crate::timeline::{Call, CallKey, Callout, CalloutLasts, Target};
 
     fn display() -> Size {
@@ -691,13 +666,18 @@ mod tests {
     }
 
     #[test]
-    fn the_pointer_says_what_it_does_and_fades_once_the_agent_stops() {
-        let moments = [click(1, 0.0, 100.0, 100.0)];
-        assert_eq!(tags(&Picture::at(&moments, display(), 10.0)), ["CLICKING"]);
-        // Done, the pointer stays a while without words, then fades.
-        let idle = Picture::at(&moments, display(), 3000.0);
-        assert_eq!(pointer(&idle).unwrap().1, 1.0);
-        assert!(tags(&idle).is_empty());
+    fn the_pointer_carries_no_words_and_fades_once_the_agent_stops() {
+        let mut said = click(1, 0.0, 100.0, 100.0);
+        said.call.why = Some("to open the pricing page".into());
+        let moments = [said];
+        assert!(tags(&Picture::at(&moments, display(), 10.0)).is_empty());
+        // Done, the pointer stays a while, then fades.
+        assert_eq!(
+            pointer(&Picture::at(&moments, display(), 3000.0))
+                .unwrap()
+                .1,
+            1.0
+        );
         assert!(
             pointer(&Picture::at(
                 &moments,
@@ -716,31 +696,13 @@ mod tests {
     }
 
     #[test]
-    fn why_the_agent_acts_shows_under_what_it_does() {
-        let mut said = click(1, 0.0, 100.0, 100.0);
-        said.call.why = Some("to open the pricing page".into());
-        assert_eq!(
-            tags(&Picture::at(&[said], display(), 10.0)),
-            ["CLICKING", "to open the pricing page"]
-        );
-    }
-
-    #[test]
-    fn a_command_shows_as_a_chip_in_the_corner_not_at_the_pointer() {
-        let moments = [
-            click(1, 0.0, 100.0, 100.0),
-            moment(2, 1000.0, 3000.0, Gesture::Run, Target::Nowhere),
-        ];
-        let picture = Picture::at(&moments, display(), 2000.0);
-        assert_eq!(tags(&picture), ["exec /usr/bin/open"]);
-        let chip = picture.shapes.iter().find_map(|shape| {
-            if let Shape::Tag { at, corner, .. } = shape {
-                Some((*at, *corner))
-            } else {
-                None
-            }
-        });
-        assert_eq!(chip, Some((Spot { x: 12.0, y: 788.0 }, Corner::BottomLeft)));
+    fn a_film_sped_up_says_so() {
+        let moments = [click(1, 10_000.0, 100.0, 100.0)];
+        let reel = Reel::shoot(&moments, display(), 0.0, 11_000.0, 30);
+        assert!(tags(&reel.pictures[0])[0].starts_with("▸▸ 3.5"));
+        // The pause before the move plays in under a third of its time.
+        let moved = reel.pictures.iter().position(|p| p.at >= 9_550.0).unwrap();
+        assert!(moved < 30 * 3, "{moved}");
     }
 
     #[test]
@@ -778,16 +740,27 @@ mod tests {
     }
 
     #[test]
-    fn a_reel_has_a_picture_per_frame() {
+    fn a_reel_has_a_picture_per_frame_of_the_film() {
         let moments = [click(1, 0.0, 100.0, 100.0)];
         let reel = Reel::shoot(&moments, display(), 0.0, 1000.0, 30);
-        assert_eq!(reel.pictures.len(), 30);
-        assert_eq!(
-            reel.pictures[0],
-            Picture::at(&ahead(&moments), display(), 0.0)
+        assert!(!reel.pictures.is_empty());
+        let mut first = Picture::at(&ahead(&moments), display(), 0.0);
+        first.shapes.extend(
+            reel.pictures[0]
+                .shapes
+                .iter()
+                .filter(|shape| matches!(shape, Shape::Tag { .. }))
+                .cloned(),
+        );
+        assert_eq!(reel.pictures[0], first);
+        assert!(
+            reel.pictures
+                .windows(2)
+                .all(|pair| pair[0].at <= pair[1].at),
+            "the session's time only goes forward"
         );
         assert!(
-            Reel::shoot(&moments, display(), 500.0, 500.0, 30)
+            Reel::shoot(&[], display(), 500.0, 500.0, 30)
                 .pictures
                 .is_empty()
         );
@@ -797,9 +770,12 @@ mod tests {
     fn a_reel_brings_the_pointer_there_as_the_call_lands() {
         let moments = [click(1, 0.0, 100.0, 100.0), click(2, 2000.0, 300.0, 100.0)];
         let reel = Reel::shoot(&moments, display(), 0.0, 2100.0, 100);
-        let at = |ms: usize| pointer(&reel.pictures[ms / 10]).unwrap().0;
-        assert_eq!(at(2000), Spot { x: 300.0, y: 100.0 });
-        assert!(at(1700).x > 100.0, "already on its way");
+        let at = |ms: f64| {
+            let picture = reel.pictures.iter().find(|p| p.at >= ms).unwrap();
+            pointer(picture).unwrap().0
+        };
+        assert_eq!(at(2000.0), Spot { x: 300.0, y: 100.0 });
+        assert!(at(1700.0).x > 100.0, "already on its way");
         // Never before the agent's previous call ended.
         let close = [click(1, 0.0, 100.0, 100.0), click(2, 100.0, 300.0, 100.0)];
         assert_eq!(ahead(&close)[1].start_ms, 50.0);

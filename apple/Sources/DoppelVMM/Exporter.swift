@@ -204,9 +204,9 @@ public enum Exporter {
     private static let bitsPerSecond = 12_000_000
 
     /// Writes `video` with `reel` drawn over it to `out`, at the reel's
-    /// rate: each frame is the video's latest frame by then, with that
-    /// instant's picture over it. Past the reel's end, frames go out as
-    /// they are.
+    /// rate: a frame for each picture, over the video's latest frame by the
+    /// moment the picture names (`video_ms`). The reel sets the pace: a
+    /// stretch of the video can play faster or slower than it was recorded.
     public static func export(video: URL, reel: Doppel_Vmm_V1_Reel, to out: URL) async throws -> Exported {
         guard reel.fps > 0, reel.display.width > 0, reel.display.height > 0 else {
             throw ExportError.reel("it has no frame rate or display size")
@@ -254,13 +254,15 @@ public enum Exporter {
 
         let painter = Painter(scale: CGFloat(width) / reel.display.width)
         let fps = Int32(reel.fps)
-        let count = Int((duration * Double(fps)).rounded(.up))
+        let count = reel.pictures.count
         var shown: CMSampleBuffer?
         var next = source.copyNextSampleBuffer()
         for frame in 0..<count {
             let at = CMTime(value: CMTimeValue(frame), timescale: fps)
-            // The latest frame of the video by `at`.
-            while let candidate = next, CMTimeCompare(CMSampleBufferGetPresentationTimeStamp(candidate), at) <= 0 {
+            let picture = reel.pictures[frame]
+            let from = CMTime(seconds: picture.videoMs / 1000, preferredTimescale: 600)
+            // The latest frame of the video by the moment the picture names.
+            while let candidate = next, CMTimeCompare(CMSampleBufferGetPresentationTimeStamp(candidate), from) <= 0 {
                 shown = candidate
                 next = source.copyNextSampleBuffer()
             }
@@ -274,9 +276,7 @@ public enum Exporter {
                 throw ExportError.writer("no buffer for frame \(frame)")
             }
             copy(image, into: target)
-            if frame < reel.pictures.count {
-                draw(reel.pictures[frame], with: painter, on: target)
-            }
+            draw(picture, with: painter, on: target)
             guard adaptor.append(target, withPresentationTime: at) else {
                 throw ExportError.writer(writer.error?.localizedDescription ?? "frame \(frame) refused")
             }
