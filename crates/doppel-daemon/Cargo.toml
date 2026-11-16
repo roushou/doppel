@@ -1,0 +1,28 @@
+[package]
+name = "doppel-daemon"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+description = "doppeld: the daemon that owns a user's machines and serves doppel.daemon.v1."
+
+[dependencies]
+base64.workspace = true
+doppel-gateway = { path = "../doppel-gateway" }
+doppel-host = { path = "../doppel-host" }
+doppel-machine = { path = "../doppel-machine" }
+doppel-protocol = { path = "../doppel-protocol" }
+nix = { workspace = true, features = ["hostname", "net", "poll"] }
+prost.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+doppel-client = { path = "../doppel-client" }
+rustls.workspace = true
+tungstenite = { workspace = true, features = ["handshake"] }
+
+[lints]
+workspace = true

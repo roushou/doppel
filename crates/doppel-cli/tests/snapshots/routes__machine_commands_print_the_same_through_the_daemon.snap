@@ -1,0 +1,69 @@
+---
+source: crates/doppel-cli/tests/routes.rs
+expression: direct
+---
+$ doppel ls
+exit: 0
+stdout:
+dev stopped
+
+$ doppel status dev
+exit: 0
+stdout:
+dev: stopped
+
+$ doppel status nope
+exit: 1
+stderr:
+Error: machine 'nope' does not exist
+
+$ doppel start dev --no-wait
+exit: 1
+stderr:
+Error: doppel-vmm not found at [scratch]/no-vmm; build it with scripts/build.sh or set DOPPEL_VMM
+
+$ doppel login dev
+exit: 1
+stderr:
+dev: waiting for the desktop…
+Error: machine 'dev' is not running
+
+$ doppel pause dev
+exit: 1
+stderr:
+Error: machine 'dev' is not running
+
+$ doppel resume dev
+exit: 1
+stderr:
+Error: machine 'dev' is not running
+
+$ doppel stop dev
+exit: 1
+stderr:
+Error: machine 'dev' is not running
+
+$ doppel stop dev --force
+exit: 1
+stderr:
+Error: machine 'dev' is not running
+
+$ doppel checkpoint dev clean
+exit: 1
+stderr:
+Error: machine 'dev' is not running
+
+$ doppel restore dev clean --discard-current
+exit: 1
+stderr:
+Error: machine 'dev' has no checkpoint 'clean'
+
+$ doppel fork dev clean copy
+exit: 1
+stderr:
+Error: machine 'dev' has no checkpoint 'clean'
+
+$ doppel ls
+exit: 0
+stdout:
+dev stopped

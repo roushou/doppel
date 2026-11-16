@@ -1,0 +1,266 @@
+syntax = "proto3";
+
+// doppeld <-> doppel-vmm (one process per running VM).
+// Transport: unix socket inside the machine bundle. Framing: u32 LE length + VmmFrame.
+package doppel.vmm.v1;
+
+import "doppel/common/v1/common.proto";
+
+message VmmFrame {
+  oneof kind {
+    doppel.common.v1.Hello hello = 1;
+    VmmRequest request = 2;
+    VmmResponse response = 3;
+    VmmEvent event = 4;
+  }
+}
+
+message VmmRequest {
+  uint64 id = 1;
+  oneof operation {
+    GetState get_state = 10;
+    Pause pause = 11;
+    Resume resume = 12;
+    Stop stop = 13;
+    SaveState save_state = 14;
+    doppel.common.v1.Input host_input = 15;
+    CaptureDisplay capture_display = 16;
+    // The VMM connects to the guest agent and passes the connected socket
+    // to doppeld as SCM_RIGHTS ancillary data on this response's frame.
+    OpenAgentChannel open_agent_channel = 17;
+    RecognizeText recognize_text = 18;
+    // The response's frame carries the shared memory the frames are written
+    // to, as SCM_RIGHTS; DisplayFrame events then go to this connection only.
+    OpenDisplay open_display = 19;
+    StartRecording start_recording = 20;
+    StopRecording stop_recording = 21;
+    // EncodedFrame events then go to this connection only.
+    OpenEncodedDisplay open_encoded_display = 22;
+  }
+}
+
+message VmmResponse {
+  uint64 id = 1;
+  oneof outcome {
+    doppel.common.v1.Error error = 2;
+    VmState state = 10;
+    Done done = 11;
+    StateSaved state_saved = 12;
+    doppel.common.v1.Image image = 13;
+    AgentChannelOpened agent_channel_opened = 14;
+    RecognizedText recognized_text = 15;
+    DisplayOpened display_opened = 16;
+    RecordingStarted recording_started = 17;
+    RecordingStopped recording_stopped = 18;
+    EncodedDisplayOpened encoded_display_opened = 19;
+  }
+}
+
+message VmmEvent {
+  oneof kind {
+    VmState state_changed = 1;
+    GuestStopped guest_stopped = 2;
+    InstallProgress install_progress = 3;
+    InstallFinished install_finished = 4;
+    DisplayFrame display_frame = 5;
+    EncodedFrame encoded_frame = 6;
+  }
+}
+
+// Emitted on stdout by `doppel-vmm install`.
+message InstallProgress {
+  // 0.0 ..= 1.0
+  double fraction = 1;
+}
+
+message InstallFinished {
+  oneof outcome {
+    Done done = 1;
+    doppel.common.v1.Error error = 2;
+  }
+}
+
+message Done {}
+message GetState {}
+message Pause {}
+message Resume {}
+
+enum StopMode {
+  STOP_MODE_UNSPECIFIED = 0;
+  // Ask the guest OS to shut down. It may refuse or take time.
+  STOP_MODE_GRACEFUL = 1;
+  // Power off immediately. Unsaved guest work is lost.
+  STOP_MODE_FORCE = 2;
+}
+
+message Stop { StopMode mode = 1; }
+
+// Writes the VM's memory state. The VM must be paused. A checkpoint is the
+// caller's job: pause, flush and clone the disk, SaveState, then resume or stop,
+// so memory and disk describe the same instant.
+message SaveState {
+  // Absolute path of a file that must not exist yet.
+  string path = 1;
+}
+
+message StateSaved {
+  uint64 bytes = 1;
+}
+
+message CaptureDisplay {
+  doppel.common.v1.ImageEncoding encoding = 1;
+  uint32 max_dimension_pixels = 2;
+}
+
+// Text recognition (Vision) on the VM's display, at full resolution.
+message RecognizeText {}
+
+// Frames are in display points, top-left origin: the coordinate space of Input.
+message RecognizedText {
+  doppel.common.v1.Size display_points = 1;
+  // In reading order as Vision returns it.
+  repeated TextLine lines = 2;
+}
+
+message TextLine {
+  string text = 1;
+  doppel.common.v1.Rect frame = 2;
+  // 0.0 ..= 1.0
+  float confidence = 3;
+  // The line's words in order; each word's text occurs in `text`.
+  repeated TextWord words = 4;
+}
+
+message TextWord {
+  string text = 1;
+  doppel.common.v1.Rect frame = 2;
+}
+
+message OpenAgentChannel { uint32 vsock_port = 1; }
+
+// --- Display stream ----------------------------------------------------------
+
+message OpenDisplay {}
+
+message DisplayOpened {
+  DisplayLayout layout = 1;
+}
+
+// Where frames are in the shared memory: a ring of `slot_count` slots,
+// `slot_stride` bytes apart from offset 0. A slot starts with a header whose
+// first 8 bytes hold the sequence of the frame in it (u64, little endian;
+// 0 while the VMM writes it), followed by the frame's two planes:
+// 4:2:0 bi-planar full-range YCbCr (NV12), offsets relative to the slot.
+message DisplayLayout {
+  uint32 width_pixels = 1;
+  uint32 height_pixels = 2;
+  // Size of the display in points: the coordinate space of Input.
+  doppel.common.v1.Size display_points = 3;
+  uint32 slot_count = 4;
+  uint64 slot_stride = 5;
+  // One byte per pixel, `height_pixels` rows.
+  uint64 luma_offset = 6;
+  uint32 luma_bytes_per_row = 7;
+  // Interleaved Cb and Cr for each 2x2 block, `height_pixels / 2` rows.
+  uint64 chroma_offset = 8;
+  uint32 chroma_bytes_per_row = 9;
+}
+
+// --- Encoded display stream ---------------------------------------------------
+
+// Opens the display as an H.264 stream, for viewers that can't map shared
+// memory (across a network). Frames come as the screen changes, starting
+// with a key frame of the screen as it is.
+message OpenEncodedDisplay {}
+
+message EncodedDisplayOpened {
+  uint32 width_pixels = 1;
+  uint32 height_pixels = 2;
+  // Size of the display in points: the coordinate space of Input.
+  doppel.common.v1.Size display_points = 3;
+}
+
+// One H.264 frame, in AVCC: each NAL unit prefixed by its length (4 bytes,
+// big endian). A frame needs every frame since the last key frame: a
+// connection that falls behind gets nothing more until the next key frame,
+// which the VMM then makes.
+message EncodedFrame {
+  // Increases by one per frame encoded for any connection.
+  uint64 sequence = 1;
+  bool key = 2;
+  // On a key frame: the SPS, then the PPS, each without a length prefix.
+  repeated bytes parameter_sets = 3;
+  bytes data = 4;
+}
+
+// --- Recording -----------------------------------------------------------------
+
+// Records the display to an MP4 file: H.264, fragmented, so a file cut short
+// by a crash plays up to its last fragment. One recording at a time; it ends
+// with StopRecording or when the VM stops. Its time zero is the reply.
+message StartRecording {
+  // Absolute path of a file that must not exist yet, in a directory that does.
+  string path = 1;
+}
+
+enum RecordingStart {
+  RECORDING_START_UNSPECIFIED = 0;
+  RECORDING_START_STARTED = 1;
+  // A recording was already running: `path` names its file, and nothing changed.
+  RECORDING_START_ALREADY_RECORDING = 2;
+}
+
+message RecordingStarted {
+  string path = 1;
+  RecordingStart start = 2;
+}
+
+message StopRecording {
+  // Stops only the recording to this file; unset: whichever is running.
+  optional string path = 1;
+}
+
+message RecordingStopped {
+  string path = 1;
+  // Frames encoded: the display's changes, not a fixed rate.
+  uint64 frames = 2;
+  double seconds = 3;
+  uint64 bytes = 4;
+}
+
+// A new frame is complete in `slot`. Read it, then check the slot's header
+// still holds `sequence`: if not, the VMM reused the slot mid-read.
+message DisplayFrame {
+  uint32 slot = 1;
+  uint64 sequence = 2;
+}
+message AgentChannelOpened { uint32 vsock_port = 1; }
+
+enum VmRunState {
+  VM_RUN_STATE_UNSPECIFIED = 0;
+  VM_RUN_STATE_STARTING = 1;
+  VM_RUN_STATE_RUNNING = 2;
+  VM_RUN_STATE_PAUSING = 3;
+  VM_RUN_STATE_PAUSED = 4;
+  VM_RUN_STATE_RESUMING = 5;
+  VM_RUN_STATE_SAVING = 6;
+  VM_RUN_STATE_RESTORING = 7;
+  VM_RUN_STATE_STOPPING = 8;
+  VM_RUN_STATE_STOPPED = 9;
+  VM_RUN_STATE_ERROR = 10;
+}
+
+message VmState { VmRunState run_state = 1; }
+
+enum StopReason {
+  STOP_REASON_UNSPECIFIED = 0;
+  STOP_REASON_GUEST_SHUTDOWN = 1;
+  STOP_REASON_FORCED = 2;
+  STOP_REASON_ERROR = 3;
+}
+
+message GuestStopped {
+  StopReason reason = 1;
+  // Present when reason is STOP_REASON_ERROR.
+  string error_description = 2;
+}

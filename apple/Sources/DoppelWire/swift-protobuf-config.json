@@ -1,0 +1,14 @@
+{
+  "invocations": [
+    {
+      "protoFiles": [
+        "doppel/common/v1/common.proto",
+        "doppel/agent/v1/agent.proto",
+        "doppel/vmm/v1/vmm.proto",
+        "doppel/bundle/v1/bundle.proto"
+      ],
+      "visibility": "public",
+      "fileNaming": "PathToUnderscores"
+    }
+  ]
+}

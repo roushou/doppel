@@ -1,0 +1,57 @@
+---
+source: crates/doppel-protocol/tests/ax_fixtures.rs
+expression: c.text
+---
+# Finder (com.apple.finder) · snapshot s1 · 131 AX nodes
+- window "Recents" [s1e1]
+  - outline "sidebar" [s1e2]
+    - row "Recents" [s1e3] selected
+      - image "clock"
+    - row "Shared" [s1e4]
+      - image "Shared Folder"
+    - row "Favorites" [s1e5]
+    - row "Applications" [s1e6]
+    - row "Desktop" [s1e7]
+    - row "Documents" [s1e8]
+      - image "document"
+    - row "Downloads" [s1e9]
+      - image "Arrow Down Circle"
+    - row "Locations" [s1e10]
+    - row "iCloud Drive" [s1e11]
+      - image "iCloud"
+    - row "doppelsandbox" [s1e12]
+      - image "home"
+    - row "Macintosh HD" [s1e13]
+    - row "My Shared Files" [s1e14]
+    - row "AirDrop" [s1e15]
+    - row "Trash" [s1e16]
+      - image "trash"
+    - row "Tags" [s1e17]
+    - row "Red" [s1e18]
+    - row "Orange" [s1e19]
+    - row "Yellow" [s1e20]
+    - row "Green" [s1e21]
+    - row "Blue" [s1e22]
+    - row "Purple" [s1e23]
+    - row "Gray" [s1e24]
+    - row "All Tags…" [s1e25]
+  - list "icon view" [s1e26] focused
+  - text "0 items"
+  - slider "resize icon" = 24 [s1e27]
+    - valueindicator = 24
+  - toolbar [s1e28]
+    - group "Back/Forward"
+      - button "back" [s1e29] disabled
+      - button "forward" [s1e30] disabled
+    - radio "icon view" [s1e31] checked
+    - radio "list view" [s1e32] unchecked
+    - radio "column view" [s1e33] unchecked
+    - radio "gallery view" [s1e34] unchecked
+    - menubutton "Group" [s1e35]
+    - button "Share" [s1e36] disabled
+    - button "Edit Tags" [s1e37] disabled
+    - menubutton "Action" [s1e38]
+    - button "Search" [s1e39]
+  - button "close" [s1e40]
+  - button "full screen" [s1e41]
+  - button "minimize" [s1e42]

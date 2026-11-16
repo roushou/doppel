@@ -1,0 +1,61 @@
+[package]
+name = "doppel-viewer"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+description = "The desktop window for running machines, drawn with GPUI."
+
+[dependencies]
+core-foundation = "=0.10.0"
+core-video = "0.4.3"
+doppel-machine = { path = "../doppel-machine" }
+doppel-scene = { path = "../doppel-scene" }
+futures = "0.3"
+gpui = "0.2.2"
+objc2 = "0.6"
+objc2-av-foundation = { version = "0.3.2", default-features = false, features = [
+  "std",
+  "AVAsset",
+  "AVAssetReader",
+  "AVAssetReaderOutput",
+  "AVAssetTrack",
+  "AVMediaFormat",
+  "objc2-core-media",
+  "objc2-core-video",
+  "block2",
+] }
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFBase", "CFDictionary"] }
+objc2-core-media = { version = "0.3.2", default-features = false, features = [
+  "std",
+  "CMBase",
+  "CMBlockBuffer",
+  "CMFormatDescription",
+  "CMSampleBuffer",
+  "CMTime",
+  "CMTimeRange",
+  "objc2-core-video",
+] }
+objc2-core-video = { version = "0.3.2", default-features = false, features = ["std", "CVBuffer", "CVImageBuffer"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = [
+  "std",
+  "NSURL",
+  "NSString",
+  "NSArray",
+  "NSDictionary",
+  "NSValue",
+  "NSError",
+] }
+objc2-video-toolbox = { version = "0.3.2", default-features = false, features = [
+  "std",
+  "VTDecompressionSession",
+  "VTErrors",
+  "objc2-core-media",
+  "objc2-core-video",
+] }
+raw-window-handle = "0.6"
+thiserror.workspace = true
+
+[lints]
+workspace = true

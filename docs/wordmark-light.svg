@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="234" height="60" viewBox="0 0 78 20" shape-rendering="crispEdges">
+  <title>Doppel</title>
+  <!-- The viewers' mark (a machine and its double), then the name; for light backgrounds. -->
+  <path fill="#0f141c" fill-rule="evenodd" d="M2 2H13V13H2Z M3.5 3.5V11.5H11.5V3.5Z" />
+  <rect fill="#2f8a5b" x="7" y="7" width="11" height="11" />
+  <g fill="#0f141c" fill-rule="evenodd">
+    <!-- d -->
+    <path transform="translate(24 0)" d="M0 8H6V4H8V16H0Z M2 10V14H6V10Z" />
+    <!-- o -->
+    <path transform="translate(34 0)" d="M0 8H8V16H0Z M2 10V14H6V10Z" />
+    <!-- p -->
+    <path transform="translate(44 0)" d="M0 8H8V16H2V19H0Z M2 10V14H6V10Z" />
+    <!-- p -->
+    <path transform="translate(54 0)" d="M0 8H8V16H2V19H0Z M2 10V14H6V10Z" />
+    <!-- e -->
+    <path transform="translate(64 0)" d="M0 8H8V13H2V14H8V16H0Z M2 10V11H6V10Z" />
+    <!-- l -->
+    <path transform="translate(74 0)" d="M0 4H2V16H0Z" />
+  </g>
+</svg>

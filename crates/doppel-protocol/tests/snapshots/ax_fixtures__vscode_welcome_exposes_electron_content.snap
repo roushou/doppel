@@ -1,0 +1,167 @@
+---
+source: crates/doppel-protocol/tests/ax_fixtures.rs
+expression: c.text
+---
+# Code (com.microsoft.VSCode) · snapshot s1 · 377 AX nodes
+- window "Welcome" [s1e1]
+  - group "Welcome"
+    - webarea "Welcome" [s1e2]
+      - group [s1e3]
+        - group "Info: Screen reader usage detected. Do you want to enable editor.accessibilitySupport to optimize the editor for screen reader usage?" [s1e4]
+          - group [s1e5]
+            - toolbar [s1e6]
+              - button "Go Back (⌃-)" [s1e7] disabled
+              - button "Go Forward (⌃⇧-)" [s1e8] disabled
+              - toolbar "Agent Status" [s1e9]
+                - button "Open Quick Access" [s1e10]
+                - group [s1e11]
+                  - button "Toggle Chat" [s1e12]
+                    - button "Toggle Chat" [s1e13]
+                  - group [s1e14]
+                    - group [s1e15]
+                      - popup "More Actions" [s1e16] collapsed
+          - toolbar [s1e17]
+            - button "Open in Agents Window (⇧⌥⌘A)" [s1e18]
+            - button "Sign In" [s1e19]
+          - toolbar "Title actions" [s1e20]
+            - button "Customize Layout..." [s1e21]
+            - checkbox "Toggle Primary Side Bar (⌘B)" [s1e22] unchecked
+            - checkbox "Toggle Panel (⌘J)" [s1e23] unchecked
+            - checkbox "Toggle Secondary Side Bar (⌥⌘B)" [s1e24] checked
+          - tabgroup "Active View Switcher" [s1e25]
+            - radio "Explorer (⇧⌘E)" [s1e26] unchecked
+            - radio "Search (⇧⌘F)" [s1e27] unchecked
+            - radio "Source Control (⌃⇧G)" [s1e28] unchecked
+            - radio "Run and Debug (⇧⌘D)" [s1e29] unchecked
+            - radio "Extensions (⇧⌘X)" [s1e30] unchecked
+          - toolbar "Manage" [s1e31]
+            - popup "Accounts" [s1e32] collapsed
+            - popup "Manage" [s1e33] collapsed
+          - group [s1e34]
+            - tabgroup [s1e35]
+              - radio "Welcome, preview" [s1e36] checked selected
+                - group "Welcome" [s1e37]
+                - toolbar "Tab actions" [s1e38]
+                  - button "Close (⌘W)" [s1e39]
+            - toolbar "Editor actions" [s1e40]
+              - button "Split Editor Right (⌘\\) [⌥] Split Editor Down" [s1e41]
+              - group [s1e42]
+                - group [s1e43]
+                  - popup "More Actions..." [s1e44] collapsed
+          - group "Overview of how to get up to speed with your editor." [s1e45]
+            - heading "Start" = 2 [s1e46]
+            - list [s1e47]
+              - button "\u{ea7f} New File..." [s1e48]
+                - text "New File..."
+              - button "\u{eaf7} Open..." [s1e49]
+                - text "Open..."
+              - button "\u{eb3a} Connect to..." [s1e50]
+                - text "Connect to..."
+            - heading "Recent" = 2 [s1e51]
+            - list [s1e52]
+              - text "You have no recent folders,"
+              - button "open a folder" [s1e53]
+              - text "to start."
+            - heading "Walkthroughs" = 2 [s1e54]
+            - list [s1e55]
+              - button "\u{eb59} Get started with VS Code Customize your editor, learn the basics, and start coding" [s1e56]
+                - heading "Get started with VS Code" = 3 [s1e57]
+                - text "Customize your editor, learn the basics, and start coding"
+              - button "\u{eb59} Get Started with Accessibility Features Learn the tools and shortcuts that make VS Code accessible. Note that some actions are not actionable from within the …" [s1e58]
+                - heading "Get Started with Accessibility Features" = 3 [s1e59]
+                - text "Learn the tools and shortcuts that make VS Code accessible. Note that some actions are not actionable from within the context of the walkthrough."
+              - button "\u{ea61} Learn the Fundamentals" [s1e60]
+                - heading "Learn the Fundamentals" = 3 [s1e61]
+            - checkbox "When checked, this page will be shown on startup." [s1e62] checked
+            - group "Show welcome page on startup" [s1e63]
+          - tabgroup "Active View Switcher" [s1e64]
+            - radio "Chat (⌃⌘I)" [s1e65] checked selected expanded
+              - group "Chat (⌃⌘I)" [s1e66]
+                - text "Chat"
+          - toolbar "Chat actions" [s1e67]
+            - group [s1e68]
+              - button "New Chat (⌘N)" [s1e69]
+            - group [s1e70]
+              - group [s1e71]
+                - popup "New Chat" [s1e72] collapsed
+            - button "Open Customizations" [s1e73]
+            - group [s1e74]
+              - group [s1e75]
+                - popup "Views and More Actions..." [s1e76] collapsed
+          - toolbar [s1e77]
+            - checkbox "Maximize Secondary Side Bar" [s1e78] unchecked
+            - button "Hide Secondary Side Bar (⌥⌘B)" [s1e79]
+          - group [s1e80]
+            - group "Build with Agent" [s1e81]
+              - group "AI responses may be inaccurate" [s1e82]
+              - group "to onboard AI onto your codebase." [s1e83]
+                - link "Generate Agent Instructions" [s1e84]
+            - group [s1e85]
+              - group [s1e86]
+                - textarea "Chat Input (Agent), edit files in your workspace. Press Enter to send out the request. Use ⌥F1 for Chat Accessibility Help." [s1e87]
+              - group [s1e88]
+                - toolbar [s1e89]
+                  - button "Add Context... (⌘/)" [s1e90]
+                  - group [s1e91]
+                    - group [s1e92]
+                      - popup "Agent" [s1e93] collapsed
+                  - group "Models, sign in to use Copilot" [s1e94]
+                    - popup "Models, sign in to use Copilot" [s1e95] collapsed
+                  - button "Configure Tools..." [s1e96]
+                - toolbar [s1e97]
+                  - checkbox "Dictate (Speech to Text) (⌘I)" [s1e98] unchecked
+                  - button "Send [⌥] Send to New Chat (⇧⌘Enter)" [s1e99] disabled
+            - toolbar [s1e100]
+              - group [s1e101]
+                - group [s1e102]
+                  - popup "Local" [s1e103] collapsed
+              - group [s1e104]
+                - group [s1e105]
+                  - popup "Permission picker, Default permissions" [s1e106] collapsed
+                    - text "Default permissions"
+          - group "remote" [s1e107]
+            - button "remote" [s1e108]
+          - group "No Problems" [s1e109]
+            - button "No Problems" [s1e110]
+              - text "0"
+              - text "0"
+          - group "Notifications" [s1e111]
+            - button "Notifications" [s1e112]
+          - group "Copilot status" [s1e113]
+            - button "Copilot status" [s1e114]
+          - group "Screen Reader Optimized" [s1e115]
+            - button "Screen Reader Optimized" [s1e116]
+          - group "Welcome to Visual Studio Code" [s1e117]
+            - button "Close" [s1e118]
+            - text "1 of 2"
+            - group "Step 1 of 2: Sign In" [s1e119]
+              - image "Visual Studio Code" [s1e120]
+              - heading "Welcome to VS Code" = 2 [s1e121]
+              - text "Sign in to use GitHub Copilot."
+              - button "Continue with GitHub" [s1e122] focused
+              - button "Continue with Google" [s1e123]
+              - button "Continue with Apple" [s1e124]
+              - button "Continue with GitHub Enterprise" [s1e125]
+              - text "By signing in, you agree to GitHub's"
+              - link "Terms" [s1e126]
+              - text "and"
+              - link "Privacy Statement" [s1e127]
+              - text ". GitHub Copilot may show"
+              - link "public code" [s1e128]
+              - text "suggestions and use your data to improve the product."
+              - text "You can change these"
+              - link "settings" [s1e129]
+              - text "anytime."
+            - button "Continue without Signing In" [s1e130]
+          - list "Info: Screen reader usage detected. Do you want to enable editor.accessibilitySupport to optimize the editor for screen reader usage?, notification" [s1e131]
+            - group "Info: Screen reader usage detected. Do you want to enable editor.accessibilitySupport to optimize the editor for screen reader usage?, notification, Inspect the…" [s1e132]
+              - group [s1e133]
+                - button "Yes" [s1e134]
+                - button "No" [s1e135]
+                - button "Learn More" [s1e136]
+                - group "Screen reader usage detected. Do you want to enable editor.accessibilitySupport to optimize the editor for screen reader usage?" [s1e137]
+                - toolbar "Notification Actions" [s1e138]
+                  - button "Clear Notification (⌘Backspace)" [s1e139]
+  - button "close" [s1e140]
+  - button "full screen" [s1e141]
+  - button "minimize" [s1e142]

@@ -1,0 +1,269 @@
+syntax = "proto3";
+
+// doppeld <-> doppel-agent (inside the guest, or on the host in host mode).
+// Transport: vsock (guest) or unix socket (host). Framing: u32 LE length + AgentFrame.
+package doppel.agent.v1;
+
+import "doppel/common/v1/common.proto";
+
+message AgentFrame {
+  oneof kind {
+    doppel.common.v1.Hello hello = 1;
+    AgentRequest request = 2;
+    AgentResponse response = 3;
+    AgentEvent event = 4;
+  }
+}
+
+message AgentRequest {
+  // Chosen by doppeld, unique per connection. Echoed in the response.
+  uint64 id = 1;
+  oneof operation {
+    GetStatus get_status = 10;
+    CaptureScreen capture_screen = 11;
+    doppel.common.v1.Input input = 12;
+    TakeAxSnapshot take_ax_snapshot = 13;
+    PerformAxAction perform_ax_action = 14;
+    Exec exec = 15;
+    ReadFile read_file = 16;
+    WriteFile write_file = 17;
+    // Asks for AgentEvents on this connection (answered with Done). Only a
+    // subscribed connection gets events, so one-shot connections never see
+    // unsolicited frames. Needs CAPABILITY_EVENTS.
+    Subscribe subscribe = 18;
+  }
+}
+
+message AgentResponse {
+  uint64 id = 1;
+  oneof outcome {
+    doppel.common.v1.Error error = 2;
+    AgentStatus status = 10;
+    doppel.common.v1.Image image = 11;
+    Done done = 12;
+    AxSnapshot ax_snapshot = 13;
+    ExecResult exec_result = 15;
+    FileContents file_contents = 16;
+  }
+}
+
+// Unsolicited, pushed by the agent to subscribed connections. Hints, not a
+// log: the agent coalesces and may drop them, so a reader re-observes the
+// guest (a snapshot) rather than replaying events.
+message AgentEvent {
+  oneof kind {
+    PermissionsChanged permissions_changed = 1;
+    FrontmostAppChanged frontmost_app_changed = 2;
+    UiChanged ui_changed = 3;
+  }
+}
+
+message Subscribe {}
+
+message Done {}
+
+// --- Status --------------------------------------------------------------
+
+message GetStatus {}
+
+enum SessionState {
+  SESSION_STATE_UNSPECIFIED = 0;
+  // The agent runs in a logged-in GUI session.
+  SESSION_STATE_ACTIVE = 1;
+  // Screen locked or another user's session is in front.
+  SESSION_STATE_LOCKED = 2;
+}
+
+message AgentStatus {
+  repeated doppel.common.v1.Permission granted = 1;
+  SessionState session = 2;
+  doppel.common.v1.Size display_points = 3;
+  RunningApp frontmost_app = 4;
+}
+
+message RunningApp {
+  int32 pid = 1;
+  // Not every process has one. Empty means absent.
+  string bundle_id = 2;
+  string name = 3;
+}
+
+message PermissionsChanged { repeated doppel.common.v1.Permission granted = 1; }
+message FrontmostAppChanged { RunningApp app = 1; }
+// The frontmost app's accessibility tree changed: a window, focus, a value.
+// One event can stand for a burst of changes.
+message UiChanged { int32 pid = 1; }
+
+// --- Screen --------------------------------------------------------------
+
+message CaptureScreen {
+  doppel.common.v1.ImageEncoding encoding = 1;
+  // Downscale so the longest side is at most this many pixels. 0 = native.
+  uint32 max_dimension_pixels = 2;
+}
+
+// --- Accessibility ---------------------------------------------------------
+// The agent ships a raw, flat tree. Compaction, refs and diffing are core
+// logic in doppeld, so they are testable without a guest.
+
+message TakeAxSnapshot {
+  oneof scope {
+    Empty focused_window = 1;
+    int32 application_pid = 2;
+  }
+  // Budgets. The snapshot reports truncation instead of exceeding them.
+  uint32 max_nodes = 3;
+  uint32 max_depth = 4;
+  uint32 deadline_ms = 5;
+  // Menus dominate native app trees (~85% of nodes in Finder). Opt in.
+  MenuPolicy menus = 6;
+  // Whether the agent keeps the snapshot's elements for PerformAxAction.
+  Retention retention = 7;
+}
+
+enum Retention {
+  // Kept, as for KEPT_FOR_ACTIONS: an agent that doesn't know the field keeps it.
+  RETENTION_UNSPECIFIED = 0;
+  // Kept among the last few snapshots, so actions can name its nodes.
+  RETENTION_KEPT_FOR_ACTIONS = 1;
+  // A person's look: answered, and nothing kept, so the snapshots an AI
+  // agent acts on are never pushed out. Acting on its nodes is a
+  // StaleReference. Only an agent with CAPABILITY_AX_OBSERVE honours it.
+  RETENTION_OBSERVATION = 2;
+}
+
+message Empty {}
+
+enum MenuPolicy {
+  MENU_POLICY_UNSPECIFIED = 0;
+  MENU_POLICY_EXCLUDE = 1;
+  MENU_POLICY_INCLUDE = 2;
+}
+
+message AxSnapshot {
+  // Identifies this snapshot for later PerformAxAction calls.
+  uint64 snapshot_id = 1;
+  RunningApp app = 2;
+  // Pre-order. nodes[0] is the root.
+  repeated AxNode nodes = 3;
+  Truncation truncation = 4;
+}
+
+enum Truncation {
+  TRUNCATION_UNSPECIFIED = 0;
+  TRUNCATION_COMPLETE = 1;
+  TRUNCATION_NODE_BUDGET = 2;
+  TRUNCATION_DEPTH_BUDGET = 3;
+  TRUNCATION_DEADLINE = 4;
+}
+
+message AxNode {
+  // Index of the parent in AxSnapshot.nodes. Absent for the root.
+  optional uint32 parent = 1;
+  // Raw AX strings as reported by the app. Parsed into roles by the core.
+  string role = 2;
+  string subrole = 3;
+  string title = 4;
+  string description = 5;
+  string identifier = 6;
+  AxValue value = 7;
+  doppel.common.v1.Rect frame = 8;
+  AxFlags flags = 9;
+  repeated string actions = 10;
+}
+
+message AxValue {
+  oneof value {
+    string text = 1;
+    double number = 2;
+    bool boolean = 3;
+  }
+}
+
+message AxFlags {
+  // Absent = the element doesn't report it.
+  optional bool enabled = 1;
+  optional bool focused = 2;
+  optional bool selected = 3;
+  optional bool expanded = 4;
+}
+
+message PerformAxAction {
+  uint64 snapshot_id = 1;
+  uint32 node_index = 2;
+  oneof action {
+    Empty press = 3;
+    string set_value = 4;
+    Empty focus = 5;
+    Empty raise = 6;
+    Empty show_menu = 7;
+    // Any other AX action name the node advertised in AxNode.actions.
+    string named = 8;
+    // Sets AXSelected: rows in lists, tables and outlines, which don't press.
+    Empty select = 9;
+  }
+}
+
+// --- Exec ----------------------------------------------------------------
+
+message Exec {
+  // Absolute path. No shell is involved unless the caller asks for one.
+  string program = 1;
+  repeated string arguments = 2;
+  bytes stdin = 3;
+  uint32 timeout_ms = 4;
+  // Captured output beyond this is dropped and reported.
+  uint32 max_output_bytes = 5;
+  // Absolute path to run in. Empty: the agent's own working directory.
+  string working_directory = 6;
+}
+
+message ExecResult {
+  oneof termination {
+    int32 exit_code = 1;
+    int32 signal = 2;
+    Empty timed_out = 3;
+  }
+  bytes stdout = 4;
+  bytes stderr = 5;
+  OutputCompleteness completeness = 6;
+}
+
+enum OutputCompleteness {
+  OUTPUT_COMPLETENESS_UNSPECIFIED = 0;
+  OUTPUT_COMPLETENESS_FULL = 1;
+  OUTPUT_COMPLETENESS_TRUNCATED = 2;
+}
+
+// --- Files -----------------------------------------------------------------
+// Small and medium files over the agent channel. Large ones belong on a
+// shared directory.
+
+message ReadFile {
+  // Absolute guest path.
+  string path = 1;
+  // A larger file is an InvalidArgument error, never a silent truncation.
+  uint32 max_bytes = 2;
+}
+
+message FileContents {
+  bytes data = 1;
+}
+
+enum WritePolicy {
+  WRITE_POLICY_UNSPECIFIED = 0;
+  // Fail if the path exists.
+  WRITE_POLICY_CREATE_NEW = 1;
+  // Create, or replace an existing file.
+  WRITE_POLICY_REPLACE = 2;
+}
+
+// Written to a temporary file in the same directory, then renamed into
+// place: readers never see a partial file, and a replaced file is a new inode.
+message WriteFile {
+  string path = 1;
+  bytes data = 2;
+  // Permission bits, e.g. 0644 or 0755. 0 means 0644.
+  uint32 mode = 3;
+  WritePolicy policy = 4;
+}

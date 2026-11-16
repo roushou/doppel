@@ -1,0 +1,9 @@
+/target
+**/.build/
+**/.swiftpm/
+*.app/
+.DS_Store
+
+# Claude Code: per-session worktrees and personal settings
+.claude/worktrees/
+.claude/settings.local.json

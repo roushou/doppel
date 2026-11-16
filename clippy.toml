@@ -1,0 +1,11 @@
+# Ambient capabilities are passed in (Clock, IdSource, ...), never reached for.
+# Exemptions belong only in the modules that implement the capability.
+disallowed-methods = [
+  { path = "std::time::SystemTime::now", reason = "take a Clock capability" },
+  { path = "std::time::Instant::now", reason = "take a Clock capability" },
+  { path = "std::env::var", reason = "parse the environment once at the shell boundary" },
+]
+# Tests may unwrap: a failed unwrap is a failed test.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true

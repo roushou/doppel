@@ -1,0 +1,222 @@
+syntax = "proto3";
+
+// Types shared by every Doppel channel. Wire DTOs only: each side parses them
+// into its own domain types at the boundary.
+package doppel.common.v1;
+
+// First frame each peer sends on any channel.
+message Hello {
+  // Incompatible wire changes bump this. Peers refuse a different value.
+  uint32 protocol_version = 1;
+  // Free-form build identifier, for diagnostics only. Never parsed.
+  string software_version = 2;
+  repeated Capability capabilities = 3;
+  // Identifies an installed agent build (its app bundle's build-id), so an
+  // installer can tell the new agent from the old. Empty for a bare binary
+  // and for peers other than the agent.
+  string build_id = 4;
+}
+
+enum Capability {
+  CAPABILITY_UNSPECIFIED = 0;
+  CAPABILITY_SCREENSHOT = 1;
+  CAPABILITY_INPUT = 2;
+  CAPABILITY_AX_SNAPSHOT = 3;
+  CAPABILITY_AX_ACTION = 4;
+  CAPABILITY_EXEC = 5;
+  CAPABILITY_CHECKPOINT = 6;
+  CAPABILITY_HOST_INPUT = 7;
+  CAPABILITY_FILES = 8;
+  // The agent pushes AgentEvents to connections that Subscribe.
+  CAPABILITY_EVENTS = 9;
+  // The VMM shares its display as a stream of frames (OpenDisplay).
+  CAPABILITY_DISPLAY_STREAM = 10;
+  // The VMM records its display to a video file (StartRecording).
+  CAPABILITY_RECORDING = 11;
+  // The agent answers snapshots with RETENTION_OBSERVATION without keeping them.
+  CAPABILITY_AX_OBSERVE = 12;
+}
+
+// Screen coordinates in points, top-left origin, of the display being driven.
+message Point {
+  double x = 1;
+  double y = 2;
+}
+
+message Size {
+  double width = 1;
+  double height = 2;
+}
+
+message Rect {
+  Point origin = 1;
+  Size size = 2;
+}
+
+// --- Input ---------------------------------------------------------------
+
+enum MouseButton {
+  MOUSE_BUTTON_UNSPECIFIED = 0;
+  MOUSE_BUTTON_LEFT = 1;
+  MOUSE_BUTTON_RIGHT = 2;
+  MOUSE_BUTTON_MIDDLE = 3;
+}
+
+enum Modifier {
+  MODIFIER_UNSPECIFIED = 0;
+  MODIFIER_COMMAND = 1;
+  MODIFIER_SHIFT = 2;
+  MODIFIER_OPTION = 3;
+  MODIFIER_CONTROL = 4;
+  MODIFIER_FUNCTION = 5;
+}
+
+// Keys that have no character. Characters travel as `Key.character`.
+enum NamedKey {
+  NAMED_KEY_UNSPECIFIED = 0;
+  NAMED_KEY_RETURN = 1;
+  NAMED_KEY_TAB = 2;
+  NAMED_KEY_SPACE = 3;
+  NAMED_KEY_DELETE = 4;          // backspace
+  NAMED_KEY_FORWARD_DELETE = 5;
+  NAMED_KEY_ESCAPE = 6;
+  NAMED_KEY_LEFT = 7;
+  NAMED_KEY_RIGHT = 8;
+  NAMED_KEY_UP = 9;
+  NAMED_KEY_DOWN = 10;
+  NAMED_KEY_HOME = 11;
+  NAMED_KEY_END = 12;
+  NAMED_KEY_PAGE_UP = 13;
+  NAMED_KEY_PAGE_DOWN = 14;
+  NAMED_KEY_F1 = 21;
+  NAMED_KEY_F2 = 22;
+  NAMED_KEY_F3 = 23;
+  NAMED_KEY_F4 = 24;
+  NAMED_KEY_F5 = 25;
+  NAMED_KEY_F6 = 26;
+  NAMED_KEY_F7 = 27;
+  NAMED_KEY_F8 = 28;
+  NAMED_KEY_F9 = 29;
+  NAMED_KEY_F10 = 30;
+  NAMED_KEY_F11 = 31;
+  NAMED_KEY_F12 = 32;
+}
+
+message Key {
+  oneof key {
+    NamedKey named = 1;
+    // Exactly one extended grapheme cluster, e.g. "a", "/", "é".
+    string character = 2;
+    // Escape hatch: a raw macOS virtual key code.
+    uint32 virtual_key_code = 3;
+  }
+}
+
+message KeyChord {
+  repeated Modifier modifiers = 1;
+  Key key = 2;
+}
+
+message Click {
+  Point at = 1;
+  MouseButton button = 2;
+  // 1 = single, 2 = double, 3 = triple.
+  uint32 count = 3;
+}
+
+message Drag {
+  Point from = 1;
+  Point to = 2;
+  MouseButton button = 3;
+}
+
+message Scroll {
+  Point at = 1;
+  // Points of content motion: positive dy scrolls towards the top of the
+  // document, positive dx towards its left. Host input holds to this while
+  // the guest has natural scrolling on (macOS's default); the agent always.
+  double dx = 2;
+  double dy = 3;
+}
+
+message TypeText {
+  string text = 1;
+}
+
+enum PointerPhase {
+  POINTER_PHASE_UNSPECIFIED = 0;
+  POINTER_PHASE_PRESS = 1;
+  POINTER_PHASE_RELEASE = 2;
+  // With `button` set, a move with that button held: a drag.
+  POINTER_PHASE_MOVE = 3;
+}
+
+// One pointer event as it happens, as an interactive viewer forwards it.
+// Click and Drag are gestures made of these.
+message Pointer {
+  PointerPhase phase = 1;
+  Point at = 2;
+  // The button pressed or released; for a move, the button held, if any.
+  MouseButton button = 3;
+  // For a press or release: 1 = single, 2 = double, 3 = triple.
+  uint32 click_count = 4;
+  repeated Modifier modifiers = 5;
+}
+
+message Input {
+  oneof action {
+    Click click = 1;
+    Point move_to = 2;
+    Drag drag = 3;
+    Scroll scroll = 4;
+    KeyChord key = 5;
+    TypeText type_text = 6;
+    Pointer pointer = 7;
+  }
+}
+
+// --- Images --------------------------------------------------------------
+
+enum ImageEncoding {
+  IMAGE_ENCODING_UNSPECIFIED = 0;
+  IMAGE_ENCODING_PNG = 1;
+  IMAGE_ENCODING_JPEG = 2;
+}
+
+message Image {
+  ImageEncoding encoding = 1;
+  uint32 width_pixels = 2;
+  uint32 height_pixels = 3;
+  // Size of the captured display in points: the coordinate space of Input.
+  Size display_points = 4;
+  bytes data = 5;
+}
+
+// --- Errors --------------------------------------------------------------
+
+enum Permission {
+  PERMISSION_UNSPECIFIED = 0;
+  PERMISSION_SCREEN_RECORDING = 1;
+  PERMISSION_ACCESSIBILITY = 2;
+}
+
+message Error {
+  oneof kind {
+    PermissionMissing permission_missing = 1;
+    InvalidArgument invalid_argument = 2;
+    StaleReference stale_reference = 3;
+    Timeout timeout = 4;
+    Unsupported unsupported = 5;
+    InvalidState invalid_state = 6;
+    Internal internal = 7;
+  }
+}
+
+message PermissionMissing { Permission permission = 1; }
+message InvalidArgument { string field = 1; string reason = 2; }
+// An AX element reference from an older snapshot no longer resolves.
+message StaleReference { uint64 snapshot_id = 1; uint32 node_index = 2; }
+message Timeout { uint32 after_ms = 1; }
+message Unsupported { string what = 1; }
+message InvalidState { string reason = 1; }
+message Internal { string message = 1; }

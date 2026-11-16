@@ -1,0 +1,1157 @@
+syntax = "proto3";
+
+// Clients (the doppel CLI, doppel mcp, the viewer) <-> doppeld, the daemon
+// that owns a user's machines. Transport: the daemon's unix socket in the
+// data root (doppeld.socket). Framing: u32 LE length + DaemonFrame. The daemon speaks
+// first (Hello), then the client answers with its own.
+//
+// Only Rust speaks this package; the VMM and the agent never see it.
+package doppel.daemon.v1;
+
+import "doppel/agent/v1/agent.proto";
+import "doppel/common/v1/common.proto";
+import "doppel/vmm/v1/vmm.proto";
+
+message DaemonFrame {
+  oneof kind {
+    doppel.common.v1.Hello hello = 1;
+    DaemonRequest request = 2;
+    DaemonResponse response = 3;
+    // From the client: stop the request with this id on this connection.
+    // Its response still comes, as a failure if it stopped before the end.
+    CancelRequest cancel = 4;
+    // From the daemon: something a running request reports before or after
+    // its response, such as each frame of an open display.
+    DaemonEvent event = 5;
+  }
+}
+
+message DaemonEvent {
+  // The request it belongs to.
+  uint64 request = 1;
+  oneof kind {
+    // A frame of the display OpenDisplay opened is ready in its slot.
+    doppel.vmm.v1.DisplayFrame display_frame = 2;
+    // A frame of the display OpenEncodedDisplay opened.
+    doppel.vmm.v1.EncodedFrame encoded_frame = 3;
+    // A call of an agent's session started or ended (WatchActivity).
+    Activity activity = 4;
+  }
+}
+
+message CancelRequest {
+  uint64 id = 1;
+}
+
+// A connection may send requests without waiting for the answers: each is
+// answered by its id, in the order they finish. Requests on one machine run
+// one at a time, in the order they arrived, across all connections.
+message DaemonRequest {
+  uint64 id = 1;
+  // What the request does, in the client's words, for the session's
+  // recording. Leaves out secrets (typed text, file contents).
+  string caption = 2;
+  oneof operation {
+    ListMachines list_machines = 10;
+    GetStatus get_status = 11;
+    StartMachine start_machine = 12;
+    AwaitDesktop await_desktop = 13;
+    StopMachine stop_machine = 14;
+    PauseMachine pause_machine = 15;
+    ResumeMachine resume_machine = 16;
+    TakeCheckpoint take_checkpoint = 17;
+    ForkMachine fork_machine = 18;
+    RestoreMachine restore_machine = 19;
+    GetDaemonInfo get_daemon_info = 20;
+    OpenSession open_session = 21;
+    ListSessions list_sessions = 22;
+    GetMachineReport get_machine_report = 23;
+    TakeScreenshot take_screenshot = 24;
+    ReadScreenText read_screen_text = 25;
+    SendInput send_input = 26;
+    TakeSnapshot take_snapshot = 27;
+    ActOnElement act_on_element = 28;
+    WaitForElement wait_for_element = 29;
+    WaitForText wait_for_text = 30;
+    RunProgram run_program = 31;
+    ReadGuestFile read_guest_file = 32;
+    WriteGuestFile write_guest_file = 33;
+    RollBack roll_back = 34;
+    OpenDisplay open_display = 35;
+    SendHostInput send_host_input = 36;
+    TakeControl take_control = 37;
+    HandBack hand_back = 38;
+    PauseSession pause_session = 39;
+    ResumeSession resume_session = 40;
+    OpenEncodedDisplay open_encoded_display = 41;
+    RunForks run_forks = 42;
+    IssueToken issue_token = 43;
+    ListTokens list_tokens = 44;
+    RevokeToken revoke_token = 45;
+    ConfigureWeb configure_web = 46;
+    GetWebStatus get_web_status = 47;
+    ListRecordings list_recordings = 48;
+    OpenRecording open_recording = 49;
+    DeleteMachine delete_machine = 50;
+    WatchActivity watch_activity = 51;
+    OpenSeenSnapshot open_seen_snapshot = 52;
+    NameElements name_elements = 53;
+    ObserveElements observe_elements = 54;
+    ObserveText observe_text = 55;
+    MarkScreen mark_screen = 56;
+  }
+}
+
+message DaemonResponse {
+  uint64 id = 1;
+  // Set on a session's first response for a machine after a person had
+  // control of it, so the agent knows to look again.
+  HandedBack handed_back = 5;
+  oneof outcome {
+    // The request itself was wrong (an invalid machine name, an unknown
+    // operation), whatever the machines' state.
+    doppel.common.v1.Error error = 2;
+    // The daemon ran the operation and it failed on the host.
+    MachineFailure machine_failure = 3;
+    Done done = 4;
+    MachineList machine_list = 10;
+    MachineStatus machine_status = 11;
+    MachineStarted machine_started = 12;
+    LoginResult login_result = 13;
+    MachineStopped machine_stopped = 14;
+    MachineResumed machine_resumed = 15;
+    CheckpointReport checkpoint_report = 16;
+    DaemonInfo daemon_info = 17;
+    SessionOpened session_opened = 18;
+    SessionList session_list = 19;
+    MachineReport machine_report = 20;
+    doppel.common.v1.Image image = 21;
+    doppel.vmm.v1.RecognizedText screen_text = 22;
+    doppel.agent.v1.AxSnapshot ax_snapshot = 23;
+    ActResult act_result = 24;
+    ElementWaitResult element_wait = 25;
+    TextWaitResult text_wait = 26;
+    doppel.agent.v1.ExecResult exec_result = 27;
+    doppel.agent.v1.FileContents file_contents = 28;
+    // The display's shared memory comes with this frame (SCM_RIGHTS).
+    doppel.vmm.v1.DisplayLayout display_layout = 29;
+    doppel.vmm.v1.EncodedDisplayOpened encoded_display = 30;
+    ForksRun forks_run = 31;
+    TokenEntry token = 32;
+    TokenList token_list = 33;
+    WebStatus web_status = 34;
+    RecordingList recording_list = 35;
+    Recording recording = 36;
+  }
+}
+
+message Done {}
+
+message HandedBack {
+  string machine = 1;
+  // How long the person had control.
+  uint64 held_millis = 2;
+}
+
+// A failure of an operation on a machine, as the daemon describes it. Clients
+// show its message; they don't act on its text.
+message MachineFailure {
+  string message = 1;
+  // Whether the operation may still have taken effect. A value a client
+  // doesn't know reads as MAYBE_DONE.
+  Certainty certainty = 2;
+  // What caused it, outermost first: each one's message.
+  repeated string causes = 3;
+}
+
+enum Certainty {
+  CERTAINTY_UNSPECIFIED = 0;
+  // Refused, or never delivered: nothing changed.
+  CERTAINTY_NOT_DONE = 1;
+  // It may or may not have taken effect.
+  CERTAINTY_MAYBE_DONE = 2;
+}
+
+// Which store the daemon serves, so a client given another one can refuse it.
+message GetDaemonInfo {}
+
+message DaemonInfo {
+  // The machines' data root: an absolute path, as raw bytes (a path need
+  // not be UTF-8).
+  bytes data_root = 1;
+}
+
+message ListMachines {}
+
+message MachineList {
+  repeated MachineEntry machines = 1;
+  // Entries of the machines directory that aren't valid machine names, as
+  // raw file names (not necessarily UTF-8).
+  repeated bytes unrecognized = 2;
+}
+
+message MachineEntry {
+  string name = 1;
+  oneof status {
+    MachineStatus machine_status = 2;
+    // The machine's status couldn't be read.
+    MachineFailure failure = 3;
+  }
+  // Unset from a daemon older than lineage: read it as unrecorded.
+  oneof recorded_lineage {
+    // Its role and origin; the default when none was recorded.
+    Lineage lineage = 4;
+    // Its lineage file couldn't be read or decoded, and why. The machine
+    // is neither a known golden image nor a known working one.
+    string lineage_unreadable = 5;
+  }
+}
+
+// What a machine is for and where it came from, as the daemon tells it. A
+// bundle keeps its own on disk (doppel.bundle.v1.Lineage).
+message Lineage {
+  oneof role {
+    // A machine to use.
+    Done working = 1;
+    // A template to fork from.
+    GoldenRole golden = 2;
+  }
+  oneof origin {
+    // Made before origins were recorded: unknown.
+    Done unrecorded = 3;
+    // macOS installed into it from a restore image.
+    Done installed = 4;
+    // Adopted from existing VZ machine files.
+    Done imported = 5;
+    // Made from a checkpoint of another machine.
+    ForkedFrom forked = 6;
+  }
+}
+
+message GoldenRole {
+  // The checkpoint new machines start from.
+  string checkpoint = 1;
+}
+
+message ForkedFrom {
+  // The machine it was made from, which may since have gone.
+  string machine = 1;
+  string checkpoint = 2;
+}
+
+message GetStatus {
+  string name = 1;
+}
+
+message MachineStatus {
+  oneof kind {
+    // Not running: how it would start.
+    NextStart stopped = 1;
+    // Running: its VMM's state.
+    doppel.vmm.v1.VmState live = 2;
+  }
+}
+
+enum NextStart {
+  NEXT_START_UNSPECIFIED = 0;
+  NEXT_START_COLD_BOOT = 1;
+  NEXT_START_RESUME_SAVED_STATE = 2;
+}
+
+// --- Lifecycle -------------------------------------------------------------------
+// Each takes the machine's claim for its whole run, so a second client gets
+// "busy" as a second process would.
+
+message StartMachine {
+  string name = 1;
+  Window window = 2;
+}
+
+enum Window {
+  WINDOW_UNSPECIFIED = 0;
+  WINDOW_HIDDEN = 1;
+  // The VMM shows the VM in a native window.
+  WINDOW_SHOWN = 2;
+}
+
+message MachineStarted {
+  doppel.vmm.v1.VmState state = 1;
+  // How it started: from saved memory, or a cold boot.
+  NextStart started_by = 2;
+}
+
+// Waits for an agent-ready desktop, typing the stored password once if the
+// guest is locked.
+message AwaitDesktop {
+  string name = 1;
+}
+
+message LoginResult {
+  oneof outcome {
+    // The session was already active: nothing typed.
+    uint64 already_active_after_micros = 1;
+    // The password was typed and the session became active.
+    uint64 unlocked_after_micros = 2;
+    // Locked, and no password is stored.
+    Done needs_password = 3;
+    // Typed once; the session stayed locked.
+    Done password_not_accepted = 4;
+    // The agent never answered with a session state.
+    NoAgent no_agent = 5;
+    // Typed, then the agent stopped answering. `last` is what it last said.
+    string unknown = 6;
+  }
+}
+
+message NoAgent {
+  uint64 waited_micros = 1;
+  string last = 2;
+}
+
+message StopMachine {
+  string name = 1;
+  doppel.vmm.v1.StopMode mode = 2;
+}
+
+message MachineStopped {
+  // How the guest was asked to stop.
+  oneof request {
+    // Powered off.
+    Done forced = 1;
+    // The logged-in session was asked to shut down.
+    Done session = 2;
+    // The same, after typing the stored password on a locked screen.
+    uint64 session_after_unlock_micros = 3;
+    // The power button, because the session couldn't be asked: why.
+    string power_button = 4;
+  }
+  StopOutcome outcome = 5;
+}
+
+enum StopOutcome {
+  STOP_OUTCOME_UNSPECIFIED = 0;
+  STOP_OUTCOME_STOPPED = 1;
+  // Asked to shut down, and still running.
+  STOP_OUTCOME_SHUTDOWN_PENDING = 2;
+}
+
+message PauseMachine {
+  string name = 1;
+}
+
+message ResumeMachine {
+  string name = 1;
+}
+
+message MachineResumed {
+  ResumeOutcome outcome = 1;
+}
+
+enum ResumeOutcome {
+  RESUME_OUTCOME_UNSPECIFIED = 0;
+  RESUME_OUTCOME_RESUMED = 1;
+  RESUME_OUTCOME_ALREADY_RUNNING = 2;
+}
+
+message TakeCheckpoint {
+  string name = 1;
+  string label = 2;
+  AfterCheckpoint then = 3;
+}
+
+enum AfterCheckpoint {
+  AFTER_CHECKPOINT_UNSPECIFIED = 0;
+  AFTER_CHECKPOINT_RESUME = 1;
+  AFTER_CHECKPOINT_STOP = 2;
+}
+
+message CheckpointReport {
+  oneof result {
+    CheckpointCompleted completed = 1;
+    CheckpointFailed failed = 2;
+    // Neither success nor failure can be claimed.
+    CheckpointUnknown unknown = 3;
+    // The procedure ended before a terminal state: a bug. The step it awaited.
+    CheckpointStep in_progress = 4;
+  }
+  // How long the guest was paused, once it was.
+  optional uint64 paused_for_micros = 5;
+  // Cleanup that ran after a failure, in order.
+  repeated CheckpointCleanup cleanup = 6;
+}
+
+message CheckpointCompleted {
+  uint64 memory_bytes = 1;
+  // Set when the guest wasn't synced first: why.
+  optional string sync_skipped = 2;
+  // Set when the guest may be left paused: the resume or stop failed.
+  MachineFailure left_paused = 3;
+}
+
+message CheckpointFailed {
+  CheckpointStep at = 1;
+  MachineFailure error = 2;
+  GuestAfterFailure guest = 3;
+}
+
+message CheckpointUnknown {
+  CheckpointStep at = 1;
+  MachineFailure error = 2;
+}
+
+message CheckpointCleanup {
+  // What was done, described.
+  string action = 1;
+  // Unset when it succeeded.
+  MachineFailure failure = 2;
+}
+
+enum CheckpointStep {
+  CHECKPOINT_STEP_UNSPECIFIED = 0;
+  CHECKPOINT_STEP_SYNCING_GUEST = 1;
+  CHECKPOINT_STEP_PAUSING = 2;
+  CHECKPOINT_STEP_FLUSHING = 3;
+  CHECKPOINT_STEP_CLONING = 4;
+  CHECKPOINT_STEP_SAVING_MEMORY = 5;
+  CHECKPOINT_STEP_COMMITTING = 6;
+  CHECKPOINT_STEP_FINISHING = 7;
+}
+
+enum GuestAfterFailure {
+  GUEST_AFTER_FAILURE_UNSPECIFIED = 0;
+  // Failed before pausing: the guest never stopped running.
+  GUEST_AFTER_FAILURE_UNTOUCHED = 1;
+  // A resume was requested; see the cleanup.
+  GUEST_AFTER_FAILURE_RESUME_REQUESTED = 2;
+}
+
+// The source's checkpoint becomes a new machine, `into`.
+message ForkMachine {
+  string source = 1;
+  string label = 2;
+  string into = 3;
+}
+
+// Makes `count` fresh forks of a checkpoint and starts them together: each
+// gets the checkpoint's disk and login under a new machine identity, and
+// cold-boots, so they run side by side. They are named "{name}-{label}-{n}",
+// with the next free numbers. Refused, before anything is made, when they
+// wouldn't fit beside the machines running already (two VMs at most).
+message RunForks {
+  string name = 1;
+  string label = 2;
+  uint32 count = 3;
+}
+
+message ForksRun {
+  // One per fork made, in order.
+  repeated RunFork forks = 1;
+}
+
+message RunFork {
+  string name = 1;
+  oneof outcome {
+    // It started; how its desktop came up.
+    LoginResult desktop = 2;
+    // It was made but didn't start, or its desktop wasn't awaited.
+    MachineFailure failure = 3;
+  }
+}
+
+// --- Tokens for the browser viewer ------------------------------------------
+//
+// Only on the daemon's local socket: a token can't mint tokens.
+
+// Records a token the client made. The daemon never sees the token itself,
+// only its SHA-256, and answers with the token's entry.
+message IssueToken {
+  // 32 bytes.
+  bytes sha256 = 1;
+  // From 60 to 2592000 (30 days).
+  uint32 ttl_seconds = 2;
+  // Optional: what the person calls it.
+  string label = 3;
+}
+
+message ListTokens {}
+
+// Answered with the revoked token's entry.
+message RevokeToken {
+  string id = 1;
+}
+
+message TokenEntry {
+  // 8 hex digits: the start of the token's SHA-256.
+  string id = 1;
+  // Empty when it has none.
+  string label = 2;
+  // Seconds since 1970, UTC.
+  uint64 issued_unix_seconds = 3;
+  uint64 expires_unix_seconds = 4;
+}
+
+// The tokens that let their holders in now, oldest first.
+message TokenList {
+  repeated TokenEntry tokens = 1;
+}
+
+// --- The browser viewer's listener -------------------------------------------
+//
+// Only on the daemon's local socket. The setting is saved, and the daemon
+// listens whenever it runs with it on.
+
+// Answered with the status once the listener has started, failed or
+// stopped.
+message ConfigureWeb {
+  oneof listen {
+    // Listen on this TCP port, on every address.
+    WebPort on = 1;
+    Done off = 2;
+  }
+}
+
+message WebPort {
+  // 1 to 65535.
+  uint32 port = 1;
+}
+
+message GetWebStatus {}
+
+message WebStatus {
+  oneof state {
+    Done off = 1;
+    WebListening listening = 2;
+    // The setting is on, and listening failed.
+    WebFailed failed = 3;
+  }
+}
+
+message WebListening {
+  uint32 port = 1;
+  // The certificate's SHA-256, as browsers show it: "AB:CD:...".
+  string fingerprint = 2;
+  // What the page can be reached as: this Mac's names and addresses.
+  repeated string names = 3;
+}
+
+message WebFailed {
+  uint32 port = 1;
+  string reason = 2;
+}
+
+// The stopped machine's next start resumes at the checkpoint.
+message RestoreMachine {
+  string name = 1;
+  string label = 2;
+}
+
+// Deletes a stopped machine, its disk and its checkpoints, for good; its
+// recordings stay. Answered with Done.
+message DeleteMachine {
+  string name = 1;
+}
+
+// --- Sessions ----------------------------------------------------------------
+// A session is one client driving machines, such as an agent through
+// `doppel mcp`. It is its connection: it ends when the connection closes.
+
+message OpenSession {
+  // Who drives, as shown by `doppel sessions`.
+  string client = 1;
+  // Was a directory to record into; recordings now live in the store.
+  reserved 2;
+  reserved "record_into";
+  // Record the session into the daemon's store: each machine it touches,
+  // captioned with each request's caption, and a trace of its requests.
+  bool record = 3;
+}
+
+message SessionOpened {
+  uint64 session = 1;
+  // Where the session is recorded, when it is (an absolute path, as raw
+  // bytes).
+  optional bytes recording = 2;
+}
+
+message ListSessions {}
+
+message SessionList {
+  repeated SessionEntry sessions = 1;
+}
+
+message SessionEntry {
+  uint64 id = 1;
+  string client = 2;
+  // The machines its requests named, in first-use order.
+  repeated string machines = 3;
+  // Requests answered so far.
+  uint64 answered = 4;
+  // Captions of the requests running or waiting their turn now.
+  repeated string running = 5;
+  SessionState state = 6;
+}
+
+enum SessionState {
+  SESSION_STATE_UNSPECIFIED = 0;
+  SESSION_STATE_ACTIVE = 1;
+  // Its next calls wait until it's resumed.
+  SESSION_STATE_PAUSED = 2;
+}
+
+// Holds a session's next calls, whatever machine they name; one already
+// running finishes.
+message PauseSession {
+  uint64 session = 1;
+}
+
+message ResumeSession {
+  uint64 session = 1;
+}
+
+// --- Operations on a running machine ------------------------------------------
+
+// Which path input and capture take.
+enum Via {
+  VIA_UNSPECIFIED = 0;
+  // The guest agent: the logged-in session's own events and capture.
+  VIA_AGENT = 1;
+  // The VMM: works before login and on a locked screen.
+  VIA_HOST = 2;
+}
+
+message GetMachineReport {
+  string name = 1;
+}
+
+// A machine's state, its agent's, and its checkpoints.
+message MachineReport {
+  MachineStatus status = 1;
+  oneof agent {
+    doppel.agent.v1.AgentStatus connected = 2;
+    // Why the agent couldn't be asked.
+    string unreachable = 3;
+    // The VM isn't running.
+    Done not_running = 4;
+  }
+  repeated string checkpoints = 5;
+}
+
+message TakeScreenshot {
+  string name = 1;
+  Via via = 2;
+  oneof size {
+    // One image pixel per display point.
+    Done match_points = 3;
+    uint32 max_pixels = 4;
+  }
+}
+
+// Text recognition on the host's view of the display.
+message ReadScreenText {
+  string name = 1;
+  // What the caller will look for in the text (`find_text`'s query), so
+  // viewers can show where it was found. The answer is the same without it.
+  optional string query = 2;
+}
+
+// Puts a mark on a machine's screen for the people watching: a box, a dot or
+// an arrow on an element, a point or an area, with a short note, for a
+// while. It changes nothing on the machine and takes no turn, but it is a
+// call of the session: viewers are told of it as activity and the trace
+// keeps it. Answered with Done; refused outside a session, and for an
+// element whose snapshot the daemon no longer keeps.
+message MarkScreen {
+  string name = 1;
+  MarkShape shape = 2;
+  oneof at {
+    doppel.common.v1.Point point = 3;
+    doppel.common.v1.Rect area = 4;
+    // An element of a snapshot the session saw.
+    ElementOf element = 5;
+  }
+  // Where an arrow points from; only for an arrow.
+  doppel.common.v1.Point from = 6;
+  // At most 200 characters, one line.
+  string note = 7;
+  // How long it stays, from 1 to 60 seconds.
+  oneof lasts {
+    uint32 for_ms = 8;
+    // Until the session's next call that acts on the screen, or this long
+    // at most.
+    uint32 until_acted_ms = 9;
+  }
+}
+
+message ElementOf {
+  uint64 snapshot_id = 1;
+  uint32 node_index = 2;
+}
+
+enum MarkShape {
+  MARK_SHAPE_UNSPECIFIED = 0;
+  MARK_SHAPE_BOX = 1;
+  MARK_SHAPE_DOT = 2;
+  MARK_SHAPE_ARROW = 3;
+}
+
+// A mark as viewers draw it: its element found, in display points.
+message ScreenMark {
+  MarkShape shape = 1;
+  oneof at {
+    doppel.common.v1.Point point = 2;
+    // An area, or an element's frame and name.
+    ElementTarget area = 3;
+  }
+  doppel.common.v1.Point from = 4;
+  string note = 5;
+  oneof lasts {
+    uint32 for_ms = 6;
+    uint32 until_acted_ms = 7;
+  }
+}
+
+// A person's own read of a machine's screen text, answered with it
+// (`screen_text`). Like ObserveElements, it takes no turn and isn't traced
+// or shown as activity.
+message ObserveText {
+  string name = 1;
+}
+
+// Opens a running machine's display: answered with its layout and the
+// shared memory holding its frames, then a display_frame event for each
+// frame, until the machine stops (the daemon then closes the connection) or
+// the request is cancelled. It needs a connection of its own, so frame
+// events never wait behind other responses.
+message OpenDisplay {
+  string name = 1;
+}
+
+// Opens a running machine's display as an H.264 stream, for a viewer that
+// can't share this host's memory (one across SSH). Like OpenDisplay, served
+// on a connection of its own until the machine stops: EncodedFrame events
+// follow the response, starting with a key frame.
+message OpenEncodedDisplay {
+  string name = 1;
+}
+
+// A person at a viewer takes control of a machine: sessions' calls on it
+// wait until it's handed back, and this connection alone may send it
+// SendHostInput. Refused while another connection has it. Closing the
+// connection hands it back.
+message TakeControl {
+  string name = 1;
+}
+
+message HandBack {
+  string name = 1;
+}
+
+// Input through the VMM's virtual devices from a person at a viewer, on the
+// connection that has control of the machine. Unlike SendInput it doesn't
+// wait for the machine's queue.
+message SendHostInput {
+  string name = 1;
+  doppel.common.v1.Input input = 2;
+}
+
+message SendInput {
+  string name = 1;
+  Via via = 2;
+  doppel.common.v1.Input input = 3;
+}
+
+enum SnapshotScope {
+  SNAPSHOT_SCOPE_UNSPECIFIED = 0;
+  SNAPSHOT_SCOPE_FOCUSED_WINDOW = 1;
+  // Resolved to the app's process when the snapshot is taken.
+  SNAPSHOT_SCOPE_FRONTMOST_APP = 2;
+}
+
+message SnapshotSpec {
+  SnapshotScope scope = 1;
+  doppel.agent.v1.MenuPolicy menus = 2;
+}
+
+message TakeSnapshot {
+  string name = 1;
+  SnapshotSpec spec = 2;
+}
+
+message ActOnElement {
+  string name = 1;
+  doppel.agent.v1.PerformAxAction action = 2;
+}
+
+message ActResult {
+  ActOutcome outcome = 1;
+}
+
+enum ActOutcome {
+  ACT_OUTCOME_UNSPECIFIED = 0;
+  ACT_OUTCOME_DONE = 1;
+  // The element is gone or changed since its snapshot; nothing was done.
+  ACT_OUTCOME_STALE_REFERENCE = 2;
+}
+
+// Waits on accessibility snapshots until the condition holds.
+message WaitForElement {
+  string name = 1;
+  oneof condition {
+    // Some element's title, description, identifier or text contains this.
+    string appears = 2;
+    // No element mentions this, in a complete snapshot.
+    string disappears = 3;
+    // The snapshot's app has this name or bundle id.
+    string frontmost = 4;
+  }
+  uint32 timeout_ms = 5;
+  SnapshotSpec spec = 6;
+}
+
+// Waits on text recognition until the text appears or disappears.
+message WaitForText {
+  string name = 1;
+  oneof condition {
+    string appears = 2;
+    string disappears = 3;
+  }
+  uint32 timeout_ms = 4;
+}
+
+message WaitSatisfied {
+  uint64 elapsed_micros = 1;
+  uint32 polls = 2;
+}
+
+message WaitTimedOut {
+  // The last retryable error, if the last poll failed.
+  optional string last_error = 1;
+  uint64 elapsed_micros = 2;
+  uint32 polls = 3;
+}
+
+message WaitFailed {
+  string reason = 1;
+  uint32 polls = 2;
+}
+
+message ElementWaitResult {
+  oneof end {
+    WaitSatisfied satisfied = 1;
+    WaitTimedOut timed_out = 2;
+    WaitFailed failed = 3;
+  }
+  // What satisfied it, or the last snapshot before it timed out.
+  doppel.agent.v1.AxSnapshot seen = 4;
+}
+
+message TextWaitResult {
+  oneof end {
+    WaitSatisfied satisfied = 1;
+    WaitTimedOut timed_out = 2;
+    WaitFailed failed = 3;
+  }
+  doppel.vmm.v1.RecognizedText seen = 4;
+}
+
+// A program on a channel of its own; cancelling the request stops it.
+message RunProgram {
+  string name = 1;
+  doppel.agent.v1.Exec exec = 2;
+}
+
+message ReadGuestFile {
+  string name = 1;
+  doppel.agent.v1.ReadFile read = 2;
+}
+
+message WriteGuestFile {
+  string name = 1;
+  doppel.agent.v1.WriteFile write = 2;
+}
+
+// Powers off, restores the checkpoint, starts hidden and waits for the
+// desktop: answered with a LoginResult.
+message RollBack {
+  string name = 1;
+  string label = 2;
+}
+
+// --- Activity ------------------------------------------------------------------
+// Streams what agents' sessions do to the machines, as they do it, for a
+// viewer to draw over the screen: answered with Done, then an `activity`
+// event for each machine's recent calls (`recent`), then one as each call
+// on a machine gets its turn and as it ends, until the request is
+// cancelled. Served on a connection of its own, like a display.
+// A person's own input isn't streamed: they see it as they make it.
+message WatchActivity {}
+
+message Activity {
+  // The session the call is in, and its id there: a call's start and end
+  // carry the same pair.
+  uint64 session = 1;
+  uint64 request = 2;
+  string machine = 3;
+  // The session's client, in its own words.
+  string client = 4;
+  // What the call does, in the client's words; never typed text.
+  string caption = 5;
+  oneof phase {
+    CallStarted started = 6;
+    CallEnded ended = 7;
+    // A call from before the viewer began watching.
+    CallRecent recent = 8;
+    // The session's client named the elements of a snapshot a call of the
+    // machine saw. `request` is the naming request's own id.
+    ElementRefs named = 9;
+  }
+}
+
+// A call a new viewer is told of first, so it can show what happened before
+// it began watching: each machine's latest calls, oldest first, with the
+// snapshot of only the latest call that saw one. Times are counted back
+// from when the viewer began watching. A call still under way has no end
+// yet; its end comes as an ordinary `ended` event.
+message CallRecent {
+  CallStarted started = 1;
+  CallEnded ended = 2;
+  uint64 started_ms_ago = 3;
+  optional uint64 ended_ms_ago = 4;
+}
+
+message CallStarted {
+  Gesture gesture = 1;
+  // Where on the display it acts, in display points, when that is known.
+  oneof target {
+    doppel.common.v1.Point point = 2;
+    // An accessibility element: its frame and name in the snapshot its
+    // reference came from.
+    ElementTarget element = 3;
+    DragTarget drag = 4;
+  }
+  // What a mark call puts on the screen (GESTURE_MARK).
+  ScreenMark mark = 5;
+}
+
+enum Gesture {
+  GESTURE_UNSPECIFIED = 0;
+  GESTURE_CLICK = 1;
+  GESTURE_DOUBLE_CLICK = 2;
+  GESTURE_SECONDARY_CLICK = 3;
+  GESTURE_MOVE = 4;
+  GESTURE_DRAG = 5;
+  GESTURE_SCROLL = 6;
+  GESTURE_KEY = 7;
+  GESTURE_TYPE = 8;
+  // An accessibility action on an element: press, set a value, focus...
+  GESTURE_ACT = 9;
+  // Reads the screen: a snapshot, a screenshot, its text.
+  GESTURE_LOOK = 10;
+  GESTURE_WAIT = 11;
+  // Runs a program or reads or writes a file in the guest.
+  GESTURE_RUN = 12;
+  // Starts, stops, pauses, checkpoints or rolls the machine back.
+  GESTURE_LIFECYCLE = 13;
+  GESTURE_OTHER = 14;
+  // Points something out to the people watching; changes nothing.
+  GESTURE_MARK = 15;
+}
+
+message ElementTarget {
+  doppel.common.v1.Rect frame = 1;
+  // Its title, description or role: what a person would call it.
+  string label = 2;
+}
+
+message DragTarget {
+  doppel.common.v1.Point from = 1;
+  doppel.common.v1.Point to = 2;
+}
+
+message CallEnded {
+  oneof outcome {
+    Done done = 1;
+    // Why it failed, timed out, or was refused.
+    string failed = 2;
+    string timed_out = 3;
+    string refused = 4;
+  }
+  // What the call saw, when it took an accessibility snapshot (a snapshot,
+  // or a wait on an element): the snapshot as the agent got it, except that
+  // a password field's value is removed. Other values are left in: they are
+  // on the screen the viewer already shows.
+  doppel.agent.v1.AxSnapshot seen = 5;
+  // What the session's client named the elements of `seen`, once it has: set
+  // only in a recent call (`CallRecent`); a live call's names come after it
+  // ended, as a `named` event.
+  ElementRefs refs = 6;
+  // What the call read off the screen by text recognition: a text read, or
+  // the last poll of a text wait.
+  TextRead read = 7;
+}
+
+// The text a call read off the screen, and where what it looked for was
+// found. The screen shows the same text, so nothing is removed.
+message TextRead {
+  doppel.vmm.v1.RecognizedText text = 1;
+  // What it looked for: a text read's query, or a text wait's text.
+  optional string query = 2;
+  // Each place the query was found, in reading order: the matched words.
+  repeated doppel.common.v1.Rect found = 3;
+}
+
+// The names a session's client gave the elements of a snapshot, as it showed
+// it to its model: `doppel mcp` names them with refs like `s3e12`. Element n
+// (from 1) is node `nodes[n - 1]` of the snapshot, in its pre-order; elements
+// left out of what the model was shown have no name.
+message ElementRefs {
+  // The snapshot's `snapshot_id`.
+  uint64 snapshot = 1;
+  // The ref's prefix: 3 in `s3e12`. Counted per session, from 1.
+  uint32 generation = 2;
+  repeated uint32 nodes = 3;
+}
+
+// A person's look at a machine's elements: a snapshot of its frontmost app's
+// focused window, answered with it (`ax_snapshot`), a password field's value
+// removed. It costs the AI agents driving the machine nothing: it takes no
+// turn, so their calls keep their order, and the guest keeps nothing of it,
+// so their refs stay valid. Refused when the guest's agent can't promise
+// that (one built before CAPABILITY_AX_OBSERVE). Not traced or shown as
+// activity: it is the viewer's own.
+message ObserveElements {
+  string name = 1;
+}
+
+// Tells the daemon what the session's client named the elements of a snapshot
+// of `machine` that a call of the session saw, so viewers can show the same
+// names. Answered with Done; not a call: it takes no turn and isn't traced.
+message NameElements {
+  string machine = 1;
+  ElementRefs refs = 2;
+}
+
+// --- Recordings ---------------------------------------------------------------
+// A session recorded into the store (`doppel mcp --record`): a folder in
+// `recordings/` holding a video per VMM run of each machine it drove, the
+// videos' captions, the trace of its requests, and when each video starts.
+// The videos themselves are fetched over HTTPS from the browser viewer's
+// listener; these messages say what there is and how it lines up.
+
+message ListRecordings {}
+
+message RecordingList {
+  // Newest first.
+  repeated RecordingSummary recordings = 1;
+}
+
+message RecordingSummary {
+  // The folder's name, which names the recording: when its session started,
+  // in UTC, and the session's id (`2026-11-14T06-15-42Z-s1`).
+  string id = 1;
+  int64 started_unix_seconds = 2;
+  uint64 session = 3;
+  // The machines it has videos of, in the order they started.
+  repeated string machines = 4;
+  uint32 videos = 5;
+  // Lines in its trace.
+  uint32 calls = 6;
+  // When its last traced call ended, in milliseconds from the session's
+  // start: how long it ran, as far as the trace says.
+  uint64 traced_ms = 7;
+}
+
+message OpenRecording {
+  string id = 1;
+}
+
+// The snapshot a traced call saw, answered with it (`ax_snapshot`): one whose
+// trace line says it kept one (`TraceCall.seen`). Asked one at a time, as a
+// replay needs them, so opening a long recording stays small.
+message OpenSeenSnapshot {
+  // The recording's id, as OpenRecording takes it.
+  string recording = 1;
+  // The line's index in the recording's trace, from 0.
+  uint32 line = 2;
+}
+
+message Recording {
+  string id = 1;
+  // In the order they started.
+  repeated RecordingVideo videos = 2;
+  // In the order the trace has them.
+  repeated TraceLine trace = 3;
+}
+
+message RecordingVideo {
+  // Its file name in the recording's folder (`live-001.mp4`).
+  string file = 1;
+  string machine = 2;
+  // When in the session it starts, in milliseconds from the session's
+  // start. Absent for a video recorded before the starts were: it can't be
+  // lined up with the trace.
+  optional uint64 start_ms = 3;
+  // Its display's size in points, the space trace targets are in. Absent
+  // for a video recorded before it was kept.
+  doppel.common.v1.Size display_points = 4;
+}
+
+message TraceLine {
+  oneof line {
+    TraceCall call = 1;
+    // A line this daemon can't read, as it is in the file.
+    string unreadable = 2;
+  }
+}
+
+// A request, or a stretch a person had control, as the trace has it.
+message TraceCall {
+  // From the session's start.
+  uint64 start_ms = 1;
+  uint64 end_ms = 2;
+  // The machine it named, if it named one.
+  optional string machine = 3;
+  // Its caption: what it did, without secrets.
+  string call = 4;
+  TraceOutcome outcome = 5;
+  // Why it failed, timed out or was refused, when the trace says.
+  optional string error = 6;
+  // How long it waited, before it started, for a person to hand the machine
+  // back or for the session to be resumed.
+  optional uint64 waited_ms = 7;
+  TraceActor by = 8;
+  // How long it then waited in its machine's line, behind other calls, before
+  // `start_ms`: it arrived that much earlier.
+  optional uint64 queued_ms = 9;
+  // What it did on its machine's screen and where, as WatchActivity told
+  // viewers. Absent for a person's control, and for a call recorded before
+  // it was kept.
+  CallStarted acted = 10;
+  // The trace kept the accessibility snapshot this call saw: ask for it with
+  // OpenSeenSnapshot.
+  bool seen = 11;
+  // What the session's client named the elements of that snapshot, if it
+  // named them.
+  ElementRefs refs = 12;
+  // What it read off the screen by text recognition, if it did.
+  TextRead read = 13;
+}
+
+enum TraceOutcome {
+  TRACE_OUTCOME_UNSPECIFIED = 0;
+  TRACE_OUTCOME_DONE = 1;
+  // It ran and failed on the host, or a wait failed.
+  TRACE_OUTCOME_FAILED = 2;
+  // A wait ran out of time.
+  TRACE_OUTCOME_TIMED_OUT = 3;
+  // The request itself was wrong.
+  TRACE_OUTCOME_REFUSED = 4;
+}
+
+enum TraceActor {
+  TRACE_ACTOR_UNSPECIFIED = 0;
+  // One of the session's own requests.
+  TRACE_ACTOR_SESSION = 1;
+  // A person at a viewer, who had control.
+  TRACE_ACTOR_PERSON = 2;
+}

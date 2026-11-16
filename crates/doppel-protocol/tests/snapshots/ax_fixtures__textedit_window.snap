@@ -1,0 +1,28 @@
+---
+source: crates/doppel-protocol/tests/ax_fixtures.rs
+expression: c.text
+---
+# TextEdit (com.apple.TextEdit) · snapshot s1 · 47 AX nodes
+- window "Untitled" [s1e1]
+  - textarea = "Hello from Doppel: café, naïve, ✓ 你好⏎second lineFrom a real Claude Code session: Grüße, Zoë — ½ ✓ 🦊⏎probe1⏎Probe2probe3ter chord ok ⏎Newline after chord ok" [s1e2] focused
+  - checkbox "bold" [s1e3] checked
+  - checkbox "italic" [s1e4] unchecked
+  - checkbox "underline" [s1e5] unchecked
+  - checkbox "strikethrough" [s1e6] unchecked
+  - colorwell "text color" = "rgb 1 1 1 1" [s1e7]
+  - colorwell "text background color" = "rgb 0.117647 0.117647 0.117647 1" [s1e8]
+  - popup "typeface" = "Helvetica" [s1e9]
+  - popup "style" = "Bold" [s1e10]
+  - combobox "font size" = "12" [s1e11] collapsed
+    - button "font size" [s1e12]
+  - checkbox "align left" [s1e13] checked
+  - checkbox "align center" [s1e14] unchecked
+  - checkbox "align right" [s1e15] unchecked
+  - checkbox "fully justify" [s1e16] unchecked
+  - menubutton "list style" [s1e17]
+  - popup "line spacing" = "1.0" [s1e18]
+  - button "close" [s1e19]
+  - button "full screen" [s1e20]
+  - button "minimize" [s1e21]
+  - menubutton "Edited" [s1e22] disabled
+  - text "—" disabled

@@ -1,0 +1,20 @@
+[package]
+name = "doppel-host"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+description = "Doppel's imperative shell on the host: VMM client, file operations, machine lifecycle."
+
+[dependencies]
+doppel-machine = { path = "../doppel-machine" }
+doppel-protocol = { path = "../doppel-protocol" }
+getrandom.workspace = true
+nix.workspace = true
+prost.workspace = true
+reflink-copy.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

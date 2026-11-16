@@ -1,0 +1,58 @@
+---
+source: crates/doppel-cli/tests/routes.rs
+expression: direct
+---
+> status {}
+dev: stopped
+checkpoints: none
+
+> screenshot {}
+error: machine 'dev' is not running
+
+> find_text {"text":"Save"}
+error: machine 'dev' is not running
+
+> key {"chord":"cmd+n"}
+error: machine 'dev' is not running
+
+> click {"x":10,"y":10,"via":"host"}
+error: machine 'dev' is not running
+
+> snapshot {}
+error: machine 'dev' is not running
+
+> act {"ref":"s1e1","action":"press"}
+error: no snapshot has been taken of this machine in this session; call snapshot first
+
+> wait_for {"until":"appears","text":"Save","timeout_ms":500}
+error: wait_for failed after 1 polls: machine 'dev' is not running
+
+> wait_for {"until":"text_appears","text":"Save","timeout_ms":500}
+error: wait_for failed after 1 polls: machine 'dev' is not running
+
+> exec {"program":"/bin/echo","args":["hi"]}
+error: machine 'dev' is not running
+
+> read_file {"path":"/tmp/x"}
+error: machine 'dev' is not running
+
+> write_file {"path":"/tmp/x","text":"x"}
+error: machine 'dev' is not running
+
+> checkpoint {"label":"clean"}
+error: machine 'dev' is not running
+
+> rollback {"checkpoint":"clean"}
+error: dev has no checkpoint clean; nothing was changed (status lists its checkpoints)
+
+> fork {"checkpoint":"clean","into":"copy"}
+error: machine 'dev' has no checkpoint 'clean'
+
+> stop {}
+error: machine 'dev' is not running
+
+> start {}
+error: doppel-vmm not found at [scratch]/no-vmm; build it with scripts/build.sh or set DOPPEL_VMM
+
+> status {"machine":"nope"}
+error: machine 'nope' does not exist

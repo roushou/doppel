@@ -1,0 +1,254 @@
+/* Blueprint slate, light and dark: square,
+   hairline, Geist for people's words and Geist Mono for the machine's.
+   The chrome is drawn in --ink on --ground, with --slab for what is
+   selected or primary, --live for what is live, and --signal for a person
+   in control or attention. The agents' own colours are in lib/hues.ts; the
+   desktop viewer has the same palette (theme.rs). */
+:root {
+  --ground: #141a24;
+  --panel: #1a2230;
+  --ink: #c9d2e0;
+  --slab: #2a3548;
+  --on-slab: #e3e9f2;
+  --signal: #ff7a50;
+  --on-signal: #2a0d03;
+  --live: #4fbf83;
+  --track: 0.12em;
+
+  /* Surfaces. */
+  --bg: var(--ground);
+  --surface: var(--ground);
+  --raised: var(--panel);
+  --overlay: var(--panel);
+  --hover: color-mix(in srgb, var(--ink) 7%, transparent);
+  --pressed: color-mix(in srgb, var(--ink) 12%, transparent);
+  --line: #2c3747;
+  --line-strong: #46536a;
+
+  /* Text. */
+  --text: var(--ink);
+  --strong: #e3e9f2;
+  --muted: #8794a8;
+  --faint: #66738a;
+
+  /* Roles. */
+  --accent: var(--signal);
+  --accent-fill: var(--slab);
+  --on-accent: var(--on-slab);
+  --accent-soft: color-mix(in srgb, var(--signal) 16%, transparent);
+  --success: var(--live);
+  --success-soft: color-mix(in srgb, var(--live) 14%, transparent);
+  --warning: #e0ad2e;
+  --warning-soft: color-mix(in srgb, #e0ad2e 14%, transparent);
+  --danger: #ff6b6b;
+  --danger-fill: #d64545;
+  --danger-soft: color-mix(in srgb, #ff6b6b 14%, transparent);
+
+  /* The screen and its frame. */
+  --screen: #0b0f16;
+  --bezel: var(--line);
+
+  /* Older names the replay views use. */
+  --notice: var(--warning-soft);
+  --button: var(--raised);
+
+  --radius-sm: 0;
+  --radius: 0;
+  --radius-lg: 0;
+  --shadow: none;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --sans: "Geist Variable", Geist, system-ui, sans-serif;
+  --mono: "Geist Mono Variable", "Geist Mono", ui-monospace, monospace;
+  color-scheme: dark;
+}
+
+/* Light, when chosen or when the system is light: App.svelte sets the attribute (lib/theme.ts). */
+:root[data-theme="light"] {
+  --ground: #d8dce3;
+  --panel: #cdd2db;
+  --ink: #1f2633;
+  --strong: #0f141c;
+  /* What's selected sits on a light slab; the main action stays ink. */
+  --slab: #bcc3ce;
+  --on-slab: #1f2633;
+  --accent-fill: var(--ink);
+  --on-accent: var(--ground);
+  --signal: #ff6a3d;
+  --on-signal: #2a0d03;
+  --live: #2f8a5b;
+  --track: 0.06em;
+  --line: #b0b8c7;
+  --line-strong: #8794a8;
+  --muted: #535e6e;
+  --faint: #6b7689;
+  --warning: #8a6100;
+  --warning-soft: color-mix(in srgb, #d4a017 18%, transparent);
+  --danger: #b3261e;
+  --danger-fill: #b3261e;
+  --danger-soft: color-mix(in srgb, #b3261e 12%, transparent);
+  --screen: #c3c9d3;
+  color-scheme: light;
+}
+
+/* Chrome labels: small, monospaced, upper case. */
+.label-mono {
+  font: 500 11px/1 var(--mono);
+  letter-spacing: var(--track);
+  text-transform: uppercase;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+code {
+  font: 12.5px var(--mono);
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+/* Buttons: quiet by default; `.primary` for the one main action, `.danger` for what can't be undone. */
+button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 500 11px/1 var(--mono);
+  letter-spacing: var(--track);
+  text-transform: uppercase;
+  height: 30px;
+  padding: 0 11px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--raised);
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 0.15s var(--ease),
+    border-color 0.15s var(--ease);
+}
+
+button:hover {
+  background: var(--overlay);
+  border-color: var(--line-strong);
+}
+
+button:active {
+  background: var(--pressed);
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+  transform: none;
+}
+
+button.primary {
+  background: var(--accent-fill);
+  border-color: var(--accent-fill);
+  color: var(--on-accent);
+}
+
+button.primary:hover {
+  background: color-mix(in srgb, var(--accent-fill) 85%, var(--ground));
+}
+
+button.danger {
+  background: var(--danger-fill);
+  border-color: transparent;
+  color: #fff;
+}
+
+button.quiet,
+button.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+}
+
+button.quiet:hover,
+button.ghost:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+button.ghost[aria-pressed="true"].on {
+  background: var(--slab);
+  color: var(--on-slab);
+}
+
+button.icon {
+  width: 30px;
+  padding: 0;
+  justify-content: center;
+}
+
+input,
+select {
+  font: 14px var(--sans);
+  height: 32px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--text);
+  width: 100%;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

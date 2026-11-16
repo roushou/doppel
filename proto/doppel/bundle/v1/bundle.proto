@@ -1,0 +1,100 @@
+syntax = "proto3";
+
+// What a machine bundle keeps on disk (see doppel-machine's `bundle`
+// module for the layout). Not a protocol: no process sends these, so the
+// wire packages can change without touching a bundle. A change here
+// changes every bundle already written, so it only adds fields; the field
+// numbers are those the files were first written with.
+//
+// Rust (doppel-host) writes and reads both files; the Swift VMM reads
+// spec.pb and writes it once, when it installs macOS.
+package doppel.bundle.v1;
+
+// spec.pb, a machine's and each checkpoint's: the hardware it runs on.
+// Restore needs a byte-identical configuration, so everything VZ would
+// otherwise randomise (notably the MAC address) is fixed here.
+message MachineSpec {
+  uint32 cpu_count = 1;
+  uint64 memory_bytes = 2;
+  uint64 disk_bytes = 3;
+  Display display = 4;
+  Network network = 5;
+  // Opaque VZ blobs. Both empty until macOS is installed; then both set.
+  bytes hardware_model = 6;
+  bytes machine_identifier = 7;
+  // Host directories visible in the guest under /Volumes/My Shared Files/<name>.
+  repeated SharedDirectory shared_directories = 8;
+}
+
+message SharedDirectory {
+  string name = 1;
+  string host_path = 2;
+  Access access = 3;
+}
+
+enum Access {
+  ACCESS_UNSPECIFIED = 0;
+  ACCESS_READ_ONLY = 1;
+  ACCESS_READ_WRITE = 2;
+}
+
+message Display {
+  uint32 width_pixels = 1;
+  uint32 height_pixels = 2;
+  uint32 pixels_per_inch = 3;
+}
+
+message Network {
+  oneof attachment {
+    Nat nat = 1;
+    // No network device at all.
+    Disconnected disconnected = 2;
+  }
+}
+
+message Nat {
+  // "aa:bb:cc:dd:ee:ff", locally administered.
+  string mac_address = 1;
+}
+
+message Disconnected {}
+
+// lineage.pb: what a machine is for and where it came from. A bundle
+// without one predates lineage: a working machine of unrecorded origin.
+message Lineage {
+  oneof role {
+    // A machine to use.
+    Working working = 1;
+    // A template to fork from.
+    GoldenRole golden = 2;
+  }
+  oneof origin {
+    // Made before origins were recorded: unknown.
+    Unrecorded unrecorded = 3;
+    // macOS installed into it from a restore image.
+    Installed installed = 4;
+    // Adopted from existing VZ machine files.
+    Imported imported = 5;
+    // Made from a checkpoint of another machine.
+    ForkedFrom forked = 6;
+  }
+}
+
+message Working {}
+
+message GoldenRole {
+  // The checkpoint new machines start from.
+  string checkpoint = 1;
+}
+
+message Unrecorded {}
+
+message Installed {}
+
+message Imported {}
+
+message ForkedFrom {
+  // The machine it was made from, which may since have gone.
+  string machine = 1;
+  string checkpoint = 2;
+}

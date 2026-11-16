@@ -1,0 +1,38 @@
+[package]
+name = "doppel-cli"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+description = "The `doppel` command."
+
+[[bin]]
+name = "doppel"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+doppel-client = { path = "../doppel-client" }
+doppel-daemon = { path = "../doppel-daemon" }
+doppel-gateway = { path = "../doppel-gateway" }
+doppel-host = { path = "../doppel-host" }
+doppel-machine = { path = "../doppel-machine" }
+doppel-mcp = { path = "../doppel-mcp" }
+doppel-protocol = { path = "../doppel-protocol" }
+doppel-viewer = { path = "../doppel-viewer" }
+nix = { workspace = true, features = ["signal"] }
+prost.workspace = true
+rmcp = { workspace = true, features = ["server", "transport-io"] }
+thiserror.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync"] }
+
+[dev-dependencies]
+base64.workspace = true
+doppel-scene = { path = "../doppel-scene" }
+insta.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

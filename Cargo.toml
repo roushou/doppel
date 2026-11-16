@@ -1,0 +1,52 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+rust-version = "1.99"
+
+[workspace.dependencies]
+anyhow = "1"
+base64 = "0.22"
+bytes = "1"
+clap = { version = "4.6", features = ["derive", "env"] }
+getrandom = "0.4"
+insta = "1"
+nix = { version = "0.31", features = ["socket", "uio", "fs", "term", "user", "mman"] }
+proptest = "1"
+prost = "0.14"
+prost-build = "0.14"
+protox = "0.10"
+reflink-copy = "0.1"
+rmcp = { version = "3.9", default-features = false }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = "1"
+tungstenite = { version = "0.30", default-features = false }
+
+# Design principles §9, enforced rather than reviewed.
+[workspace.lints.rust]
+unsafe_code = "deny"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+wildcard_enum_match_arm = "deny"
+fn_params_excessive_bools = "deny"
+struct_excessive_bools = "deny"
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+self_named_module_files = "deny"
+
+# Dependencies optimized in debug builds too: the desktop viewer lays out
+# and draws its whole window (GPUI, taffy) on every frame of a screen, which
+# unoptimized took ~6 ms a frame instead of ~1.6. Our own crates stay
+# unoptimized, so they still build fast and debug well. The first build
+# after a clean takes longer (~7 min here).
+[profile.dev.package."*"]
+opt-level = 3

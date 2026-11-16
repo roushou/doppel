@@ -1,0 +1,18 @@
+[package]
+name = "doppel-machine"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+description = "A Doppel machine and its guest: spec, files, lineage, the procedures that change it, and what is seen and done inside it. No I/O."
+
+[dependencies]
+thiserror.workspace = true
+
+[dev-dependencies]
+insta.workspace = true
+proptest.workspace = true
+
+[lints]
+workspace = true
