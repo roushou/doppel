@@ -18,6 +18,14 @@ and roll back.
 
 </div>
 
+<p align="center">
+  <img
+    src="https://github.com/user-attachments/assets/5f16e1ee-f0f7-4acb-805e-32a656aef77a"
+    alt="The browser viewer: an agent's mark over a note in a macOS VM, beside the accessibility tree it acts on"
+    width="800"
+  >
+</p>
+
 Doppel runs macOS VMs on your Mac and serves them to agents over MCP. One
 daemon owns every machine, so agents, viewers and recordings all see the
 same state.
@@ -39,6 +47,61 @@ It's early: the [roadmap](docs/roadmap.md) says what works.
   traces.
 - **Remote:** another Mac's machines over SSH, or the browser viewer over TLS
   with tokens.
+
+## Screenshots
+
+### Browser
+
+<details>
+  <summary>
+    Screen: the machine live, with what the agent does drawn over it
+  </summary>
+  <br>
+  <img
+    src="https://github.com/user-attachments/assets/5ef81db6-d11d-4d4e-86ee-40cb46118fef"
+    alt="The browser viewer showing a machine live, with an agent's mark over a note"
+  >
+</details>
+
+<details>
+  <summary>
+    Elements: the accessibility tree the agent saw, refs and all
+  </summary>
+  <br>
+  <img
+    src="https://github.com/user-attachments/assets/5f16e1ee-f0f7-4acb-805e-32a656aef77a"
+    alt="The browser viewer's Elements view, with the accessibility tree beside the screen"
+  >
+</details>
+
+<details>
+  <summary>Text: what text recognition reads on screen</summary>
+  <br>
+  <img
+    src="https://github.com/user-attachments/assets/1becd9b3-b546-434e-8727-b804624f234b"
+    alt="The browser viewer's Text view, with recognized text outlined on the screen"
+  >
+</details>
+
+<details>
+  <summary>Replay: a recording beside its trace of calls</summary>
+  <br>
+  <img
+    src="https://github.com/user-attachments/assets/9033cc98-5574-4d1c-9b05-4b2099bfbbe5"
+    alt="The browser viewer replaying a recording beside its trace"
+  >
+</details>
+
+### Desktop
+
+<details>
+  <summary>Screen: the machine live, with the agents watching it</summary>
+  <br>
+  <img
+    src="https://github.com/user-attachments/assets/393655d4-19d8-4be3-8e47-6f1cc29e3662"
+    alt="The desktop viewer showing a machine live, with an agent's mark over a note"
+  >
+</details>
 
 ## Get started
 
