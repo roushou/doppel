@@ -99,7 +99,7 @@ fn glances(snapshot: &AxSnapshot, named: &Named, display: Size, since: f64) -> V
 
 /// Where a call aimed: the element it acted on, or a small square around
 /// the point.
-fn aimed(target: &Target) -> Option<Rect> {
+pub(crate) fn aimed(target: &Target) -> Option<Rect> {
     let around = |x: f64, y: f64| {
         Rect::new(
             x - POINT_TARGET / 2.0,

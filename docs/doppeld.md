@@ -135,8 +135,12 @@ display to a file, outside any session.
 snapshot lands, the screen dims but for the elements its model was given
 refs for, which light top to bottom with their refs; when the agent goes
 for one, the rest let go and brackets close in on it. Then the pointer
-glides there, the marks its calls leave go as the screen changes, and its
-marks for the people watching show. A film knows what comes next, so each
+glides there with a glyph for what it does (a fingertip for a press, a
+text cursor for typing, an hourglass with a slow breath around the pointer
+while it waits, a terminal for a command), a press dents in where it lands
+and, if it worked, the badge turns into a check. The marks its calls
+leave go as the screen changes, and its marks for the people watching
+show. A film knows what comes next, so each
 call starts up to a glide early: the pointer arrives as the call lands.
 
 The film plays to its own clock (`doppel_scene::film::pacing`): pauses

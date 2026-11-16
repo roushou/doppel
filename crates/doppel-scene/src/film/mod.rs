@@ -10,9 +10,9 @@ use doppel_machine::geometry::{Point, Rect, Size};
 pub mod pacing;
 
 use self::pacing::Pace;
-use crate::attention::{Attention, Glance, LET_GO_MS, LOCK_MS};
+use crate::attention::{Attention, Glance, LET_GO_MS, LOCK_MS, aimed};
 use crate::timeline::{
-    CALLOUT_FADE_MS, CalloutOn, CalloutShape, MARK_FADE_MS, Mark, Moment, scene_at,
+    CALLOUT_FADE_MS, CalloutOn, CalloutShape, Gesture, MARK_FADE_MS, Mark, Moment, scene_at,
 };
 
 /// A colour: red, green and blue in its low 24 bits.
@@ -131,6 +131,15 @@ pub enum Shape {
         width: f64,
         opacity: f64,
     },
+    /// A symbol on a round badge of `colour`, `size` across: what an
+    /// agent's pointer is doing, or that what it did worked.
+    Glyph {
+        centre: Spot,
+        glyph: Glyph,
+        colour: Rgb,
+        size: f64,
+        opacity: f64,
+    },
     /// One line of words on a plate, `at` being its `corner`.
     Tag {
         at: Spot,
@@ -148,6 +157,126 @@ pub enum Shape {
 pub struct Picture {
     pub shapes: Vec<Shape>,
     pub at: f64,
+}
+
+/// What a glyph shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Glyph {
+    /// A press, a click: a fingertip.
+    Press,
+    /// Typing: a text cursor.
+    Type,
+    /// A key or a shortcut: a keycap.
+    Keys,
+    /// A command, or a file moved, in the guest: a terminal.
+    Command,
+    /// Waiting on something: an hourglass.
+    Wait,
+    /// Reading the screen: an eye.
+    Look,
+    /// Pointing something out to the people watching: a pin.
+    Point,
+    Drag,
+    Scroll,
+    /// Starting, stopping or rolling back the machine.
+    Machine,
+    /// What it did worked: a check.
+    Done,
+}
+
+impl Glyph {
+    /// What a call of `gesture` shows beside the pointer; none for a move.
+    pub const fn of(gesture: Gesture) -> Option<Self> {
+        match gesture {
+            Gesture::Click | Gesture::DoubleClick | Gesture::SecondaryClick | Gesture::Act => {
+                Some(Self::Press)
+            }
+            Gesture::Type => Some(Self::Type),
+            Gesture::Key => Some(Self::Keys),
+            Gesture::Run => Some(Self::Command),
+            Gesture::Wait => Some(Self::Wait),
+            Gesture::Look => Some(Self::Look),
+            Gesture::Mark => Some(Self::Point),
+            Gesture::Drag => Some(Self::Drag),
+            Gesture::Scroll => Some(Self::Scroll),
+            Gesture::Lifecycle => Some(Self::Machine),
+            Gesture::Move | Gesture::Other => None,
+        }
+    }
+}
+
+/// A glyph's badge: how wide, and where from the pointer's tip.
+const GLYPH_SIZE: f64 = 22.0;
+const GLYPH_OFFSET: (f64, f64) = (18.0, 20.0);
+/// A wait's breath: one in and out.
+const BREATH_MS: f64 = 1400.0;
+/// A press dents in where it lands over this long.
+const DENT_MS: f64 = 260.0;
+const DENT_FROM: f64 = 26.0;
+const DENT_TO: f64 = 7.0;
+/// The badge shows a check this long after what worked, popping in over
+/// `POP_MS`.
+const DONE_MS: f64 = 700.0;
+const POP_MS: f64 = 150.0;
+const DONE: Rgb = Rgb(0x2f_bf71);
+
+/// Whether a call of `gesture` lands on something, to dent and to check.
+const fn lands(gesture: Gesture) -> bool {
+    match gesture {
+        Gesture::Click
+        | Gesture::DoubleClick
+        | Gesture::SecondaryClick
+        | Gesture::Act
+        | Gesture::Type
+        | Gesture::Drag => true,
+        Gesture::Move
+        | Gesture::Scroll
+        | Gesture::Key
+        | Gesture::Look
+        | Gesture::Wait
+        | Gesture::Run
+        | Gesture::Lifecycle
+        | Gesture::Mark
+        | Gesture::Other => false,
+    }
+}
+
+/// What lands as each agent's call ends: a press dents in where it lands.
+fn landed(moments: &[Moment], at: f64, shapes: &mut Vec<Shape>) {
+    for moment in moments {
+        let Some(end) = moment.end_ms else {
+            continue;
+        };
+        if moment.person || !lands(moment.call.gesture) || at < end || at >= end + DENT_MS {
+            continue;
+        }
+        let Some(rect) = aimed(&moment.call.target) else {
+            continue;
+        };
+        let (fill, _) = hue(moment.call.key.session);
+        let f = ease((at - end) / DENT_MS);
+        shapes.push(Shape::Ring {
+            centre: Spot::from(rect.center()),
+            radius: DENT_FROM + (DENT_TO - DENT_FROM) * f,
+            colour: fill,
+            wash: 0.25,
+            width: 3.0,
+            opacity: 0.9 * (1.0 - f * f),
+        });
+    }
+}
+
+/// How long ago `session`'s latest call that landed and worked showed its
+/// check, while it shows: from halfway through its dent, for [`DONE_MS`].
+/// None once that agent has started another call.
+fn worked(moments: &[Moment], session: u64, at: f64) -> Option<f64> {
+    let latest = moments.iter().rfind(|moment| {
+        !moment.person && moment.call.key.session == session && moment.start_ms <= at
+    })?;
+    let end = latest.end_ms?;
+    let shown = at - (end + DENT_MS * 0.5);
+    (lands(latest.call.gesture) && latest.failed.is_none() && (0.0..DONE_MS).contains(&shown))
+        .then_some(shown)
 }
 
 /// The veil over what an agent doesn't take in: its colour, how dark at
@@ -483,7 +612,49 @@ impl Picture {
                 colour: fill,
                 opacity,
             });
+            if let Some((call, since)) = &agent.current
+                && call.gesture == Gesture::Wait
+            {
+                // A slow breath around the pointer while it waits.
+                let breath = (std::f64::consts::TAU * (at - since) / BREATH_MS).sin();
+                shapes.push(Shape::Ring {
+                    centre: tip,
+                    radius: 20.0 + 4.0 * breath,
+                    colour: fill,
+                    wash: 0.08,
+                    width: 2.0,
+                    opacity: opacity * (0.55 + 0.25 * breath),
+                });
+            }
+            let badge = Spot {
+                x: tip.x + GLYPH_OFFSET.0,
+                y: tip.y + GLYPH_OFFSET.1,
+            };
+            // What worked turns the badge into a check; else it shows what
+            // the call under way does.
+            if let Some(shown) = worked(moments, agent.session, at) {
+                shapes.push(Shape::Glyph {
+                    centre: badge,
+                    glyph: Glyph::Done,
+                    colour: DONE,
+                    size: GLYPH_SIZE * (0.6 + 0.4 * ease(shown / POP_MS)),
+                    opacity: opacity * ((DONE_MS - shown) / 200.0).clamp(0.0, 1.0),
+                });
+            } else if let Some(glyph) = agent
+                .current
+                .as_ref()
+                .and_then(|(call, _)| Glyph::of(call.gesture))
+            {
+                shapes.push(Shape::Glyph {
+                    centre: badge,
+                    glyph,
+                    colour: fill,
+                    size: GLYPH_SIZE,
+                    opacity,
+                });
+            }
         }
+        landed(moments, at, &mut shapes);
         Self { shapes, at }
     }
 }
@@ -574,7 +745,6 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::timeline::Gesture;
     use crate::timeline::{Call, CallKey, Callout, CalloutLasts, Target};
 
     fn display() -> Size {
@@ -692,6 +862,106 @@ mod tests {
                 .shapes
                 .iter()
                 .any(|shape| matches!(shape, Shape::Ring { opacity, .. } if *opacity < 1.0))
+        );
+    }
+
+    fn glyphs(picture: &Picture) -> Vec<Glyph> {
+        picture
+            .shapes
+            .iter()
+            .filter_map(|shape| {
+                if let Shape::Glyph { glyph, .. } = shape {
+                    Some(*glyph)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    fn press(request: u64, start_ms: f64) -> Moment {
+        moment(
+            request,
+            start_ms,
+            start_ms + 30.0,
+            Gesture::Act,
+            Target::Element {
+                frame: Rect::new(100.0, 100.0, 80.0, 30.0).unwrap(),
+                label: "Save".into(),
+            },
+        )
+    }
+
+    #[test]
+    fn the_pointer_shows_what_it_does_as_a_glyph() {
+        let moments = [
+            press(1, 0.0),
+            moment(2, 2000.0, 2400.0, Gesture::Run, Target::Nowhere),
+        ];
+        assert_eq!(
+            glyphs(&Picture::at(&moments, display(), 10.0)),
+            [Glyph::Press]
+        );
+        assert_eq!(
+            glyphs(&Picture::at(&moments, display(), 2100.0)),
+            [Glyph::Command]
+        );
+        // Between calls: no glyph, only the pointer.
+        assert!(glyphs(&Picture::at(&moments, display(), 1800.0)).is_empty());
+    }
+
+    #[test]
+    fn a_press_dents_in_where_it_lands_then_its_badge_checks_it_worked() {
+        let moments = [press(1, 0.0)];
+        let dent = Picture::at(&moments, display(), 30.0 + DENT_MS / 2.0);
+        assert!(dent.shapes.iter().any(|shape| matches!(
+            shape,
+            Shape::Ring { centre, radius, .. }
+                if *centre == (Spot { x: 140.0, y: 115.0 }) && *radius < DENT_FROM
+        )));
+        let done = Picture::at(&moments, display(), 30.0 + DENT_MS + 100.0);
+        assert_eq!(
+            glyphs(&done),
+            [Glyph::Done],
+            "the check takes the badge's place"
+        );
+        assert!(glyphs(&Picture::at(&moments, display(), 30.0 + DENT_MS + DONE_MS)).is_empty());
+
+        let mut failed = press(1, 0.0);
+        failed.failed = Some("no such element".into());
+        let picture = Picture::at(&[failed], display(), 30.0 + DENT_MS + 100.0);
+        assert!(
+            !glyphs(&picture).contains(&Glyph::Done),
+            "no check for what failed"
+        );
+    }
+
+    #[test]
+    fn a_wait_breathes_around_the_pointer() {
+        let moments = [
+            press(1, 0.0),
+            moment(2, 1000.0, 5000.0, Gesture::Wait, Target::Nowhere),
+        ];
+        let radius = |at| {
+            Picture::at(&moments, display(), at)
+                .shapes
+                .iter()
+                .find_map(|shape| {
+                    if let Shape::Ring { radius, centre, .. } = shape {
+                        (*centre == Spot { x: 140.0, y: 115.0 }).then_some(*radius)
+                    } else {
+                        None
+                    }
+                })
+        };
+        let (a, b) = (
+            radius(1000.0 + BREATH_MS / 4.0),
+            radius(1000.0 + BREATH_MS * 0.75),
+        );
+        assert!(a.unwrap() > b.unwrap(), "in, then out");
+        assert_eq!(
+            glyphs(&Picture::at(&moments, display(), 2000.0)),
+            [Glyph::Wait]
         );
     }
 

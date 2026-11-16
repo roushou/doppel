@@ -118,6 +118,29 @@ private func redFrame() -> Doppel_Vmm_V1_Shape {
         #expect(pixel(frame, x: 150, y: 90) == (0, 0, 0))
     }
 
+    @Test(arguments: [Doppel_Vmm_V1_Glyph.press, .wait, .done])
+    func aGlyphIsAWhiteSymbolOnARoundBadge(glyph kind: Doppel_Vmm_V1_Glyph) throws {
+        let frame = try buffer(width: 200, height: 100, shade: 0)
+        var shape = Doppel_Vmm_V1_Shape()
+        shape.opacity = 1
+        shape.colour = 0xff0000
+        var glyph = Doppel_Vmm_V1_GlyphShape()
+        glyph.centre = spot(100, 50)
+        glyph.glyph = kind
+        glyph.size = 60
+        shape.glyph = glyph
+        var picture = Doppel_Vmm_V1_Picture()
+        picture.shapes = [shape]
+        Exporter.draw(picture, with: Painter(scale: 1), on: frame)
+        // The badge: red near its rim, nothing outside it.
+        #expect(pixel(frame, x: 100, y: 23) == (0, 0, 255))
+        #expect(pixel(frame, x: 100, y: 5).2 < 40)
+        // The symbol: white within the middle.
+        var white = 0
+        for y in 36..<64 { for x in 86..<114 where pixel(frame, x: x, y: y) == (255, 255, 255) { white += 1 } }
+        #expect(white > 20, "\(white) white pixels")
+    }
+
     @Test func bracketsDrawOnlyTheCorners() throws {
         let frame = try buffer(width: 200, height: 100, shade: 0)
         var shape = Doppel_Vmm_V1_Shape()

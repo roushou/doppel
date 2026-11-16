@@ -4,6 +4,7 @@
 
 import AVFoundation
 import CoreGraphics
+import AppKit
 import CoreText
 import DoppelWire
 import Foundation
@@ -94,6 +95,8 @@ struct Painter {
                 pointed(at: point(pointer.tip), colour: colour(shape.colour, opacity), opacity: opacity, on: context)
             case .tag(let tag):
                 tagged(tag, plate: colour(shape.colour, opacity), ink: colour(tag.ink, opacity), on: context)
+            case .glyph(let glyph):
+                badge(glyph, colour: colour(shape.colour, opacity), opacity: opacity, on: context)
             case .veil(let veil):
                 // Even-odd: the whole picture, less each hole.
                 context.addRect(context.boundingBoxOfClipPath)
@@ -169,6 +172,51 @@ struct Painter {
         context.setLineWidth(1.5 * scale)
         context.setLineJoin(.miter)
         context.drawPath(using: .fillStroke)
+    }
+
+    /// The SF Symbol for a glyph; `nil` for one a newer doppel added.
+    private static func symbol(_ glyph: Doppel_Vmm_V1_Glyph) -> String? {
+        switch glyph {
+        case .press: "hand.tap.fill"
+        case .type: "character.cursor.ibeam"
+        case .keys: "command"
+        case .command: "apple.terminal.fill"
+        case .wait: "hourglass"
+        case .look: "eye.fill"
+        case .point: "mappin"
+        case .drag: "hand.draw.fill"
+        case .scroll: "arrow.up.and.down"
+        case .machine: "power"
+        case .done: "checkmark"
+        case .unspecified, .UNRECOGNIZED: nil
+        }
+    }
+
+    /// A glyph's symbol, white, on a round badge of `colour`.
+    private func badge(_ glyph: Doppel_Vmm_V1_GlyphShape, colour badge: CGColor, opacity: Double, on context: CGContext) {
+        let side = glyph.size * scale
+        let centre = point(glyph.centre)
+        let disc = CGRect(x: centre.x - side / 2, y: centre.y - side / 2, width: side, height: side)
+        context.setShadow(offset: CGSize(width: 0, height: 1 * scale), blur: 4 * scale, color: colour(0x000000, 0.45 * opacity))
+        context.setFillColor(badge)
+        context.fillEllipse(in: disc)
+        context.setShadow(offset: .zero, blur: 0, color: nil)
+        guard
+            let name = Self.symbol(glyph.glyph),
+            let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: side * 0.5, weight: .bold)),
+            let mask = image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        else { return }
+        // Fit the symbol in the disc's middle, keeping its shape.
+        let fit = side * 0.56 / max(CGFloat(mask.width), CGFloat(mask.height))
+        let size = CGSize(width: CGFloat(mask.width) * fit, height: CGFloat(mask.height) * fit)
+        let rect = CGRect(x: centre.x - size.width / 2, y: centre.y - size.height / 2, width: size.width, height: size.height)
+        // The context's y grows down; images draw up: flip around the rect.
+        context.translateBy(x: 0, y: rect.midY * 2)
+        context.scaleBy(x: 1, y: -1)
+        context.clip(to: rect, mask: mask)
+        context.setFillColor(colour(0xffffff, opacity))
+        context.fill(rect)
     }
 
     private func tagged(_ tag: Doppel_Vmm_V1_TagShape, plate: CGColor, ink: CGColor, on context: CGContext) {

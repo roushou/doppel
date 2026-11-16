@@ -305,6 +305,7 @@ message Shape {
     TagShape tag = 7;
     VeilShape veil = 8;
     BracketsShape brackets = 9;
+    GlyphShape glyph = 11;
   }
   // Not to be used again: older reels may hold it.
   reserved 10;
@@ -312,6 +313,37 @@ message Shape {
 
 // The whole picture dimmed by the shape's colour, but for `holes`.
 message VeilShape { repeated doppel.common.v1.Rect holes = 1; }
+
+enum Glyph {
+  GLYPH_UNSPECIFIED = 0;
+  // A press, a click: a fingertip.
+  GLYPH_PRESS = 1;
+  // Typing: a text cursor.
+  GLYPH_TYPE = 2;
+  // A key or a shortcut: a keycap.
+  GLYPH_KEYS = 3;
+  // A command, or a file moved, in the guest: a terminal.
+  GLYPH_COMMAND = 4;
+  // Waiting on something: an hourglass.
+  GLYPH_WAIT = 5;
+  // Reading the screen: an eye.
+  GLYPH_LOOK = 6;
+  // Pointing something out to the people watching: a pin.
+  GLYPH_POINT = 7;
+  GLYPH_DRAG = 8;
+  GLYPH_SCROLL = 9;
+  // Starting, stopping or rolling back the machine.
+  GLYPH_MACHINE = 10;
+  // What was done worked: a check.
+  GLYPH_DONE = 11;
+}
+
+// A glyph on a round badge of the shape's colour, `size` across.
+message GlyphShape {
+  Spot centre = 1;
+  Glyph glyph = 2;
+  double size = 3;
+}
 
 // A rectangle's four corners, each an arm `arm` long, `width` thick.
 message BracketsShape {

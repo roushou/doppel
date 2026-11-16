@@ -3,7 +3,7 @@
 use doppel_machine::geometry::{Rect, Size};
 use doppel_protocol::pb::common::v1 as common;
 use doppel_protocol::pb::vmm::v1 as wire;
-use doppel_scene::film::{Corner, Line, Picture, Reel, Shape, Spot};
+use doppel_scene::film::{Corner, Glyph, Line, Picture, Reel, Shape, Spot};
 
 fn spot(at: Spot) -> wire::Spot {
     wire::Spot { x: at.x, y: at.y }
@@ -88,6 +88,34 @@ fn shape(shape: &Shape) -> wire::Shape {
             *opacity,
             Kind::Pointer(wire::PointerShape {
                 tip: Some(spot(*tip)),
+            }),
+        ),
+        Shape::Glyph {
+            centre,
+            glyph,
+            colour,
+            size,
+            opacity,
+        } => (
+            *colour,
+            *opacity,
+            Kind::Glyph(wire::GlyphShape {
+                centre: Some(spot(*centre)),
+                glyph: match glyph {
+                    Glyph::Press => wire::Glyph::Press,
+                    Glyph::Type => wire::Glyph::Type,
+                    Glyph::Keys => wire::Glyph::Keys,
+                    Glyph::Command => wire::Glyph::Command,
+                    Glyph::Wait => wire::Glyph::Wait,
+                    Glyph::Look => wire::Glyph::Look,
+                    Glyph::Point => wire::Glyph::Point,
+                    Glyph::Drag => wire::Glyph::Drag,
+                    Glyph::Scroll => wire::Glyph::Scroll,
+                    Glyph::Machine => wire::Glyph::Machine,
+                    Glyph::Done => wire::Glyph::Done,
+                }
+                .into(),
+                size: *size,
             }),
         ),
         Shape::Veil {
