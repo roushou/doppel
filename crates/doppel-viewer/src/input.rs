@@ -68,6 +68,8 @@ pub enum NamedKey {
     Space,
     /// Backspace.
     Delete,
+    /// The key that deletes forward (fn+delete on a Mac keyboard).
+    ForwardDelete,
     Escape,
     Left,
     Right,
@@ -129,7 +131,7 @@ impl Button {
 }
 
 impl TryFrom<&gpui::Keystroke> for Key {
-    /// A key the guest isn't sent: a lone modifier, forward delete, media keys.
+    /// A key the guest isn't sent: a lone modifier, media keys.
     type Error = ();
 
     fn try_from(keystroke: &gpui::Keystroke) -> Result<Self, Self::Error> {
@@ -138,6 +140,7 @@ impl TryFrom<&gpui::Keystroke> for Key {
             "tab" => NamedKey::Tab,
             "space" => NamedKey::Space,
             "backspace" => NamedKey::Delete,
+            "delete" => NamedKey::ForwardDelete,
             "escape" => NamedKey::Escape,
             "left" => NamedKey::Left,
             "right" => NamedKey::Right,
@@ -303,8 +306,7 @@ mod tests {
         assert_eq!(Key::try_from(&keystroke("f13")), Err(()));
         assert_eq!(
             Key::try_from(&keystroke("delete")),
-            Err(()),
-            "forward delete"
+            Ok(Key::Named(NamedKey::ForwardDelete))
         );
         assert_eq!(Key::try_from(&keystroke("shift")), Err(()));
     }

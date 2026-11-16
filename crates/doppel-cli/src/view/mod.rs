@@ -248,6 +248,7 @@ impl GuestDisplay {
                 Viewer::Tab => NamedKey::Tab,
                 Viewer::Space => NamedKey::Space,
                 Viewer::Delete => NamedKey::Delete,
+                Viewer::ForwardDelete => NamedKey::ForwardDelete,
                 Viewer::Escape => NamedKey::Escape,
                 Viewer::Left => NamedKey::Left,
                 Viewer::Right => NamedKey::Right,

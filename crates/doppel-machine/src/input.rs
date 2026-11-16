@@ -10,7 +10,7 @@ pub enum InputError {
     #[error("click count must be 1, 2 or 3 (got {0})")]
     ClickCount(u32),
     #[error(
-        "unknown key {0:?}; use a single character or one of: return tab space delete escape left right up down home end pageup pagedown f1–f12"
+        "unknown key {0:?}; use a single character or one of: return tab space delete forwarddelete escape left right up down home end pageup pagedown f1–f12"
     )]
     UnknownKey(String),
     #[error("unknown modifier {0:?}; use cmd, shift, alt or ctrl")]
@@ -78,7 +78,10 @@ pub enum NamedKey {
     Return,
     Tab,
     Space,
+    /// Backspace.
     Delete,
+    /// The key that deletes forward (fn+delete on a Mac keyboard).
+    ForwardDelete,
     Escape,
     Left,
     Right,
@@ -105,6 +108,7 @@ impl FromStr for Key {
             "tab" => NamedKey::Tab,
             "space" => NamedKey::Space,
             "delete" | "backspace" => NamedKey::Delete,
+            "forwarddelete" => NamedKey::ForwardDelete,
             "escape" | "esc" => NamedKey::Escape,
             "left" => NamedKey::Left,
             "right" => NamedKey::Right,
@@ -233,6 +237,10 @@ mod tests {
         assert_eq!(
             "return".parse::<KeyChord>().unwrap().key,
             Key::Named(NamedKey::Return)
+        );
+        assert_eq!(
+            "ForwardDelete".parse::<KeyChord>().unwrap().key,
+            Key::Named(NamedKey::ForwardDelete)
         );
         assert_eq!(
             "F12".parse::<KeyChord>().unwrap().key,

@@ -733,6 +733,7 @@ mod input_convert {
                 NamedKey::Tab => common::NamedKey::Tab,
                 NamedKey::Space => common::NamedKey::Space,
                 NamedKey::Delete => common::NamedKey::Delete,
+                NamedKey::ForwardDelete => common::NamedKey::ForwardDelete,
                 NamedKey::Escape => common::NamedKey::Escape,
                 NamedKey::Left => common::NamedKey::Left,
                 NamedKey::Right => common::NamedKey::Right,
@@ -879,6 +880,7 @@ mod input_convert {
                     common::NamedKey::Tab => NamedKey::Tab,
                     common::NamedKey::Space => NamedKey::Space,
                     common::NamedKey::Delete => NamedKey::Delete,
+                    common::NamedKey::ForwardDelete => NamedKey::ForwardDelete,
                     common::NamedKey::Escape => NamedKey::Escape,
                     common::NamedKey::Left => NamedKey::Left,
                     common::NamedKey::Right => NamedKey::Right,
@@ -903,10 +905,7 @@ mod input_convert {
                         // Contiguous on the wire (21..=32).
                         NamedKey::F(u8::try_from(f as i32 - 20).map_err(|_| unknown)?)
                     }
-                    // On the wire for viewers; no key this build sends.
-                    common::NamedKey::ForwardDelete | common::NamedKey::Unspecified => {
-                        return Err(unknown);
-                    }
+                    common::NamedKey::Unspecified => return Err(unknown),
                 },
             )
         }
@@ -1126,6 +1125,32 @@ mod input_convert {
             assert_eq!(hover.phase, common::PointerPhase::Move as i32);
             assert_eq!(hover.button, common::MouseButton::Unspecified as i32);
             assert_eq!(hover.click_count, 0);
+        }
+
+        #[test]
+        fn every_named_key_survives_the_wire() {
+            let keys = [
+                NamedKey::Return,
+                NamedKey::Tab,
+                NamedKey::Space,
+                NamedKey::Delete,
+                NamedKey::ForwardDelete,
+                NamedKey::Escape,
+                NamedKey::Left,
+                NamedKey::Right,
+                NamedKey::Up,
+                NamedKey::Down,
+                NamedKey::Home,
+                NamedKey::End,
+                NamedKey::PageUp,
+                NamedKey::PageDown,
+                NamedKey::F(1),
+                NamedKey::F(12),
+            ];
+            for key in keys {
+                let wire = common::NamedKey::from(key) as i32;
+                assert_eq!(ParseError::named_key(wire), Ok(key), "{key:?}");
+            }
         }
 
         #[test]
