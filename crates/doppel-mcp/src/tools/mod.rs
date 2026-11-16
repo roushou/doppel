@@ -1681,6 +1681,35 @@ pub(crate) mod tests {
             .into_wire(&mut refs);
             assert_eq!(failed["isError"], true);
         }
+
+        #[test]
+        fn a_listing_of_changes_keeps_the_refs_of_what_is_as_it_was() {
+            let mut refs = Refs::default();
+            let changes = CompactionPolicy {
+                show: doppel_machine::ax::compact::Show::Changes,
+                ..CompactionPolicy::default()
+            };
+            let shown = |refs: &mut Refs, id, title| {
+                TestOutcome::Snapshot {
+                    machine: dev(),
+                    snapshot: snapshot(id, title),
+                    policy: changes,
+                }
+                .into_wire(refs)["content"][0]["text"]
+                    .as_str()
+                    .unwrap()
+                    .to_owned()
+            };
+            // The first listing has nothing to compare with: it lists all.
+            assert!(shown(&mut refs, 1, "Save").contains("[s1e2]"));
+            let text = shown(&mut refs, 2, "Saved");
+            assert!(text.contains("+ button \"Saved\" [s2e1]"), "{text}");
+            assert!(text.contains("- button \"Save\" (was s1e2)"), "{text}");
+            // The window is as it was: its first ref still works. The button went.
+            assert!(refs.resolve(&dev(), "s1e1".parse().unwrap()).is_ok());
+            assert!(refs.resolve(&dev(), "s2e1".parse().unwrap()).is_ok());
+            assert!(refs.resolve(&dev(), "s1e2".parse().unwrap()).is_err());
+        }
     }
 
     mod exec {

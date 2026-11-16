@@ -26,7 +26,9 @@ use crate::tools::{ToolCall, ToolName, ToolOutcome};
 const INSTRUCTIONS: &str = "Doppel drives macOS virtual machines. Prefer snapshot, which lists the UI's \
 accessibility elements as text with refs like [s3e12], then act on a ref; it's cheaper and more precise than \
 pixels. Each snapshot's refs replace the previous ones. Input and the screen are asynchronous: after acting, \
-use wait_for (it returns a fresh snapshot) rather than assuming the effect. Use screenshot and click when an app \
+use wait_for (it returns a fresh snapshot) rather than assuming the effect. With show=\"changes\", snapshot \
+and wait_for list only what appeared, changed or went since your previous listing, and the rest keeps its refs: \
+cheaper after an act. Use screenshot and click when an app \
 exposes no useful accessibility: by default one image pixel is one display point, so x/y read off it go \
 straight into click. To click text, find_text is exact where reading points off an image is an estimate: it \
 recognizes the screen's text (OCR) and gives the point to click for each line, or for the words you ask for; \

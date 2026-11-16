@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use base64::Engine as _;
-use doppel_machine::ax::compact::{CompactionPolicy, Tokens};
+use doppel_machine::ax::compact::{CompactionPolicy, Show, Tokens};
 use doppel_machine::ax::refs::Ref;
 use doppel_machine::ax::tree::{ActOn, ActionName, ElementAction, Menus};
 use doppel_machine::ax::tree::{SnapshotScope, SnapshotSpec};
@@ -258,6 +258,7 @@ const MACHINE: &str =
 const VIA: &str = "agent (default): doppel-agent inside the logged-in guest. host: the VM's own display and virtual keyboard/pointer; works before login and without the agent, but types US-layout characters only.";
 const SCOPE: &str = "window (default): the frontmost app's focused window. app: all of the frontmost app's windows.";
 const MENUS: &str = "Menus are most of a native app's tree; excluded by default.";
+const SHOW: &str = "all (default): every element. changes: only what appeared, changed or went since this machine's previous listing; the rest keeps its refs. Use it after acting, to see what the act did.";
 const CHECKPOINT: &str = "Checkpoint label: 1–64 of a-z, 0-9, '-' and '_'. The status tool lists a machine's checkpoints.";
 
 fn max_tokens_description() -> String {
@@ -301,10 +302,19 @@ enum WireMenus {
     Include,
 }
 
+#[derive(Clone, Copy, Deserialize, JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+#[serde(rename_all = "lowercase")]
+enum WireShow {
+    All,
+    Changes,
+}
+
 fn snapshot_spec(
     scope: Option<WireScope>,
     menus: Option<WireMenus>,
     max_tokens: Option<u32>,
+    show: Option<WireShow>,
 ) -> Result<SnapshotListing, ArgumentError> {
     let budget = match max_tokens {
         None => Tokens::DEFAULT_BUDGET,
@@ -323,6 +333,10 @@ fn snapshot_spec(
         },
         policy: CompactionPolicy {
             budget,
+            show: match show {
+                None | Some(WireShow::All) => Show::All,
+                Some(WireShow::Changes) => Show::Changes,
+            },
             ..CompactionPolicy::default()
         },
     })
@@ -454,17 +468,24 @@ struct SnapshotArgs {
     menus: Option<WireMenus>,
     #[schemars(range(min = Tokens::MIN_BUDGET.get()), description = max_tokens_description())]
     max_tokens: Option<u32>,
+    #[schemars(description = SHOW)]
+    show: Option<WireShow>,
 }
 
 impl Tool for Snapshot {
     const NAME: &'static str = "snapshot";
-    const DESCRIPTION: &'static str = "List the UI's accessibility elements as compact text. Elements you can act on carry a ref like [s3e12]; pass it to act. Each snapshot's refs replace the previous ones. Needs the guest agent.";
+    const DESCRIPTION: &'static str = "List the UI's accessibility elements as compact text. Elements you can act on carry a ref like [s3e12]; pass it to act. Each snapshot's refs replace the previous ones, except that with show=changes the elements as they were keep theirs. Needs the guest agent.";
     type Args = SnapshotArgs;
 
     fn call(args: SnapshotArgs, at: &Parsing<'_>) -> Result<ToolCall, ArgumentError> {
         Ok(ToolCall {
             machine: at.machine(args.machine)?,
-            action: ToolAction::Snapshot(snapshot_spec(args.scope, args.menus, args.max_tokens)?),
+            action: ToolAction::Snapshot(snapshot_spec(
+                args.scope,
+                args.menus,
+                args.max_tokens,
+                args.show,
+            )?),
         })
     }
 }
@@ -575,11 +596,13 @@ struct WaitArgs {
     menus: Option<WireMenus>,
     #[schemars(range(min = Tokens::MIN_BUDGET.get()), description = max_tokens_description())]
     max_tokens: Option<u32>,
+    #[schemars(description = SHOW)]
+    show: Option<WireShow>,
 }
 
 impl Tool for WaitFor {
     const NAME: &'static str = "wait_for";
-    const DESCRIPTION: &'static str = "Poll until a condition holds. appears/disappears: some accessibility element's title, description, identifier or text value contains text (case-sensitive); returns a fresh snapshot (with new refs). frontmost: the frontmost app's name or bundle id equals text. text_appears/text_disappears: text recognized on screen, as find_text reads it (case-insensitive); returns where it appeared, with points to click, and works without the agent. On timeout, returns an error with what was last seen.";
+    const DESCRIPTION: &'static str = "Poll until a condition holds. appears/disappears: some accessibility element's title, description, identifier or text value contains text (case-sensitive); returns a fresh snapshot (with new refs; show=changes lists only what changed). frontmost: the frontmost app's name or bundle id equals text. text_appears/text_disappears: text recognized on screen, as find_text reads it (case-insensitive); returns where it appeared, with points to click, and works without the agent. On timeout, returns an error with what was last seen.";
     type Args = WaitArgs;
 
     fn call(args: WaitArgs, at: &Parsing<'_>) -> Result<ToolCall, ArgumentError> {
@@ -591,18 +614,20 @@ impl Tool for WaitFor {
             scope,
             menus,
             max_tokens,
+            show,
         } = args;
         let timeout = timeout_ms.map_or(wait::DEFAULT_TIMEOUT, Duration::from_millis);
         let ax = |condition| -> Result<ToolAction, ArgumentError> {
             Ok(ToolAction::WaitFor {
                 wait: WaitSpec::new(condition, timeout).map_err(|e| value(&e))?,
-                snapshot: snapshot_spec(scope, menus, max_tokens)?,
+                snapshot: snapshot_spec(scope, menus, max_tokens, show)?,
             })
         };
         let on_screen = |condition: fn(TextQuery) -> TextCondition| {
-            if scope.is_some() || menus.is_some() || max_tokens.is_some() {
+            if scope.is_some() || menus.is_some() || max_tokens.is_some() || show.is_some() {
                 return Err(ArgumentError::Value(
-                    "scope, menus and max_tokens apply to snapshots, not to text on screen".into(),
+                    "scope, menus, max_tokens and show apply to snapshots, not to text on screen"
+                        .into(),
                 ));
             }
             let query = text

@@ -2,14 +2,26 @@
 
 use std::collections::HashMap;
 
-use doppel_machine::ax::compact::{CompactSnapshot, CompactionPolicy};
-use doppel_machine::ax::refs::{Generation, Ref, RefError, RefTarget, SnapshotRefs};
+use doppel_machine::ax::changes::{Carried, Known};
+use doppel_machine::ax::compact::{CompactSnapshot, CompactionPolicy, Show};
+use doppel_machine::ax::refs::{Generation, Ref, RefError, RefTable, RefTarget, SnapshotRefs};
 use doppel_machine::ax::tree::AxSnapshot;
 use doppel_machine::machine::MachineName;
 
+/// What the model holds of a machine's UI after its latest listing.
+#[derive(Debug)]
+struct Latest {
+    /// The refs that listing issued.
+    table: RefTable,
+    /// Earlier refs whose elements are as they were.
+    carried: Carried,
+    /// For the next listing of changes.
+    known: Known,
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct Refs {
-    latest: HashMap<MachineName, doppel_machine::ax::refs::RefTable>,
+    latest: HashMap<MachineName, Latest>,
     /// Generations count across machines, so a ref is never reused in a session.
     issued: Option<Generation>,
     /// Snapshots shown since last taken, with their refs, for viewers.
@@ -17,7 +29,9 @@ pub(crate) struct Refs {
 }
 
 impl Refs {
-    /// Compacts a snapshot for the model and makes its refs the machine's latest.
+    /// Compacts a snapshot for the model and makes its refs the machine's
+    /// latest: all of it, or what changed since the machine's latest
+    /// listing (all of it when there's none).
     pub(crate) fn show(
         &mut self,
         machine: &MachineName,
@@ -26,8 +40,22 @@ impl Refs {
     ) -> CompactSnapshot {
         let generation = self.issued.map_or(Generation::FIRST, Generation::next);
         self.issued = Some(generation);
-        let compact = CompactSnapshot::build(snapshot, generation, policy);
-        self.latest.insert(machine.clone(), compact.refs.clone());
+        let compact = match (policy.show, self.latest.get(machine)) {
+            (Show::Changes, Some(latest)) => {
+                CompactSnapshot::changes(snapshot, generation, policy, &latest.known)
+            }
+            (Show::Changes, None) | (Show::All, _) => {
+                CompactSnapshot::build(snapshot, generation, policy)
+            }
+        };
+        self.latest.insert(
+            machine.clone(),
+            Latest {
+                table: compact.refs.clone(),
+                carried: compact.carried.clone(),
+                known: compact.known.clone(),
+            },
+        );
         self.shown
             .push((machine.clone(), compact.refs.named(snapshot.id)));
         compact
@@ -45,12 +73,15 @@ impl Refs {
         self.latest.remove(machine);
     }
 
+    /// A ref of the latest listing, or an earlier one whose element is as it was.
+    ///
     /// # Errors
     /// [`RefError`]: no snapshot of this machine yet, a stale ref, or an unknown one.
     pub(crate) fn resolve(&self, machine: &MachineName, r: Ref) -> Result<&RefTarget, RefError> {
-        self.latest
-            .get(machine)
-            .ok_or(RefError::NoSnapshot)?
-            .resolve(r)
+        let latest = self.latest.get(machine).ok_or(RefError::NoSnapshot)?;
+        match latest.carried.get(r) {
+            Some(target) => Ok(target),
+            None => latest.table.resolve(r),
+        }
     }
 }

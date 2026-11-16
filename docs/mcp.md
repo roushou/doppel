@@ -53,6 +53,22 @@ menus unless asked. Each element an agent can act on carries a ref like
   refs are the current ones.
 - After `rollback`, or a person's control (below), earlier refs don't apply.
 
+### Changes only
+
+With `show: "changes"`, `snapshot` and `wait_for` list only what differs
+from the machine's previous listing: elements that appeared (`+`), changed
+their value or states (`~`, with what they were) or went (`-`, the topmost
+of what went, with how many went inside it). Elements are matched by their
+place in the tree, role and name, so a renamed element went and another
+appeared.
+
+- What appeared or changed gets refs of the new listing. Everything else is
+  as it was, and the refs the agent holds for it still resolve.
+- It lists everything instead, saying why, when there's no previous listing
+  of the machine, another app is frontmost, or most of the UI is new.
+- The viewers light up what the agent was shown, so a listing of changes
+  shows the people watching what the act did.
+
 Accessibility covers native apps and Electron apps; Electron's first snapshot
 after it starts can take a few seconds. Chrome shows page content only when
 started with `--force-renderer-accessibility`, for example through `exec`:

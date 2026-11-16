@@ -11,7 +11,8 @@
 
 use std::fmt::{self, Write as _};
 
-use super::refs::{Generation, RefTable, RefTarget};
+use super::changes::{Carried, Entry, Known};
+use super::refs::{Generation, Ref, RefTable, RefTarget};
 use super::tree::{AxSnapshot, AxValue, ElementTarget, NodeIndex, Role, RoleKind};
 
 /// An estimated token count: one token per four characters, rounded up.
@@ -63,6 +64,7 @@ pub struct CompactionPolicy {
     pub budget: Tokens,
     /// Longer names and values are cut to this many characters.
     pub max_text: usize,
+    pub show: Show,
 }
 
 impl Default for CompactionPolicy {
@@ -70,15 +72,29 @@ impl Default for CompactionPolicy {
         Self {
             budget: Tokens::DEFAULT_BUDGET,
             max_text: 160,
+            show: Show::All,
         }
     }
+}
+
+/// What a listing lists: every element, or what changed since the model's
+/// previous listing of the same app ([`CompactSnapshot::changes`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Show {
+    All,
+    Changes,
 }
 
 /// A snapshot as a model sees it, with the refs it shows.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompactSnapshot {
     pub text: String,
+    /// The refs this listing issued.
     pub refs: RefTable,
+    /// Refs from earlier listings that still name an element: it is as it was.
+    pub carried: Carried,
+    /// What the model now knows of the UI, for the next listing of changes.
+    pub known: Known,
     /// Elements listed.
     pub shown: usize,
     /// Elements cut by the token budget.
@@ -121,8 +137,46 @@ impl Item {
 }
 
 impl CompactSnapshot {
+    /// Every element, as far as the budget allows.
     #[must_use]
     pub fn build(snapshot: &AxSnapshot, generation: Generation, policy: CompactionPolicy) -> Self {
+        Self::listing(snapshot, generation, policy, None)
+    }
+
+    /// The elements of a snapshot, in listing order, each with its parent's place.
+    pub(super) fn entries(snapshot: &AxSnapshot, policy: CompactionPolicy) -> Vec<Entry> {
+        Self::flat(&Self::items(snapshot, NodeIndex::ROOT, true, policy))
+    }
+
+    fn flat(items: &[Item]) -> Vec<Entry> {
+        fn flatten(item: &Item, parent: Option<usize>, out: &mut Vec<Entry>) {
+            let at = out.len();
+            out.push(Entry {
+                role: item.role.clone(),
+                name: item.name.clone(),
+                value: item.value.clone(),
+                states: item.states.clone(),
+                target: item.target,
+                parent,
+            });
+            for child in &item.children {
+                flatten(child, Some(at), out);
+            }
+        }
+        let mut out = Vec::new();
+        for item in items {
+            flatten(item, None, &mut out);
+        }
+        out
+    }
+
+    /// Every element, with a line under the header saying why, when `note` says.
+    pub(super) fn listing(
+        snapshot: &AxSnapshot,
+        generation: Generation,
+        policy: CompactionPolicy,
+        note: Option<&str>,
+    ) -> Self {
         let items = Self::items(snapshot, NodeIndex::ROOT, true, policy);
         let total: usize = items.iter().map(Item::count).sum();
 
@@ -137,6 +191,9 @@ impl CompactSnapshot {
             " · snapshot {generation} · {} AX nodes",
             snapshot.tree.len()
         );
+        if let Some(note) = note {
+            let _ = writeln!(text, "# {note}");
+        }
         if !snapshot.truncation.is_complete() {
             let _ = writeln!(
                 text,
@@ -154,6 +211,7 @@ impl CompactSnapshot {
             used: 0,
             shown: 0,
             full: false,
+            issued: Vec::with_capacity(total),
         };
         out.used = Tokens::estimate(&out.text).0;
         for item in &items {
@@ -168,9 +226,15 @@ impl CompactSnapshot {
             );
         }
         let tokens = Tokens::estimate(&out.text);
+        // Elements cut by the budget have no ref the model holds.
+        let mut issued = out.issued;
+        issued.resize(total, None);
+        let entries = Self::flat(&items);
         Self {
             text: out.text,
+            known: Known::new(generation, snapshot.app.pid, entries, issued),
             refs: out.refs,
+            carried: Carried::default(),
             shown: out.shown,
             omitted,
             tokens,
@@ -356,6 +420,8 @@ struct Listing<'a> {
     /// Once one line doesn't fit, nothing after it is shown, so the listing
     /// never skips an element and then shows a later one.
     full: bool,
+    /// The ref of each element listed, in listing order.
+    issued: Vec<Option<Ref>>,
 }
 
 impl Listing<'_> {
@@ -379,6 +445,7 @@ impl Listing<'_> {
             self.full = true;
             return;
         }
+        let mut issued = None;
         if let Some(node) = item.target {
             let r = self.refs.issue(RefTarget {
                 element: ElementTarget {
@@ -389,7 +456,9 @@ impl Listing<'_> {
                 name: item.name.clone(),
             });
             let _ = write!(line, " [{r}]");
+            issued = Some(r);
         }
+        self.issued.push(issued);
         line.push_str(&states);
         line.push('\n');
         self.used += cost;
