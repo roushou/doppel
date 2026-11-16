@@ -112,6 +112,8 @@ fn shape(shape: &Shape) -> wire::Shape {
                     Glyph::Drag => wire::Glyph::Drag,
                     Glyph::Scroll => wire::Glyph::Scroll,
                     Glyph::Machine => wire::Glyph::Machine,
+                    Glyph::Checkpoint => wire::Glyph::Checkpoint,
+                    Glyph::Rollback => wire::Glyph::Rollback,
                     Glyph::Done => wire::Glyph::Done,
                 }
                 .into(),

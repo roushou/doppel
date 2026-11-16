@@ -669,6 +669,8 @@ pub(crate) const fn gesture_name(gesture: Gesture) -> Option<&'static str> {
         Gesture::Wait => Some("wait"),
         Gesture::Run => Some("run"),
         Gesture::Lifecycle => Some("lifecycle"),
+        Gesture::Checkpoint => Some("checkpoint"),
+        Gesture::Rollback => Some("rollback"),
         Gesture::Other => Some("other"),
         Gesture::Mark => Some("mark"),
         Gesture::Unspecified => None,
@@ -692,6 +694,8 @@ pub(crate) fn gesture_named(name: &str) -> Gesture {
         Gesture::Wait,
         Gesture::Run,
         Gesture::Lifecycle,
+        Gesture::Checkpoint,
+        Gesture::Rollback,
         Gesture::Other,
         Gesture::Mark,
     ]

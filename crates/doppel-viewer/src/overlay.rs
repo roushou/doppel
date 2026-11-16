@@ -128,6 +128,8 @@ const fn gesture_icon(gesture: Gesture) -> Icon {
         Gesture::Wait => Icon::Hourglass,
         Gesture::Run => Icon::Terminal,
         Gesture::Lifecycle => Icon::Power,
+        Gesture::Checkpoint => Icon::Bookmark,
+        Gesture::Rollback => Icon::RotateCcw,
         Gesture::Mark => Icon::Highlighter,
         Gesture::Other => Icon::Bot,
     }
@@ -296,6 +298,8 @@ fn mark_element(mark: &Mark, picture: Picture, now: f64, hue: Hue, theme: &Theme
                 | Gesture::Wait
                 | Gesture::Run
                 | Gesture::Lifecycle
+                | Gesture::Checkpoint
+                | Gesture::Rollback
                 | Gesture::Mark
                 | Gesture::Other => Rounding::Round,
             };
@@ -326,6 +330,8 @@ fn mark_element(mark: &Mark, picture: Picture, now: f64, hue: Hue, theme: &Theme
                 | Gesture::Wait
                 | Gesture::Run
                 | Gesture::Lifecycle
+                | Gesture::Checkpoint
+                | Gesture::Rollback
                 | Gesture::Mark
                 | Gesture::Other => first.into_any_element(),
             }

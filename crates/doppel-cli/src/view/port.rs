@@ -461,6 +461,8 @@ pub(super) fn gesture_of(gesture: doppel_client::Gesture) -> Gesture {
         doppel_client::Gesture::Wait => Gesture::Wait,
         doppel_client::Gesture::Run => Gesture::Run,
         doppel_client::Gesture::Lifecycle => Gesture::Lifecycle,
+        doppel_client::Gesture::Checkpoint => Gesture::Checkpoint,
+        doppel_client::Gesture::Rollback => Gesture::Rollback,
         doppel_client::Gesture::Mark => Gesture::Mark,
         // A gesture a newer daemon added is drawn as any other call.
         doppel_client::Gesture::Other | doppel_client::Gesture::Unknown(_) => Gesture::Other,

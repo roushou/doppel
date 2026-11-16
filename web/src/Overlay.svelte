@@ -11,6 +11,8 @@
     MousePointerClick,
     Move,
     Power,
+    Bookmark,
+    RotateCcw,
     ScanEye,
     Terminal,
     TextCursorInput,
@@ -83,6 +85,10 @@
         return Terminal;
       case "lifecycle":
         return Power;
+      case "checkpoint":
+        return Bookmark;
+      case "rollback":
+        return RotateCcw;
       case "mark":
         return Highlighter;
       case "other":

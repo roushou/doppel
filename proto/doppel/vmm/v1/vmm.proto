@@ -332,10 +332,14 @@ enum Glyph {
   GLYPH_POINT = 7;
   GLYPH_DRAG = 8;
   GLYPH_SCROLL = 9;
-  // Starting, stopping or rolling back the machine.
+  // Starting, stopping, restoring or forking the machine.
   GLYPH_MACHINE = 10;
   // What was done worked: a check.
   GLYPH_DONE = 11;
+  // Keeping a checkpoint: a flag planted.
+  GLYPH_CHECKPOINT = 12;
+  // Rolling back to a checkpoint: a rewind.
+  GLYPH_ROLLBACK = 13;
 }
 
 // A glyph on a round badge of the shape's colour, `size` across.

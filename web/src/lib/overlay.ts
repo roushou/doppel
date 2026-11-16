@@ -31,6 +31,8 @@ export type Gesture =
   | "wait"
   | "run"
   | "lifecycle"
+  | "checkpoint"
+  | "rollback"
   | "mark"
   | "other";
 
@@ -114,6 +116,10 @@ function gesture(wire: WireGesture): Gesture {
       return "run";
     case WireGesture.LIFECYCLE:
       return "lifecycle";
+    case WireGesture.CHECKPOINT:
+      return "checkpoint";
+    case WireGesture.ROLLBACK:
+      return "rollback";
     case WireGesture.MARK:
       return "mark";
     case WireGesture.OTHER:
@@ -459,6 +465,10 @@ export function describe(call: Call): string {
       return "Running a command";
     case "mark":
       return call.callout?.note == null ? "Pointing something out" : `Pointing out: ${call.callout.note}`;
+    case "checkpoint":
+      return "Keeping a checkpoint";
+    case "rollback":
+      return "Rolling back to a checkpoint";
     case "lifecycle":
       return call.caption === "" ? "Changing the machine" : call.caption;
     case "other":

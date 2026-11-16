@@ -126,6 +126,8 @@ const fn gesture(gesture: Gesture) -> &'static str {
         Gesture::Wait => "wait",
         Gesture::Run => "run",
         Gesture::Lifecycle => "lifecycle",
+        Gesture::Checkpoint => "checkpoint",
+        Gesture::Rollback => "rollback",
         Gesture::Mark => "mark",
         Gesture::Other => "other",
     }

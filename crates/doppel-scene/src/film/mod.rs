@@ -178,8 +178,12 @@ pub enum Glyph {
     Point,
     Drag,
     Scroll,
-    /// Starting, stopping or rolling back the machine.
+    /// Starting, stopping, restoring or forking the machine.
     Machine,
+    /// Keeping a checkpoint: a flag planted.
+    Checkpoint,
+    /// Rolling back to a checkpoint: a rewind.
+    Rollback,
     /// What it did worked: a check.
     Done,
 }
@@ -200,6 +204,8 @@ impl Glyph {
             Gesture::Drag => Some(Self::Drag),
             Gesture::Scroll => Some(Self::Scroll),
             Gesture::Lifecycle => Some(Self::Machine),
+            Gesture::Checkpoint => Some(Self::Checkpoint),
+            Gesture::Rollback => Some(Self::Rollback),
             Gesture::Move | Gesture::Other => None,
         }
     }
@@ -236,6 +242,8 @@ const fn lands(gesture: Gesture) -> bool {
         | Gesture::Wait
         | Gesture::Run
         | Gesture::Lifecycle
+        | Gesture::Checkpoint
+        | Gesture::Rollback
         | Gesture::Mark
         | Gesture::Other => false,
     }
@@ -277,6 +285,43 @@ fn worked(moments: &[Moment], session: u64, at: f64) -> Option<f64> {
     let shown = at - (end + DENT_MS * 0.5);
     (lands(latest.call.gesture) && latest.failed.is_none() && (0.0..DONE_MS).contains(&shown))
         .then_some(shown)
+}
+
+/// How long a rollback's rewind shows after the machine is back.
+const REWIND_MS: f64 = 700.0;
+/// The rewind's glyph, across.
+const REWIND_SIZE: f64 = 96.0;
+
+/// A rollback as a scene: while it runs, the screen dims under a large
+/// rewind glyph; once the machine is back, both fade as the screen shows
+/// what it returned to.
+fn rewound(moments: &[Moment], display: Size, at: f64, shapes: &mut Vec<Shape>) {
+    for moment in moments {
+        if moment.person || moment.call.gesture != Gesture::Rollback || at < moment.start_ms {
+            continue;
+        }
+        let shown = match moment.end_ms {
+            Some(end) if at >= end + REWIND_MS => continue,
+            Some(end) if at >= end => 1.0 - ease((at - end) / REWIND_MS),
+            Some(_) | None => ((at - moment.start_ms) / VEIL_IN_MS).clamp(0.0, 1.0),
+        };
+        let (fill, _) = hue(moment.call.key.session);
+        shapes.push(Shape::Veil {
+            holes: Vec::new(),
+            colour: VEIL,
+            opacity: 0.55 * shown,
+        });
+        shapes.push(Shape::Glyph {
+            centre: Spot {
+                x: display.width() / 2.0,
+                y: display.height() / 2.0,
+            },
+            glyph: Glyph::Rollback,
+            colour: fill,
+            size: REWIND_SIZE,
+            opacity: shown,
+        });
+    }
 }
 
 /// The veil over what an agent doesn't take in: its colour, how dark at
@@ -655,6 +700,7 @@ impl Picture {
             }
         }
         landed(moments, at, &mut shapes);
+        rewound(moments, display, at, &mut shapes);
         Self { shapes, at }
     }
 }
@@ -934,6 +980,42 @@ mod tests {
             !glyphs(&picture).contains(&Glyph::Done),
             "no check for what failed"
         );
+    }
+
+    #[test]
+    fn a_rollback_dims_the_screen_under_a_rewind_then_shows_it_back() {
+        let moments = [moment(
+            1,
+            1000.0,
+            3000.0,
+            Gesture::Rollback,
+            Target::Nowhere,
+        )];
+        let rewind = |at| {
+            Picture::at(&moments, display(), at)
+                .shapes
+                .iter()
+                .find_map(|shape| {
+                    if let Shape::Glyph {
+                        glyph: Glyph::Rollback,
+                        centre,
+                        opacity,
+                        ..
+                    } = shape
+                    {
+                        Some((*centre, *opacity))
+                    } else {
+                        None
+                    }
+                })
+        };
+        assert_eq!(rewind(2000.0), Some((Spot { x: 640.0, y: 400.0 }, 1.0)));
+        assert!(
+            rewind(3000.0 + REWIND_MS / 2.0).unwrap().1 < 1.0,
+            "fading as it's back"
+        );
+        assert_eq!(rewind(3000.0 + REWIND_MS), None);
+        assert_eq!(rewind(900.0), None);
     }
 
     #[test]

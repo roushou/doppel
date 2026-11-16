@@ -31,6 +31,8 @@ const fn moves(gesture: Gesture) -> bool {
         | Gesture::Act
         | Gesture::Run
         | Gesture::Lifecycle
+        | Gesture::Checkpoint
+        | Gesture::Rollback
         | Gesture::Mark => true,
         Gesture::Look | Gesture::Wait | Gesture::Other => false,
     }

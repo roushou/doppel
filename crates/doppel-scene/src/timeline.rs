@@ -48,8 +48,12 @@ pub enum Gesture {
     Wait,
     /// Runs a program, or reads or writes a file, in the guest.
     Run,
-    /// Starts, stops, pauses, checkpoints or rolls the machine back.
+    /// Starts, stops, pauses, restores, forks or deletes the machine.
     Lifecycle,
+    /// Keeps the machine's state as a checkpoint, to return to.
+    Checkpoint,
+    /// Returns the machine to a checkpoint, discarding everything since.
+    Rollback,
     /// Points something out to the people watching; changes nothing.
     Mark,
     Other,
@@ -498,6 +502,8 @@ impl Gesture {
             | Self::Wait
             | Self::Run
             | Self::Lifecycle
+            | Self::Checkpoint
+            | Self::Rollback
             | Self::Mark
             | Self::Other => false,
         }
@@ -517,7 +523,7 @@ impl Gesture {
             Self::Look => Family::Look,
             Self::Wait => Family::Wait,
             Self::Run => Family::Run,
-            Self::Lifecycle => Family::Machine,
+            Self::Lifecycle | Self::Checkpoint | Self::Rollback => Family::Machine,
             Self::Mark => Family::Mark,
             Self::Other => Family::Other,
         }
@@ -594,6 +600,8 @@ impl Call {
                 Some(note) => format!("Pointing out: {note}"),
                 None => "Pointing something out".into(),
             },
+            Gesture::Checkpoint => "Keeping a checkpoint".into(),
+            Gesture::Rollback => "Rolling back to a checkpoint".into(),
             Gesture::Lifecycle if self.caption.is_empty() => "Changing the machine".into(),
             Gesture::Lifecycle | Gesture::Other => self.caption.clone(),
         }
@@ -959,8 +967,11 @@ fn changes(moment: &Moment) -> bool {
         | Gesture::Type
         | Gesture::Act
         | Gesture::Run
-        | Gesture::Lifecycle => true,
-        Gesture::Look | Gesture::Wait | Gesture::Mark | Gesture::Other => false,
+        | Gesture::Lifecycle
+        | Gesture::Rollback => true,
+        Gesture::Look | Gesture::Wait | Gesture::Mark | Gesture::Checkpoint | Gesture::Other => {
+            false
+        }
     }
 }
 

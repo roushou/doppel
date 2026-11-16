@@ -181,6 +181,8 @@ function pointMark(gesture: Gesture): boolean {
     case "wait":
     case "run":
     case "lifecycle":
+    case "checkpoint":
+    case "rollback":
     case "mark":
     case "other":
       return false;
@@ -315,6 +317,8 @@ export function family(gesture: Gesture): Family {
     case "run":
       return "run";
     case "lifecycle":
+    case "checkpoint":
+    case "rollback":
       return "machine";
     case "mark":
       return "mark";

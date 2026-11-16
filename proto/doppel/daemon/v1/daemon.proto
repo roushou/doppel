@@ -955,11 +955,15 @@ enum Gesture {
   GESTURE_WAIT = 11;
   // Runs a program or reads or writes a file in the guest.
   GESTURE_RUN = 12;
-  // Starts, stops, pauses, checkpoints or rolls the machine back.
+  // Starts, stops, pauses, restores, forks or deletes the machine.
   GESTURE_LIFECYCLE = 13;
   GESTURE_OTHER = 14;
   // Points something out to the people watching; changes nothing.
   GESTURE_MARK = 15;
+  // Keeps the machine's state as a checkpoint, to return to.
+  GESTURE_CHECKPOINT = 16;
+  // Returns the machine to a checkpoint, discarding everything since.
+  GESTURE_ROLLBACK = 17;
 }
 
 message ElementTarget {

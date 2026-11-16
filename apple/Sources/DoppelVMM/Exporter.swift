@@ -187,6 +187,8 @@ struct Painter {
         case .drag: "hand.draw.fill"
         case .scroll: "arrow.up.and.down"
         case .machine: "power"
+        case .checkpoint: "flag.fill"
+        case .rollback: "backward.fill"
         case .done: "checkmark"
         case .unspecified, .UNRECOGNIZED: nil
         }

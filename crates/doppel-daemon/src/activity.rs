@@ -144,6 +144,24 @@ fn element(node: &agent::AxNode) -> Option<daemon::ElementTarget> {
     })
 }
 
+/// What an action on an element does: setting a field's value is typing
+/// into it, the rest act on it.
+fn acting(action: Option<&agent::PerformAxAction>) -> Gesture {
+    use agent::perform_ax_action::Action;
+    match action.and_then(|action| action.action.as_ref()) {
+        Some(Action::SetValue(_)) => Gesture::Type,
+        Some(
+            Action::Press(_)
+            | Action::Focus(_)
+            | Action::Raise(_)
+            | Action::ShowMenu(_)
+            | Action::Named(_)
+            | Action::Select(_),
+        )
+        | None => Gesture::Act,
+    }
+}
+
 /// What `operation` does, and where on the display when that's known.
 /// `find` looks an element reference up in the snapshots kept.
 pub(crate) fn started(
@@ -153,7 +171,7 @@ pub(crate) fn started(
     let (gesture, target) = match operation {
         Operation::SendInput(request) => input(request.input.as_ref()),
         Operation::ActOnElement(request) => (
-            Gesture::Act,
+            acting(request.action.as_ref()),
             request
                 .action
                 .as_ref()
@@ -171,12 +189,12 @@ pub(crate) fn started(
         Operation::RunProgram(_) | Operation::ReadGuestFile(_) | Operation::WriteGuestFile(_) => {
             (Gesture::Run, None)
         }
+        Operation::TakeCheckpoint(_) => (Gesture::Checkpoint, None),
+        Operation::RollBack(_) => (Gesture::Rollback, None),
         Operation::StartMachine(_)
         | Operation::StopMachine(_)
         | Operation::PauseMachine(_)
         | Operation::ResumeMachine(_)
-        | Operation::TakeCheckpoint(_)
-        | Operation::RollBack(_)
         | Operation::RestoreMachine(_)
         | Operation::ForkMachine(_)
         | Operation::RunForks(_)
@@ -725,6 +743,24 @@ mod tests {
         }
         elements.forget(&dev());
         assert_eq!(act(7, 1).target, None);
+    }
+
+    #[test]
+    fn setting_a_fields_value_is_typing_into_it() {
+        let set = |action| {
+            acting(Some(&agent::PerformAxAction {
+                snapshot_id: 7,
+                node_index: 1,
+                action: Some(action),
+            }))
+        };
+        use agent::perform_ax_action::Action;
+        assert_eq!(
+            set(Action::SetValue("ada@example.com".into())),
+            Gesture::Type
+        );
+        assert_eq!(set(Action::Press(agent::Empty {})), Gesture::Act);
+        assert_eq!(acting(None), Gesture::Act);
     }
 
     #[test]

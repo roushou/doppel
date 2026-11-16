@@ -162,8 +162,12 @@ pub enum Gesture {
     Wait,
     /// Runs a program, or reads or writes a file, in the guest.
     Run,
-    /// Starts, stops, pauses, checkpoints or rolls the machine back.
+    /// Starts, stops, pauses, restores, forks or deletes the machine.
     Lifecycle,
+    /// Keeps the machine's state as a checkpoint, to return to.
+    Checkpoint,
+    /// Returns the machine to a checkpoint, discarding everything since.
+    Rollback,
     /// Points something out to the people watching; changes nothing.
     Mark,
     Other,
@@ -364,6 +368,8 @@ impl Gesture {
             Ok(Wire::Wait) => Self::Wait,
             Ok(Wire::Run) => Self::Run,
             Ok(Wire::Lifecycle) => Self::Lifecycle,
+            Ok(Wire::Checkpoint) => Self::Checkpoint,
+            Ok(Wire::Rollback) => Self::Rollback,
             Ok(Wire::Mark) => Self::Mark,
             Ok(Wire::Other | Wire::Unspecified) => Self::Other,
             Err(_) => Self::Unknown(raw),
