@@ -118,6 +118,8 @@ pub struct TraceCall {
     pub acted: Option<(Gesture, Target)>,
     /// What a mark call showed the people watching.
     pub callout: Option<std::sync::Arc<crate::timeline::Callout>>,
+    /// Why the session's client made it, when it said.
+    pub why: Option<String>,
     /// Its line in the trace, from 0, when the trace kept the snapshot it
     /// saw: [`crate::Daemon::seen_snapshot`] reads it.
     pub seen: Option<u32>,
@@ -424,6 +426,7 @@ mod tests {
 
     fn call(start_ms: u64, end_ms: u64, machine: Option<&str>, text: &str) -> TraceLine {
         TraceLine::Call(Box::new(TraceCall {
+            why: None,
             start_ms,
             end_ms,
             machine: machine.map(name),

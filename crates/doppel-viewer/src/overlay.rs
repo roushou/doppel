@@ -136,6 +136,9 @@ const fn gesture_icon(gesture: Gesture) -> Icon {
 
 /// A caption in the agent's colour: what it's doing, or why it failed.
 /// Square and flat, in small mono; the caller upper-cases its words.
+/// How far below the pointer's caption the agent's reason sits.
+const WHY_BELOW: f32 = 24.;
+
 fn chip(fill: Hsla, theme: &Theme) -> Div {
     div()
         .absolute()
@@ -212,20 +215,34 @@ pub(crate) fn layer(
                     .p(px(4.))
                     .child(Icon::Bot.svg(13., theme.white)),
             };
-            let top = px(y + CAPTION_OFFSET.1);
-            layer = layer.child(match caption_side(x, picture.left + picture.width) {
-                Side::Right => caption.left(px(x + CAPTION_OFFSET.0)).top(top),
-                // A zero-wide anchor just left of the pointer, the caption
-                // ending at it.
-                Side::Left => div()
-                    .absolute()
-                    .left(px(x - 6.))
-                    .top(top)
-                    .w(px(0.))
-                    .flex()
-                    .justify_end()
-                    .child(caption.relative().flex_none()),
-            });
+            let side = caption_side(x, picture.left + picture.width);
+            let place = |chip: Div, below: f32| {
+                let top = px(y + CAPTION_OFFSET.1 + below);
+                match side {
+                    Side::Right => chip.left(px(x + CAPTION_OFFSET.0)).top(top),
+                    // A zero-wide anchor just left of the pointer, the caption
+                    // ending at it.
+                    Side::Left => div()
+                        .absolute()
+                        .left(px(x - 6.))
+                        .top(top)
+                        .w(px(0.))
+                        .flex()
+                        .justify_end()
+                        .child(chip.relative().flex_none()),
+                }
+            };
+            layer = layer.child(place(caption, 0.));
+            // Why it does it, in its own words, under what it does.
+            if let Some(why) = current.and_then(|call| call.why.as_deref()) {
+                let said = chip(hue.fill, theme).text_color(hue.ink).child(
+                    div()
+                        .overflow_hidden()
+                        .text_ellipsis()
+                        .child(why.to_owned()),
+                );
+                layer = layer.child(place(said, WHY_BELOW));
+            }
         }
         // A call with no place shows only in the tab above the screen and
         // the trace: nothing over the guest's own menu bar.

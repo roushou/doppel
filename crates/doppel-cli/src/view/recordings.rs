@@ -97,6 +97,7 @@ pub(crate) fn recording(recording: doppel_client::Recording) -> Recording {
 fn line(line: doppel_client::TraceLine) -> TraceLine {
     match line {
         doppel_client::TraceLine::Call(call) => {
+            let why = call.acted.as_ref().and_then(|acted| acted.why.clone());
             let (acted, callout) = match call.acted {
                 Some(acted) => {
                     let (gesture, target, callout) = on_screen(*acted);
@@ -105,6 +106,7 @@ fn line(line: doppel_client::TraceLine) -> TraceLine {
                 None => (None, None),
             };
             TraceLine::Call(Box::new(TraceCall {
+                why,
                 start_ms: call.start_ms,
                 end_ms: call.end_ms,
                 machine: call.machine,
@@ -196,6 +198,7 @@ mod tests {
                 read: None,
                 by: doppel_client::TraceActor::Person,
                 acted: Some(Box::new(doppel_client::OnScreen {
+                    why: None,
                     gesture: doppel_client::Gesture::Click,
                     target: Some(doppel_client::Target::Point(
                         doppel_machine::geometry::Point::new(1.0, 2.0).unwrap(),

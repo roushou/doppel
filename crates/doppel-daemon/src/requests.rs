@@ -204,8 +204,9 @@ where
             acted: machine
                 .as_ref()
                 .zip(request.operation.as_ref())
-                .map(|(machine, operation)| {
-                    activity::started(operation, |snapshot, index| {
+                .map(|(machine, operation)| daemon::CallStarted {
+                    why: request.why.trim().to_owned(),
+                    ..activity::started(operation, |snapshot, index| {
                         self.elements.find(machine, snapshot, index)
                     })
                 }),

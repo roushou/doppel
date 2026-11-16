@@ -338,6 +338,7 @@ impl DaemonPeer {
 
 fn list() -> DaemonCall {
     DaemonCall {
+        why: String::new(),
         caption: String::new(),
         operation: daemon::daemon_request::Operation::ListMachines(daemon::ListMachines {}),
     }

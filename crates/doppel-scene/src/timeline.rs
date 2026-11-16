@@ -140,6 +140,8 @@ pub struct Call {
     pub target: Target,
     /// What a mark call shows ([`Gesture::Mark`]).
     pub callout: Option<Arc<Callout>>,
+    /// Why the session's client made it, in its words, when it said.
+    pub why: Option<String>,
 }
 
 /// How a call ended.
@@ -698,6 +700,7 @@ pub fn from_trace(recording: &Recording, machine: &MachineName) -> Vec<Moment> {
                     gesture,
                     target,
                     callout,
+                    why: traced.why.clone(),
                 },
                 failed: match traced.outcome {
                     TraceOutcome::Done => None,
@@ -927,6 +930,7 @@ mod tests {
             gesture,
             target,
             callout: None,
+            why: None,
         }
     }
 
@@ -1524,6 +1528,7 @@ mod tests {
         use crate::recordings::{RecordingId, TraceCall, TraceLine};
         let traced = |start_ms, machine: Option<&str>, by, outcome| {
             TraceLine::Call(Box::new(TraceCall {
+                why: None,
                 start_ms,
                 end_ms: start_ms + 500,
                 machine: machine.map(|raw| raw.parse().unwrap()),

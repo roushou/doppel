@@ -483,6 +483,7 @@ fn an_agent_s_calls_wait_while_a_person_has_the_machine_and_learn_of_it_after() 
     other.status(&dev, soon()).unwrap();
     let notes = doppel_client::Notes::new();
     let noted = doppel_client::Call {
+        why: "",
         by: soon(),
         caption: "",
         cancel: &doppel_protocol::transport::Cancel::never(),
@@ -798,6 +799,7 @@ fn a_connection_s_requests_on_one_machine_run_in_the_order_sent() {
     let cli = Client::connect(&socket, SystemClock, soon()).unwrap();
     let request = |id, operation| {
         daemon::daemon_frame::Kind::Request(daemon::DaemonRequest {
+            why: String::new(),
             id,
             caption: String::new(),
             operation: Some(operation),
@@ -991,6 +993,7 @@ impl RawConnection {
     ) -> doppel_protocol::pb::daemon::v1::daemon_response::Outcome {
         use doppel_protocol::pb::daemon::v1 as daemon;
         self.send(daemon::daemon_frame::Kind::Request(daemon::DaemonRequest {
+            why: String::new(),
             id: 1,
             caption: String::new(),
             operation: Some(operation),
@@ -1189,6 +1192,7 @@ fn a_token_holder_reaches_the_daemon_through_the_listener() {
         },
     ));
     send(daemon::daemon_frame::Kind::Request(daemon::DaemonRequest {
+        why: String::new(),
         id: 1,
         caption: String::new(),
         operation: Some(daemon::daemon_request::Operation::ListMachines(
@@ -1323,6 +1327,7 @@ fn a_watcher_sees_an_agent_s_calls_start_and_end_and_no_one_else_s() {
         panic!("{opened:?}");
     };
     agent.send(daemon::daemon_frame::Kind::Request(daemon::DaemonRequest {
+        why: String::new(),
         id: 9,
         caption: "click Save".into(),
         operation: Some(click()),

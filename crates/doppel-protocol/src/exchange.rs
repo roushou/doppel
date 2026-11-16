@@ -549,10 +549,12 @@ impl Protocol for agent::AgentFrame {
     }
 }
 
-/// A daemon request: its caption (for a session's recording) and operation.
+/// A daemon request: its caption (for a session's recording), why the
+/// client makes it (empty when it didn't say), and its operation.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DaemonCall {
     pub caption: String,
+    pub why: String,
     pub operation: daemon::daemon_request::Operation,
 }
 
@@ -572,6 +574,7 @@ impl Protocol for daemon::DaemonFrame {
             kind: Some(daemon::daemon_frame::Kind::Request(daemon::DaemonRequest {
                 id: id.get(),
                 caption: call.caption,
+                why: call.why,
                 operation: Some(call.operation),
             })),
         }
@@ -902,6 +905,7 @@ mod tests {
         let id = daemon
             .request(DaemonCall {
                 caption: String::new(),
+                why: String::new(),
                 operation: call,
             })
             .unwrap();
@@ -1080,6 +1084,7 @@ mod tests {
                 kind: Some(daemon::daemon_frame::Kind::Request(daemon::DaemonRequest {
                     id,
                     caption: String::new(),
+                    why: String::new(),
                     operation: None,
                 })),
             })

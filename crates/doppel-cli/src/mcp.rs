@@ -176,11 +176,17 @@ impl Runner for Relay {
             let notes = Arc::clone(&notes);
             move || {
                 let caption = call.caption();
+                let why = call
+                    .why
+                    .as_ref()
+                    .map_or("", doppel_mcp::Why::as_str)
+                    .to_owned();
                 let calls = Calls {
                     client: &client,
                     call: Call {
                         by: Relay::deadline(Relay::CALL_BUDGET),
                         caption: &caption,
+                        why: &why,
                         cancel: &cancel,
                         notes: Some(&notes),
                     },

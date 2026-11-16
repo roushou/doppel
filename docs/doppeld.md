@@ -133,8 +133,8 @@ display to a file, outside any session.
 `doppel record export RECORDING OUT.mp4` writes one of a recording's videos
 (the first, or `--video NAME`) with what its agent did burned in: the
 pointer gliding to where it acts and what it's doing, the marks its calls
-leave, its marks for the people watching, and a chip while it runs a
-command or moves a file. `doppel_scene::film` decides what is drawn at each
+leave, its marks for the people watching, why it acts when it said, and a
+chip while it runs a command or moves a file. `doppel_scene::film` decides what is drawn at each
 frame, as shapes in display points; `doppel-vmm export` paints them on the
 frames and encodes the result, at `--fps` (30 by default). It doesn't yet
 draw which elements the agent reads.
@@ -179,6 +179,8 @@ absent, and names they don't know.
 - `seen`, `read`, `mark`: what it saw, read or marked, as base64 of the
   protobuf message: `doppel.agent.v1.AxSnapshot`, `doppel.daemon.v1.TextRead`
   and `doppel.daemon.v1.ScreenMark`. A snapshot keeps no password field's value.
+- `why`: why the session's client made the call, in its own words, when it
+  said (the MCP tools' `why`).
 
 Captions and the trace name what a call did but leave out what may be
 secret: typed text, values set, `exec` arguments and file contents.

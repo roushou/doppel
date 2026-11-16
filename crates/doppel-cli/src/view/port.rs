@@ -319,6 +319,7 @@ pub(super) fn activity(activity: Activity) -> ActivityEvent {
     };
     match activity.phase {
         doppel_client::Phase::Started(acted) => {
+            let why = acted.why.clone();
             let (gesture, target, callout) = on_screen(acted);
             ActivityEvent::Started(Call {
                 key,
@@ -328,6 +329,7 @@ pub(super) fn activity(activity: Activity) -> ActivityEvent {
                 gesture,
                 target,
                 callout,
+                why,
             })
         }
         doppel_client::Phase::Ended(ended) => ActivityEvent::Ended {
@@ -347,6 +349,7 @@ pub(super) fn activity(activity: Activity) -> ActivityEvent {
             ended,
         } => ActivityEvent::Recent {
             call: {
+                let why = acted.why.clone();
                 let (gesture, target, callout) = on_screen(acted);
                 Call {
                     key,
@@ -356,6 +359,7 @@ pub(super) fn activity(activity: Activity) -> ActivityEvent {
                     gesture,
                     target,
                     callout,
+                    why,
                 }
             },
             started_ms_ago: started_ago.as_secs_f64() * 1000.0,
@@ -698,6 +702,7 @@ mod tests {
             client: "claude".into(),
             caption: "click OK".into(),
             phase: doppel_client::Phase::Started(doppel_client::OnScreen {
+                why: None,
                 gesture: doppel_client::Gesture::Unknown(77),
                 target: Some(doppel_client::Target::Point(Point::new(1.0, 2.0).unwrap())),
                 callout: None,

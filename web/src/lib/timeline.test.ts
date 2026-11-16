@@ -98,7 +98,7 @@ describe("a machine's timeline", () => {
       refs: null,
       read: null,
     });
-    const at = (x: number) => ({ gesture: "click" as const, target: { kind: "point" as const, at: { x, y: 0 } }, callout: null });
+    const at = (x: number) => ({ gesture: "click" as const, target: { kind: "point" as const, at: { x, y: 0 } }, callout: null, why: null });
     const moments = fromTrace(
       [traced(0, "dev", "session", at(1)), traced(50, "web", "session", at(2)), traced(100, "dev", "person", at(3)), traced(200, null, "session", null)],
       "dev",

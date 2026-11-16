@@ -111,6 +111,7 @@ export function fromTrace(trace: TraceCall[], machine: string): Moment[] {
         gesture: traced.acted?.gesture ?? "other",
         target: traced.acted?.target ?? { kind: "none" },
         callout: traced.acted?.callout ?? null,
+        why: traced.acted?.why ?? null,
       };
       return {
         key: call.key,

@@ -61,6 +61,8 @@ pub struct OnScreen {
     pub target: Option<Target>,
     /// What a mark call shows the people watching ([`Gesture::Mark`]).
     pub callout: Option<Box<Callout>>,
+    /// Why the session's client made the call, in its words, when it said.
+    pub why: Option<String>,
 }
 
 /// A mark an agent put on the screen for the people watching, drawn on the
@@ -306,10 +308,14 @@ impl OnScreen {
             }
             None => (started.target.and_then(Target::from_wire), None),
         };
+        let why = Some(started.why.trim())
+            .filter(|why| !why.is_empty())
+            .map(ToOwned::to_owned);
         Self {
             gesture: Gesture::from_wire(started.gesture),
             target,
             callout,
+            why,
         }
     }
 }
@@ -404,6 +410,7 @@ mod tests {
             client: "claude".into(),
             caption: "click".into(),
             phase: Some(daemon::activity::Phase::Started(daemon::CallStarted {
+                why: String::new(),
                 gesture,
                 target,
                 mark: None,
@@ -423,6 +430,7 @@ mod tests {
         assert_eq!(
             read.map(|activity| activity.phase),
             Some(Phase::Started(OnScreen {
+                why: None,
                 gesture: Gesture::Click,
                 target: Some(Target::Point(Point::new(10.0, 20.0).unwrap())),
                 callout: None,
@@ -450,6 +458,7 @@ mod tests {
         assert_eq!(
             read.map(|activity| activity.phase),
             Some(Phase::Started(OnScreen {
+                why: None,
                 gesture: Gesture::Unknown(99),
                 target: None,
                 callout: None,
@@ -461,6 +470,7 @@ mod tests {
     fn a_mark_is_drawn_on_its_own_place() {
         let mut event = started(None, daemon::Gesture::Mark as i32);
         event.phase = Some(daemon::activity::Phase::Started(daemon::CallStarted {
+            why: String::new(),
             gesture: daemon::Gesture::Mark as i32,
             target: None,
             mark: Some(daemon::ScreenMark {
@@ -477,6 +487,7 @@ mod tests {
         assert_eq!(
             Activity::from_wire(event).map(|activity| activity.phase),
             Some(Phase::Started(OnScreen {
+                why: None,
                 gesture: Gesture::Mark,
                 target: Some(Target::Point(Point::new(5.0, 6.0).unwrap())),
                 callout: Some(Box::new(Callout {

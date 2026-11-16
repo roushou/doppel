@@ -34,7 +34,9 @@ use serde_json::{Map, Value};
 use doppel_machine::input::Via;
 use doppel_machine::screen::ScreenshotSize;
 
-use super::{ArgumentError, MCP_MAX_FILE, MCP_MAX_OUTPUT, SnapshotListing, ToolAction, ToolCall};
+use super::{
+    ArgumentError, MCP_MAX_FILE, MCP_MAX_OUTPUT, SnapshotListing, ToolAction, ToolCall, Why,
+};
 use crate::refs::Refs;
 
 /// One MCP tool.
@@ -173,17 +175,36 @@ impl ToolCall {
     }
 }
 
+/// What every tool takes besides its own arguments.
+const WHY: &str = "Optional: why you make this call, in a few words (\"to check the signup form\"). The people watching see it beside your pointer.";
+
 fn definition<T: Tool>() -> Definition {
-    Definition::new(T::NAME, T::DESCRIPTION, Arc::new(input_schema::<T::Args>()))
+    let mut schema = input_schema::<T::Args>();
+    if let Some(Value::Object(properties)) = schema.get_mut("properties") {
+        properties.insert(
+            "why".to_owned(),
+            serde_json::json!({ "type": "string", "maxLength": Why::MAX_CHARS, "description": WHY }),
+        );
+    }
+    Definition::new(T::NAME, T::DESCRIPTION, Arc::new(schema))
 }
 
 fn call<T: Tool>(
-    arguments: Map<String, Value>,
+    mut arguments: Map<String, Value>,
     at: &Parsing<'_>,
 ) -> Result<ToolCall, ArgumentError> {
+    let why = match arguments.remove("why") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(raw)) if raw.trim().is_empty() => None,
+        Some(Value::String(raw)) => Some(raw.parse::<Why>().map_err(ArgumentError::Value)?),
+        Some(_) => return Err(ArgumentError::Shape("why must be a string".into())),
+    };
     let args = serde_json::from_value(Value::Object(arguments))
         .map_err(|e| ArgumentError::Shape(e.to_string()))?;
-    T::call(args, at)
+    Ok(ToolCall {
+        why,
+        ..T::call(args, at)?
+    })
 }
 
 /// An argument type's schema as a model reads it: inline, an optional
@@ -362,6 +383,7 @@ impl Tool for Status {
 
     fn call(args: MachineArgs, at: &Parsing<'_>) -> Result<ToolCall, ArgumentError> {
         Ok(ToolCall {
+            why: None,
             machine: at.machine(args.machine)?,
             action: ToolAction::Status,
         })
@@ -411,6 +433,7 @@ impl Tool for Screenshot {
             Some(n) => ScreenshotSize::MaxPixels(n),
         };
         Ok(ToolCall {
+            why: None,
             machine: at.machine(args.machine)?,
             action: ToolAction::Screenshot {
                 // The host by default: no guest permission, works locked.
@@ -448,6 +471,7 @@ impl Tool for FindText {
             .transpose()
             .map_err(|e| ArgumentError::Value(format!("text: {e}")))?;
         Ok(ToolCall {
+            why: None,
             machine: at.machine(args.machine)?,
             action: ToolAction::FindText(query),
         })
@@ -479,6 +503,7 @@ impl Tool for Snapshot {
 
     fn call(args: SnapshotArgs, at: &Parsing<'_>) -> Result<ToolCall, ArgumentError> {
         Ok(ToolCall {
+            why: None,
             machine: at.machine(args.machine)?,
             action: ToolAction::Snapshot(snapshot_spec(
                 args.scope,
@@ -551,6 +576,7 @@ impl Tool for Act {
         };
         let (r, target) = at.resolve(&machine, &args.target)?;
         Ok(ToolCall {
+            why: None,
             machine,
             action: ToolAction::Act {
                 r,
@@ -645,6 +671,7 @@ impl Tool for WaitFor {
             WireUntil::TextDisappears => on_screen(TextCondition::Disappears)?,
         };
         Ok(ToolCall {
+            why: None,
             machine: at.machine(machine)?,
             action,
         })
@@ -766,6 +793,7 @@ impl Tool for Mark {
         };
         let note = Note::new(args.note.as_deref().unwrap_or_default()).map_err(|e| value(&e))?;
         Ok(ToolCall {
+            why: None,
             machine,
             action: ToolAction::Mark {
                 mark: doppel_machine::mark::Mark::new(place, shape, note, lasts)
@@ -839,6 +867,7 @@ impl Tool for Exec {
             request = request.in_directory(cwd.parse().map_err(|e| value(&e))?);
         }
         Ok(ToolCall {
+            why: None,
             machine: at.machine(args.machine)?,
             action: ToolAction::Exec(request),
         })
@@ -878,6 +907,7 @@ impl Tool for ReadFile {
         }
         let path: GuestPath = args.path.parse().map_err(|e| value(&e))?;
         Ok(ToolCall {
+            why: None,
             machine: at.machine(args.machine)?,
             action: ToolAction::ReadFile(ReadRequest::new(path, max_bytes).map_err(|e| value(&e))?),
         })
@@ -951,6 +981,7 @@ impl Tool for WriteFile {
         };
         let path: GuestPath = args.path.parse().map_err(|e| value(&e))?;
         Ok(ToolCall {
+            why: None,
             machine: at.machine(args.machine)?,
             action: ToolAction::WriteFile(
                 WriteRequest::new(path, data, mode, policy).map_err(|e| value(&e))?,
@@ -1008,6 +1039,7 @@ impl Tool for Click {
             count: ClickCount::try_from(args.count.unwrap_or(1)).map_err(|e| value(&e))?,
         };
         Ok(ToolCall {
+            why: None,
             machine: at.machine(args.machine)?,
             action: ToolAction::Input {
                 via: WireVia::input(args.via),
@@ -1041,6 +1073,7 @@ impl Tool for Type {
             return Err(ArgumentError::Value("text is empty".into()));
         }
         Ok(ToolCall {
+            why: None,
             machine: at.machine(args.machine)?,
             action: ToolAction::Input {
                 via: WireVia::input(args.via),
@@ -1072,6 +1105,7 @@ impl Tool for Key {
     fn call(args: KeyArgs, at: &Parsing<'_>) -> Result<ToolCall, ArgumentError> {
         let chord: KeyChord = args.chord.parse().map_err(|e| value(&e))?;
         Ok(ToolCall {
+            why: None,
             machine: at.machine(args.machine)?,
             action: ToolAction::Input {
                 via: WireVia::input(args.via),
@@ -1102,6 +1136,7 @@ impl Tool for Checkpoint {
 
     fn call(args: CheckpointArgs, at: &Parsing<'_>) -> Result<ToolCall, ArgumentError> {
         Ok(ToolCall {
+            why: None,
             machine: at.machine(args.machine)?,
             action: ToolAction::Checkpoint(label(&args.label, "label")?),
         })
@@ -1127,6 +1162,7 @@ impl Tool for Rollback {
 
     fn call(args: RollbackArgs, at: &Parsing<'_>) -> Result<ToolCall, ArgumentError> {
         Ok(ToolCall {
+            why: None,
             machine: at.machine(args.machine)?,
             action: ToolAction::Rollback(label(&args.checkpoint, "checkpoint")?),
         })
@@ -1164,6 +1200,7 @@ impl Tool for Fork {
             ));
         }
         Ok(ToolCall {
+            why: None,
             machine: source,
             action: ToolAction::Fork {
                 checkpoint: label(&args.checkpoint, "checkpoint")?,
@@ -1182,6 +1219,7 @@ impl Tool for Start {
 
     fn call(args: MachineArgs, at: &Parsing<'_>) -> Result<ToolCall, ArgumentError> {
         Ok(ToolCall {
+            why: None,
             machine: at.machine(args.machine)?,
             action: ToolAction::Start,
         })
@@ -1197,6 +1235,7 @@ impl Tool for Stop {
 
     fn call(args: MachineArgs, at: &Parsing<'_>) -> Result<ToolCall, ArgumentError> {
         Ok(ToolCall {
+            why: None,
             machine: at.machine(args.machine)?,
             action: ToolAction::Stop,
         })

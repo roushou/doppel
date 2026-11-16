@@ -112,6 +112,12 @@ using earlier refs.
 `mark` is the other direction: it draws a box, dot or arrow with a short note
 over the screen for the people watching, and recordings keep it.
 
+Every tool also takes an optional `why`: one line, at most 120 characters, on
+why the agent makes the call ("to check the signup form"). The viewers show
+it under the pointer's caption, and the trace, the recording's captions and
+exports keep it. It's the agent's own words, so it goes wherever the
+recording goes: keep secrets out of it.
+
 ## Lifecycle
 
 `stop` and `rollback` discard the running state: open apps and unsaved work

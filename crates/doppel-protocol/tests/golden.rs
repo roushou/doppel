@@ -385,6 +385,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
         },
         daemon::DaemonFrame {
             kind: Some(Kind::Request(daemon::DaemonRequest {
+                why: String::new(),
                 caption: String::new(),
                 id: 1,
                 operation: Some(Operation::ListMachines(daemon::ListMachines {})),
@@ -462,6 +463,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
         },
         daemon::DaemonFrame {
             kind: Some(Kind::Request(daemon::DaemonRequest {
+                why: String::new(),
                 caption: String::new(),
                 id: 2,
                 operation: Some(Operation::GetStatus(daemon::GetStatus {
@@ -482,6 +484,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
         },
         daemon::DaemonFrame {
             kind: Some(Kind::Request(daemon::DaemonRequest {
+                why: String::new(),
                 caption: String::new(),
                 id: 3,
                 operation: Some(Operation::StartMachine(daemon::StartMachine {
@@ -515,6 +518,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
         },
         daemon::DaemonFrame {
             kind: Some(Kind::Request(daemon::DaemonRequest {
+                why: String::new(),
                 caption: String::new(),
                 id: 5,
                 operation: Some(Operation::TakeCheckpoint(daemon::TakeCheckpoint {
@@ -563,6 +567,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
         // A session: the connection's requests from here on are its own.
         daemon::DaemonFrame {
             kind: Some(Kind::Request(daemon::DaemonRequest {
+                why: String::new(),
                 id: 7,
                 caption: String::new(),
                 operation: Some(Operation::OpenSession(daemon::OpenSession {
@@ -587,6 +592,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
         },
         daemon::DaemonFrame {
             kind: Some(Kind::Request(daemon::DaemonRequest {
+                why: String::new(),
                 id: 8,
                 caption: "press s2e5 (button \"Save\")".into(),
                 operation: Some(Operation::ActOnElement(daemon::ActOnElement {
@@ -601,6 +607,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
         },
         daemon::DaemonFrame {
             kind: Some(Kind::Request(daemon::DaemonRequest {
+                why: String::new(),
                 id: 9,
                 caption: "wait_for".into(),
                 operation: Some(Operation::WaitForElement(daemon::WaitForElement {
@@ -675,6 +682,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
         },
         daemon::DaemonFrame {
             kind: Some(Kind::Request(daemon::DaemonRequest {
+                why: String::new(),
                 id: 12,
                 caption: String::new(),
                 operation: Some(Operation::OpenDisplay(daemon::OpenDisplay {
@@ -715,6 +723,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
         },
         daemon::DaemonFrame {
             kind: Some(Kind::Request(daemon::DaemonRequest {
+                why: String::new(),
                 id: 13,
                 caption: String::new(),
                 operation: Some(Operation::SendHostInput(daemon::SendHostInput {
@@ -733,6 +742,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
         },
         daemon::DaemonFrame {
             kind: Some(Kind::Request(daemon::DaemonRequest {
+                why: String::new(),
                 id: 14,
                 caption: String::new(),
                 operation: Some(Operation::TakeControl(daemon::TakeControl {
@@ -742,6 +752,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
         },
         daemon::DaemonFrame {
             kind: Some(Kind::Request(daemon::DaemonRequest {
+                why: String::new(),
                 id: 15,
                 caption: String::new(),
                 operation: Some(Operation::HandBack(daemon::HandBack { name: "dev".into() })),
@@ -749,6 +760,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
         },
         daemon::DaemonFrame {
             kind: Some(Kind::Request(daemon::DaemonRequest {
+                why: String::new(),
                 id: 16,
                 caption: String::new(),
                 operation: Some(Operation::PauseSession(daemon::PauseSession { session: 3 })),
@@ -756,6 +768,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
         },
         daemon::DaemonFrame {
             kind: Some(Kind::Request(daemon::DaemonRequest {
+                why: String::new(),
                 id: 17,
                 caption: String::new(),
                 operation: Some(Operation::ResumeSession(daemon::ResumeSession {
@@ -791,6 +804,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
         },
         daemon::DaemonFrame {
             kind: Some(Kind::Request(daemon::DaemonRequest {
+                why: String::new(),
                 id: 20,
                 caption: String::new(),
                 operation: Some(Operation::OpenEncodedDisplay(daemon::OpenEncodedDisplay {
@@ -827,6 +841,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
         },
         daemon::DaemonFrame {
             kind: Some(Kind::Request(daemon::DaemonRequest {
+                why: String::new(),
                 id: 21,
                 caption: String::new(),
                 operation: Some(Operation::RunForks(daemon::RunForks {
@@ -870,6 +885,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
         },
         daemon::DaemonFrame {
             kind: Some(Kind::Request(daemon::DaemonRequest {
+                why: String::new(),
                 id: 22,
                 caption: String::new(),
                 operation: Some(Operation::IssueToken(daemon::IssueToken {
@@ -893,6 +909,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
         },
         daemon::DaemonFrame {
             kind: Some(Kind::Request(daemon::DaemonRequest {
+                why: String::new(),
                 id: 23,
                 caption: String::new(),
                 operation: Some(Operation::ListTokens(daemon::ListTokens {})),
@@ -914,6 +931,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
         },
         daemon::DaemonFrame {
             kind: Some(Kind::Request(daemon::DaemonRequest {
+                why: String::new(),
                 id: 24,
                 caption: String::new(),
                 operation: Some(Operation::RevokeToken(daemon::RevokeToken {
@@ -923,6 +941,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
         },
         daemon::DaemonFrame {
             kind: Some(Kind::Request(daemon::DaemonRequest {
+                why: String::new(),
                 id: 25,
                 caption: String::new(),
                 operation: Some(Operation::ConfigureWeb(daemon::ConfigureWeb {
@@ -947,6 +966,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
         },
         daemon::DaemonFrame {
             kind: Some(Kind::Request(daemon::DaemonRequest {
+                why: String::new(),
                 id: 26,
                 caption: String::new(),
                 operation: Some(Operation::GetWebStatus(daemon::GetWebStatus {})),
@@ -966,6 +986,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
         },
         daemon::DaemonFrame {
             kind: Some(Kind::Request(daemon::DaemonRequest {
+                why: String::new(),
                 id: 27,
                 caption: String::new(),
                 operation: Some(Operation::ListRecordings(daemon::ListRecordings {})),
@@ -990,6 +1011,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
         },
         daemon::DaemonFrame {
             kind: Some(Kind::Request(daemon::DaemonRequest {
+                why: String::new(),
                 id: 28,
                 caption: String::new(),
                 operation: Some(Operation::OpenRecording(daemon::OpenRecording {
@@ -999,6 +1021,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
         },
         daemon::DaemonFrame {
             kind: Some(Kind::Request(daemon::DaemonRequest {
+                why: String::new(),
                 id: 32,
                 caption: String::new(),
                 operation: Some(Operation::OpenSeenSnapshot(daemon::OpenSeenSnapshot {
@@ -1009,6 +1032,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
         },
         daemon::DaemonFrame {
             kind: Some(Kind::Request(daemon::DaemonRequest {
+                why: String::new(),
                 id: 34,
                 caption: String::new(),
                 operation: Some(Operation::ObserveElements(daemon::ObserveElements {
@@ -1018,6 +1042,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
         },
         daemon::DaemonFrame {
             kind: Some(Kind::Request(daemon::DaemonRequest {
+                why: String::new(),
                 id: 35,
                 caption: String::new(),
                 operation: Some(Operation::ObserveText(daemon::ObserveText {
@@ -1027,6 +1052,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
         },
         daemon::DaemonFrame {
             kind: Some(Kind::Request(daemon::DaemonRequest {
+                why: String::new(),
                 id: 36,
                 caption: "mark s3e12".into(),
                 operation: Some(Operation::MarkScreen(daemon::MarkScreen {
@@ -1044,6 +1070,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
         },
         daemon::DaemonFrame {
             kind: Some(Kind::Request(daemon::DaemonRequest {
+                why: String::new(),
                 id: 33,
                 caption: String::new(),
                 operation: Some(Operation::NameElements(daemon::NameElements {
@@ -1139,6 +1166,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
         },
         daemon::DaemonFrame {
             kind: Some(Kind::Request(daemon::DaemonRequest {
+                why: String::new(),
                 id: 29,
                 caption: String::new(),
                 operation: Some(Operation::DeleteMachine(daemon::DeleteMachine {
@@ -1148,6 +1176,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
         },
         daemon::DaemonFrame {
             kind: Some(Kind::Request(daemon::DaemonRequest {
+                why: String::new(),
                 id: 30,
                 caption: String::new(),
                 operation: Some(Operation::WatchActivity(daemon::WatchActivity {})),
@@ -1163,6 +1192,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
                     client: "doppel mcp".into(),
                     caption: "act s3e12 press".into(),
                     phase: Some(daemon::activity::Phase::Started(daemon::CallStarted {
+                        why: String::new(),
                         mark: None,
                         gesture: daemon::Gesture::Act.into(),
                         target: Some(daemon::call_started::Target::Element(
@@ -1191,6 +1221,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
                     client: "doppel mcp".into(),
                     caption: "drag".into(),
                     phase: Some(daemon::activity::Phase::Started(daemon::CallStarted {
+                        why: String::new(),
                         mark: None,
                         gesture: daemon::Gesture::Drag.into(),
                         target: Some(daemon::call_started::Target::Drag(daemon::DragTarget {
@@ -1211,6 +1242,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
                     client: "doppel mcp".into(),
                     caption: "mark (5, 6)".into(),
                     phase: Some(daemon::activity::Phase::Started(daemon::CallStarted {
+                        why: String::new(),
                         gesture: daemon::Gesture::Mark.into(),
                         target: None,
                         mark: Some(daemon::ScreenMark {
@@ -1262,6 +1294,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
                     caption: "click".into(),
                     phase: Some(daemon::activity::Phase::Recent(daemon::CallRecent {
                         started: Some(daemon::CallStarted {
+                            why: String::new(),
                             mark: None,
                             gesture: daemon::Gesture::Click.into(),
                             target: Some(daemon::call_started::Target::Point(common::Point {
@@ -1417,6 +1450,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
                                 }],
                             }),
                             acted: Some(daemon::CallStarted {
+                                why: String::new(),
                                 mark: None,
                                 gesture: daemon::Gesture::Click.into(),
                                 target: Some(daemon::call_started::Target::Point(common::Point {

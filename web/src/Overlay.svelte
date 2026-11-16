@@ -257,7 +257,7 @@
     {@const run = running(agent)}
     {#if run !== null}
       <span class="run" style={colours(agent)} style:left="{drawn.left + 12}px" style:top="{drawn.top + drawn.height - 40}px">
-        <Terminal size={13} /><span>{named && agent.client !== "" ? `${agent.client} · ` : ""}{run.caption === "" ? describe(run) : run.caption}</span><span class="spinner"></span>
+        <Terminal size={13} /><span>{named && agent.client !== "" ? `${agent.client} · ` : ""}{run.caption === "" ? describe(run) : run.caption}{run.why === null ? "" : ` · ${run.why}`}</span><span class="spinner"></span>
       </span>
     {/if}
   {/each}
@@ -286,6 +286,7 @@
             <CurrentIcon size={13} />
             <span>{saying(agent, current)}</span>
           </span>
+          {#if current.why !== null}<span class={["why", side]}>{current.why}</span>{/if}
         {:else if named && agent.client !== ""}
           <span class={["caption", side]}><Bot size={13} /><span>{agent.client}</span></span>
         {:else}
@@ -446,6 +447,25 @@
   }
   .caption.idle {
     padding: 4px;
+  }
+  /* Why the agent does it, in its own words, under what it does. */
+  .why {
+    position: absolute;
+    left: 18px;
+    top: 44px;
+    padding: 4px 8px;
+    font: 500 11px/1.2 var(--mono);
+    white-space: nowrap;
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--agent-ink);
+    background: var(--agent);
+    animation: pop 0.2s ease-out;
+  }
+  .why.left {
+    left: auto;
+    right: 6px;
   }
   @keyframes pop {
     from {

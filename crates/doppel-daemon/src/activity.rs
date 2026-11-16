@@ -215,6 +215,7 @@ pub(crate) fn started(
         gesture: gesture.into(),
         target,
         mark,
+        why: String::new(),
     }
 }
 
@@ -859,6 +860,7 @@ mod tests {
         };
         let look = || {
             Phase::Started(daemon::CallStarted {
+                why: String::new(),
                 mark: None,
                 gesture: Gesture::Look.into(),
                 target: None,

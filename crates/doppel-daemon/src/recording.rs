@@ -233,7 +233,16 @@ impl Recordings {
                         Guest::Kept => None,
                     };
                     if let Some(segment) = before.as_ref().or(after.as_ref()) {
-                        let caption = Self::caption_text(&call.caption, &answered.traced, *waited);
+                        let mut caption = call.caption.clone();
+                        if let Some(why) = call
+                            .acted
+                            .as_ref()
+                            .map(|acted| acted.why.as_str())
+                            .filter(|why| !why.is_empty())
+                        {
+                            caption = format!("{caption} · {why}");
+                        }
+                        let caption = Self::caption_text(&caption, &answered.traced, *waited);
                         self.caption(segment, started, *ended, &caption);
                     }
                 }
@@ -530,6 +539,9 @@ struct TraceLine<'a> {
     /// encoded as `seen` is.
     #[serde(skip_serializing_if = "Option::is_none")]
     mark: Option<String>,
+    /// Why the client made the call, in its words, when it said.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    why: Option<&'a str>,
 }
 
 /// A line of `refs.jsonl`: the names of the snapshot trace line `line`
@@ -727,6 +739,10 @@ impl TraceEntry<'_> {
                 .acted
                 .and_then(|acted| acted.mark.as_ref())
                 .map(|mark| BASE64.encode(mark.encode_to_vec())),
+            why: self
+                .acted
+                .map(|acted| acted.why.as_str())
+                .filter(|why| !why.is_empty()),
         };
         // Strings and numbers only: serializing can't fail.
         serde_json::to_string(&line).unwrap_or_default()
@@ -935,6 +951,7 @@ mod tests {
             .json(origin)
         };
         let click = daemon::CallStarted {
+            why: String::new(),
             mark: None,
             gesture: Gesture::DoubleClick.into(),
             target: Some(Target::Point(common::Point { x: 1.5, y: 2.0 })),
@@ -944,6 +961,7 @@ mod tests {
             r#"{"start_ms":0,"end_ms":5,"machine":"dev","call":"c","outcome":"done","gesture":"double_click","target":{"point":{"x":1.5,"y":2.0}}}"#
         );
         let pressed = daemon::CallStarted {
+            why: String::new(),
             mark: None,
             gesture: Gesture::Act.into(),
             target: Some(Target::Element(daemon::ElementTarget {
@@ -962,6 +980,7 @@ mod tests {
             r#"{"start_ms":0,"end_ms":5,"machine":"dev","call":"c","outcome":"done","gesture":"act","target":{"element":{"x":3.0,"y":4.0,"width":40.0,"height":30.0,"label":"Equals"}}}"#
         );
         let dragged = daemon::CallStarted {
+            why: String::new(),
             mark: None,
             gesture: Gesture::Drag.into(),
             target: Some(Target::Drag(daemon::DragTarget {
@@ -975,6 +994,7 @@ mod tests {
         );
         // Typing has no place.
         let typed = daemon::CallStarted {
+            why: String::new(),
             mark: None,
             gesture: Gesture::Type.into(),
             target: None,

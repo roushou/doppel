@@ -256,6 +256,7 @@ fn call(gesture: i32, target: Option<daemon::call_started::Target>) -> daemon::C
         gesture,
         target,
         mark: None,
+        why: String::new(),
     }
 }
 
@@ -289,6 +290,7 @@ fn marked(mark: daemon::ScreenMark) -> daemon::CallStarted {
         gesture: daemon::Gesture::Mark as i32,
         target: None,
         mark: Some(mark),
+        why: String::new(),
     }
 }
 

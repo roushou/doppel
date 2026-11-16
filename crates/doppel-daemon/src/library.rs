@@ -252,6 +252,8 @@ struct RawCall {
     read: Option<String>,
     /// Base64 of a protobuf `ScreenMark`.
     mark: Option<String>,
+    /// Why the client made the call, when it said.
+    why: Option<String>,
 }
 
 /// A value read if it can be, `None` if it can't.
@@ -301,6 +303,7 @@ impl TraceLine {
                         .mark
                         .and_then(|encoded| BASE64.decode(encoded).ok())
                         .and_then(|bytes| daemon::ScreenMark::decode(bytes.as_slice()).ok()),
+                    why: raw.why.unwrap_or_default(),
                 })
             }),
             seen: raw.seen.is_some(),

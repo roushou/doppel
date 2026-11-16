@@ -67,6 +67,8 @@ export interface Call {
   target: Target;
   /** What a mark call shows. */
   callout: Callout | null;
+  /** Why the session's client made it, in its words, when it said. */
+  why: string | null;
 }
 
 export type Ending = { kind: "done" } | { kind: "failed"; reason: string };
@@ -192,9 +194,11 @@ export function readCallout(mark: ScreenMark): Callout | null {
 }
 
 /** What a call did on the screen and where, as the daemon told it. A mark's place is its own: it has no target. */
-export function parseStarted(started: CallStarted): { gesture: Gesture; target: Target; callout: Callout | null } {
+export function parseStarted(started: CallStarted): { gesture: Gesture; target: Target; callout: Callout | null; why: string | null } {
+  const said = started.why.trim();
+  const why = said === "" ? null : said;
   if (started.mark !== undefined) {
-    return { gesture: gesture(started.gesture), target: { kind: "none" }, callout: readCallout(started.mark) };
+    return { gesture: gesture(started.gesture), target: { kind: "none" }, callout: readCallout(started.mark), why };
   }
   const wire = started.target;
   let target: Target = { kind: "none" };
@@ -229,7 +233,7 @@ export function parseStarted(started: CallStarted): { gesture: Gesture; target: 
       return never;
     }
   }
-  return { gesture: gesture(started.gesture), target, callout: null };
+  return { gesture: gesture(started.gesture), target, callout: null, why };
 }
 
 /** How a call ended, the snapshot it saw, and the text it read. */
@@ -266,7 +270,7 @@ export function parseActivity(activity: Activity): ActivityEvent | null {
   const phase = activity.phase;
   switch (phase.case) {
     case "started": {
-      const { gesture: acted, target, callout } = parseStarted(phase.value);
+      const { gesture: acted, target, callout, why } = parseStarted(phase.value);
       return {
         kind: "started",
         call: {
@@ -278,6 +282,7 @@ export function parseActivity(activity: Activity): ActivityEvent | null {
           gesture: acted,
           target,
           callout,
+          why,
         },
       };
     }
@@ -288,7 +293,7 @@ export function parseActivity(activity: Activity): ActivityEvent | null {
     case "recent": {
       const recent = phase.value;
       if (recent.started === undefined) return null;
-      const { gesture: acted, target, callout } = parseStarted(recent.started);
+      const { gesture: acted, target, callout, why } = parseStarted(recent.started);
       const ended =
         recent.ended === undefined || recent.endedMsAgo === undefined
           ? null
@@ -299,7 +304,7 @@ export function parseActivity(activity: Activity): ActivityEvent | null {
             };
       return {
         kind: "recent",
-        call: { key, session: Number(activity.session), machine, client: activity.client, caption: activity.caption, gesture: acted, target, callout },
+        call: { key, session: Number(activity.session), machine, client: activity.client, caption: activity.caption, gesture: acted, target, callout, why },
         startedAgoMs: Number(recent.startedMsAgo),
         ended,
       };

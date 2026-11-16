@@ -269,6 +269,7 @@ impl<C: Clock> Stream<C> {
         let mut channel = Channel::<daemon::DaemonFrame, C>::open(stream, clock, config, by)?;
         let call = DaemonCall {
             caption: String::new(),
+            why: String::new(),
             operation: request.into_operation(),
         };
         let answer = channel.call(call, by)?;

@@ -51,6 +51,9 @@ message DaemonRequest {
   // What the request does, in the client's words, for the session's
   // recording. Leaves out secrets (typed text, file contents).
   string caption = 2;
+  // Why the client makes it, in its own words, for the people watching:
+  // one short line, or empty when it didn't say.
+  string why = 3;
   oneof operation {
     ListMachines list_machines = 10;
     GetStatus get_status = 11;
@@ -931,6 +934,8 @@ message CallStarted {
   }
   // What a mark call puts on the screen (GESTURE_MARK).
   ScreenMark mark = 5;
+  // Why the session's client made the call, in its own words, when it said.
+  string why = 6;
 }
 
 enum Gesture {

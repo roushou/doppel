@@ -261,6 +261,9 @@ impl ClientError {
 pub struct Call<'a> {
     pub by: Deadline,
     pub caption: &'a str,
+    /// Why the client makes it, in its own words, for the people watching;
+    /// empty when it didn't say.
+    pub why: &'a str,
     pub cancel: &'a Cancel,
     /// `None` drops them: only a session is sent any.
     pub notes: Option<&'a Notes>,
@@ -275,6 +278,7 @@ impl From<Deadline> for Call<'static> {
         Self {
             by,
             caption: "",
+            why: "",
             cancel: &NEVER,
             notes: None,
         }

@@ -351,10 +351,16 @@ impl Picture {
                         y: display.height() - 12.0,
                     },
                     corner: Corner::BottomLeft,
-                    text: if call.caption.is_empty() {
-                        call.describe()
-                    } else {
-                        call.caption.clone()
+                    text: {
+                        let what = if call.caption.is_empty() {
+                            call.describe()
+                        } else {
+                            call.caption.clone()
+                        };
+                        match &call.why {
+                            Some(why) => format!("{what} · {why}"),
+                            None => what,
+                        }
                     },
                     ink: WHITE,
                     plate: ink,
@@ -390,6 +396,20 @@ impl Picture {
                     plate: ink,
                     opacity,
                 });
+                // Why it does it, in its own words, under what it does.
+                if let Some(why) = &call.why {
+                    shapes.push(Shape::Tag {
+                        at: Spot {
+                            x: tip.x + 18.0,
+                            y: tip.y + 42.0,
+                        },
+                        corner: Corner::TopLeft,
+                        text: why.clone(),
+                        ink,
+                        plate: fill,
+                        opacity,
+                    });
+                }
             }
         }
         Self { shapes }
@@ -457,6 +477,7 @@ mod tests {
                 gesture,
                 target,
                 callout: None,
+                why: None,
             },
             failed: None,
             person: false,
@@ -541,6 +562,16 @@ mod tests {
                 .shapes
                 .iter()
                 .any(|shape| matches!(shape, Shape::Ring { opacity, .. } if *opacity < 1.0))
+        );
+    }
+
+    #[test]
+    fn why_the_agent_acts_shows_under_what_it_does() {
+        let mut said = click(1, 0.0, 100.0, 100.0);
+        said.call.why = Some("to open the pricing page".into());
+        assert_eq!(
+            tags(&Picture::at(&[said], display(), 10.0)),
+            ["CLICKING", "to open the pricing page"]
         );
     }
 

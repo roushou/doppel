@@ -121,6 +121,45 @@ impl ToolAction {
 pub struct ToolCall {
     pub machine: MachineName,
     pub action: ToolAction,
+    /// Why the model makes it, in its words, for the people watching.
+    pub why: Option<Why>,
+}
+
+/// Why a model makes a call, for the people watching: one line, trimmed,
+/// of 1 to [`Why::MAX_CHARS`] characters.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Why(String);
+
+impl Why {
+    pub const MAX_CHARS: usize = 120;
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::str::FromStr for Why {
+    type Err = String;
+
+    /// Blank reads as no reason: callers skip it.
+    fn from_str(raw: &str) -> Result<Self, String> {
+        let line = raw.trim();
+        if line.is_empty() {
+            return Err("why is empty: leave it out instead".into());
+        }
+        if line.contains(['\n', '\r']) {
+            return Err("why is one line".into());
+        }
+        let chars = line.chars().count();
+        if chars > Self::MAX_CHARS {
+            return Err(format!(
+                "why is {chars} characters; at most {}",
+                Self::MAX_CHARS
+            ));
+        }
+        Ok(Self(line.to_owned()))
+    }
 }
 
 impl ToolCall {
@@ -1182,12 +1221,48 @@ pub(crate) mod tests {
         }
 
         #[test]
+        fn any_tool_takes_a_why_for_the_people_watching() {
+            let call = parse(
+                ToolName::Checkpoint,
+                json!({ "label": "ready", "why": "  before the install " }),
+            )
+            .unwrap();
+            assert_eq!(
+                call.why.as_ref().map(Why::as_str),
+                Some("before the install")
+            );
+            // Blank says nothing; a long, split or non-string one is refused.
+            assert_eq!(
+                parse(ToolName::Stop, json!({ "why": " " })).unwrap().why,
+                None
+            );
+            assert!(
+                parse(
+                    ToolName::Stop,
+                    json!({ "why": "x".repeat(Why::MAX_CHARS + 1) })
+                )
+                .is_err()
+            );
+            assert!(parse(ToolName::Stop, json!({ "why": "one\ntwo" })).is_err());
+            assert!(parse(ToolName::Stop, json!({ "why": 3 })).is_err());
+            let definitions = serde_json::to_value(ToolName::definitions()).unwrap();
+            for tool in definitions.as_array().unwrap() {
+                assert_eq!(
+                    tool["inputSchema"]["properties"]["why"]["type"], "string",
+                    "{}",
+                    tool["name"]
+                );
+            }
+        }
+
+        #[test]
         fn lifecycle_calls_parse_into_typed_actions() {
             assert_eq!(
                 parse(ToolName::Checkpoint, json!({ "label": "before-install" })).unwrap(),
                 ToolCall {
                     machine: dev(),
                     action: ToolAction::Checkpoint("before-install".parse().unwrap()),
+                    why: None,
                 }
             );
             assert_eq!(

@@ -55,7 +55,7 @@ export interface Call {
   queuedMs: number | null;
   by: "session" | "person" | { unknown: number };
   /** What it did on the screen and where; `null` when the trace didn't keep it. */
-  acted: { gesture: Gesture; target: Target; callout: Callout | null } | null;
+  acted: { gesture: Gesture; target: Target; callout: Callout | null; why: string | null } | null;
   /** Its line in the trace, when the trace kept the snapshot it saw: OpenSeenSnapshot reads it. */
   seen: number | null;
   /** What the agent named that snapshot's elements. */

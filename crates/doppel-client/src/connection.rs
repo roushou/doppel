@@ -48,6 +48,7 @@ impl<C: Clock> Connection<C> {
     ) -> Result<R::Answer, ClientError> {
         let request = DaemonCall {
             caption: call.caption.to_owned(),
+            why: call.why.to_owned(),
             operation: request.into_operation(),
         };
         let mut response = self.channel.call(request, call.by, call.cancel)?.response;

@@ -631,6 +631,7 @@ mod tests {
                         doppel_client::Call {
                             by: soon(),
                             caption: "",
+                            why: "",
                             cancel: &cancel,
                             notes: None,
                         },
