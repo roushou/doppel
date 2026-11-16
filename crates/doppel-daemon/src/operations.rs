@@ -11,7 +11,7 @@ use doppel_host::machines::{
     CHECKPOINT_TIMEOUT, CLAIM_TIMEOUT, CheckpointReport, Claim, Listing, MachineError, Machines,
     Resumed, START_TIMEOUT, STOP_TIMEOUT, StopOutcome, StopReport,
 };
-use doppel_host::vmm::StopMode;
+use doppel_host::vmm::{StopMode, VmmError};
 use doppel_machine::agent::AgentReport;
 use doppel_machine::ax::tree::{ActOn, AxSnapshot, Menus, Scope, SnapshotRequest};
 use doppel_machine::ax::tree::{SnapshotScope, SnapshotSpec};
@@ -704,8 +704,16 @@ where
         }
     }
 
+    /// Which machine failures are worth polling through: a VMM slow to
+    /// answer one poll (its screen busy, or the wait's own deadline reached
+    /// mid-poll) may answer the next, and a wait that runs out on it has
+    /// timed out, not failed.
     fn machine_poll<S>(error: &MachineError) -> Poll<S> {
-        Poll::Fatal(error.to_string())
+        if let MachineError::Vmm(VmmError::Timeout) = error {
+            Poll::Retryable(error.to_string())
+        } else {
+            Poll::Fatal(error.to_string())
+        }
     }
 
     #[expect(
@@ -759,6 +767,19 @@ mod tests {
         later.join().unwrap();
         assert!(matches!(result, Err(CallError::Cancelled)));
         assert!(SystemClock.now().duration_since(started) < Duration::from_secs(5));
+    }
+
+    #[test]
+    fn a_vmm_slow_to_answer_a_poll_is_polled_through_but_one_gone_is_not() {
+        type Ops = Daemon<SystemClock, LocalFilesystem>;
+        assert!(matches!(
+            Ops::machine_poll::<ScreenText>(&MachineError::Vmm(VmmError::Timeout)),
+            Poll::Retryable(_)
+        ));
+        assert!(matches!(
+            Ops::machine_poll::<ScreenText>(&MachineError::Vmm(VmmError::Closed)),
+            Poll::Fatal(_)
+        ));
     }
 }
 
