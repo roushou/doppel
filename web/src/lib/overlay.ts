@@ -369,6 +369,8 @@ export interface AgentScene {
   client: string;
   /** Where its pointer is: the last place it acted. */
   cursor: DisplayPoint | null;
+  /** When its pointer was last placed: when the call that placed it started. */
+  aimed: number | null;
   /** Its call under way, and since when. */
   current: { call: Call; since: number } | null;
   /** When the look whose band is sweeping the screen began, if one is. */

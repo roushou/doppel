@@ -1,5 +1,7 @@
 <script lang="ts">
   import { ChevronRight, LoaderCircle, ScanEye, X } from "@lucide/svelte";
+  import type { Attention } from "./lib/attention";
+  import { hue } from "./lib/hues";
   import { type Element, type Row, type Seen, ancestors, initiallyFolded, oneLine, reveal, rows } from "./lib/tree";
 
   interface Props {
@@ -7,6 +9,8 @@
     seen: Seen | null;
     /** The refs the agent's model was given for its elements (`s3e12`); `null` when it named none. */
     refs: ReadonlyMap<number, string> | null;
+    /** What the agent reads of it: its rows light up as the screen's boxes do. */
+    attention?: Attention | null;
     /** Why there's no snapshot to show: none taken yet, it's loading, or it can't be read. */
     empty: { kind: "none" } | { kind: "loading" } | { kind: "failed"; why: string };
     /** How old it is, in words (`4 s ago`). */
@@ -25,7 +29,7 @@
     onlook?: () => void;
   }
 
-  let { seen, refs, empty, age, stale, wrappers, hovered, selected, onhover, onselect, onwrappers, onclose, looking, onlook }: Props = $props();
+  let { seen, refs, attention = null, empty, age, stale, wrappers, hovered, selected, onhover, onselect, onwrappers, onclose, looking, onlook }: Props = $props();
 
   let list: HTMLOListElement | undefined = $state();
   const items: Record<number, HTMLLIElement> = $state({});
@@ -117,16 +121,30 @@
     onselect(row.index === selected ? null : row.index);
   }
 
-  // Keeps the element pointed at on the screen in view, scrolling the list only.
+  /** How brightly each row the agent read glows, by its row's element (or the folded branch standing in). */
+  const glowing = $derived.by(() => {
+    const out = new Map<number, number>();
+    if (attention === null || attention.presence === 0) return out;
+    for (const { glance, glow } of attention.lit) {
+      const row = standIn(glance.index);
+      if (row !== null) out.set(row, Math.max(out.get(row) ?? 0, glow * attention.presence));
+    }
+    return out;
+  });
+  const readNow = $derived(attention?.head == null ? null : standIn(attention.head.index));
+  const readerColours = $derived(attention === null ? "" : `--agent: ${hue(attention.session).fill}`);
+
+  // Keeps the element pointed at on the screen in view, or else the one the agent reads, scrolling the list only.
   $effect(() => {
-    const pointed = hovered ?? selected;
+    const pointed = hovered ?? selected ?? readNow;
     const index = pointed === null ? null : standIn(pointed);
     if (index === null || list === undefined) return;
     const row = items[index];
     if (row === undefined) return;
     const top = row.offsetTop - list.offsetTop;
     if (top < list.scrollTop || top + row.offsetHeight > list.scrollTop + list.clientHeight) {
-      list.scrollTo({ top: top - list.clientHeight / 3 });
+      // Following the agent's reading glides; a person's pointing jumps.
+      list.scrollTo({ top: top - list.clientHeight / 3, behavior: hovered === null && selected === null ? "smooth" : "instant" });
     }
   });
 
@@ -191,6 +209,7 @@
       aria-label="Elements"
       aria-activedescendant={selected === null || !at.has(selected) ? undefined : `element-${selected}`}
       onkeydown={keyed}
+      style={readerColours}
       style:--indent="{INDENT}px"
       style:--gutter="{GUTTER}px"
     >
@@ -213,10 +232,13 @@
                 hovered: row.index === standIn(hovered ?? -1),
                 selected: row.index === selected,
                 trail: trail.has(row.index),
+                read: glowing.has(row.index),
+                reading: row.index === readNow,
                 folded: row.branch && !row.open,
               },
             ]}
             style:padding-left="{GUTTER + row.depth * INDENT}px"
+            style:--glow={glowing.get(row.index) ?? 0}
             onpointerenter={() => onhover(row.index)}
             onpointerleave={() => onhover(null)}
             onclick={(event) => pressed(event, row)}
@@ -311,8 +333,11 @@
     text-overflow: ellipsis;
   }
   .age {
+    min-width: 0;
     color: var(--muted);
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .age.stale {
     color: var(--warning);
@@ -373,6 +398,13 @@
     padding-right: 8px;
     white-space: nowrap;
     cursor: default;
+  }
+  /* Rows the agent read glow in its colour; the one it reads now is ringed. */
+  .row.read {
+    background: color-mix(in srgb, var(--agent) calc(var(--glow) * 24%), transparent);
+  }
+  .row.reading {
+    box-shadow: inset 2px 0 0 var(--agent);
   }
   .row.hovered {
     background: var(--hover);

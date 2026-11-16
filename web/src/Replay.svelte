@@ -14,6 +14,7 @@
   import { contain } from "./lib/geometry";
   import { ListTree, Pause, Play, ScanText } from "@lucide/svelte";
   import { follow as place, Transport } from "./lib/transport";
+  import { attentionAt } from "./lib/attention";
   import { fromTrace, readAt, sceneAt, seenAt } from "./lib/timeline";
   import Text from "./Text.svelte";
   import { type Seen, refsOf } from "./lib/tree";
@@ -86,6 +87,8 @@
   const fetch = $derived(line === null ? undefined : fetched.get(line));
   const seen = $derived(fetch?.kind === "seen" ? fetch.seen : null);
   const refs = $derived(seen === null ? null : refsOf(seen, found?.moment.refs ?? null));
+  /** What the agent reads of the snapshot by the playhead. */
+  const attention = $derived(found === null || seen === null || now === null ? null : attentionAt(found, seen, refs, moments, now));
   const empty = $derived(
     fetch === undefined || line === null
       ? line === null
@@ -96,7 +99,8 @@
         : { kind: "loading" as const },
   );
   $effect(() => {
-    if (!inspecting || line === null || fetched.has(line)) return;
+    // Fetched whether or not the tree shows: the overlay draws what the agent reads of it.
+    if (line === null || fetched.has(line)) return;
     const asked = line;
     fetched = new Map(fetched).set(asked, { kind: "loading" });
     void loadSeen(asked).then((answer) => {
@@ -291,7 +295,7 @@
             />
           {/if}
           {#if scene !== null && drawn !== null && now !== null}
-            <Overlay {scene} {drawn} display={playing.points ?? { width: 1, height: 1 }} {now} />
+            <Overlay {scene} {drawn} display={playing.points ?? { width: 1, height: 1 }} {now} {attention} />
           {/if}
         </div>
       {/key}
@@ -335,6 +339,7 @@
             <Tree
               {seen}
               {refs}
+              {attention}
               {empty}
               age={found === null || now === null ? "" : ago(now - found.sinceMs)}
               stale={found?.actedSince ?? false}

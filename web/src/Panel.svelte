@@ -11,6 +11,7 @@
   import type { Rect, Size } from "./lib/geometry";
   import { type Machine, type MachineName, provenance, template } from "./lib/machines";
   import type { Report } from "./lib/report";
+  import { attentionAt } from "./lib/attention";
   import { type Look, type Moment, reading, sceneAt, showing, type TextLook } from "./lib/timeline";
   import type { TextRead } from "./lib/reading";
   import { type Seen, refsOf } from "./lib/tree";
@@ -118,6 +119,10 @@
   });
   /** The agent's refs; a person's look has none. */
   const refs = $derived(seen !== null && showingNow.kind === "agent" ? refsOf(seen, showingNow.found.moment.refs) : null);
+  /** What the agent that took the snapshot shown reads of it. */
+  const attention = $derived(
+    showingNow.kind === "agent" && seen !== null ? attentionAt(showingNow.found, seen, refs, moments, now) : null,
+  );
   const stale = $derived(
     showingNow.kind === "agent" ? showingNow.found.actedSince : showingNow.kind === "person" ? showingNow.actedSince : false,
   );
@@ -376,7 +381,7 @@
             <span class="tab" title={tab.what}>{who(tab.session)} <span class="what">{tab.what}</span></span>
           {/if}
         </div>
-        <Screen name={machine.name} {token} {controlling} {send} scene={overlay ? scene : null} {now} layer={(inspecting && seen !== null) || texting ? layers : undefined} bind:picture />
+        <Screen name={machine.name} {token} {controlling} {send} scene={overlay ? scene : null} {now} attention={overlay ? attention : null} layer={(inspecting && seen !== null) || texting ? layers : undefined} bind:picture />
         {#if tab.kind !== "none"}<div class="ring" aria-hidden="true"></div>{/if}
         {#if machine.state.kind === "live" && machine.state.run === "paused"}
           <div class="veil">
@@ -447,6 +452,7 @@
           <Tree
             {seen}
             {refs}
+            {attention}
             {empty}
             looking={mine?.outcome.kind === "loading" ? "busy" : "ready"}
             onlook={() => void lookNow()}

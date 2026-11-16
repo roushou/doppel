@@ -17,6 +17,7 @@
   } from "@lucide/svelte";
   import type { DisplayPoint, Rect, Size } from "./lib/geometry";
   import { hue } from "./lib/hues";
+  import { type Attention, pointerOf } from "./lib/attention";
   import { type AgentScene, CALLOUT_FADE_MS, type Call, type Gesture, MARK_MS, type Scene, type Shown, arrowEnds, captionSide, describe, swept } from "./lib/overlay";
 
   interface Props {
@@ -27,9 +28,14 @@
     display: Size;
     /** The page's clock, in the scene's milliseconds. */
     now: number;
+    /** What the agent that took the latest snapshot reads of it, if anything. */
+    attention?: Attention | null;
   }
 
-  let { scene, drawn, display, now }: Props = $props();
+  let { scene, drawn, display, now, attention = null }: Props = $props();
+
+  /** A look's band shows only once the look has run this long: a snapshot is read element by element instead, and is quicker. */
+  const BAND_AFTER_MS = 300;
 
   /** How long the agent's pointer stays once it stops acting. */
   const POINTER_MS = 6000;
@@ -121,16 +127,46 @@
     return `--agent: ${fill}; --agent-soft: ${soft}; --agent-ink: ${ink}`;
   }
 
-  /** The latest look's band: one at a time, as several mixed read as mud. */
-  const scanning = $derived(
-    scene.agents.reduce<AgentScene | null>((latest, agent) => (agent.scan !== null && (latest?.scan ?? -Infinity) < agent.scan ? agent : latest), null),
-  );
+  /** The latest look's band: one at a time, as several mixed read as mud. None over a snapshot being read. */
+  const scanning = $derived.by(() => {
+    const latest = scene.agents.reduce<AgentScene | null>(
+      (latest, agent) => (agent.scan !== null && (latest?.scan ?? -Infinity) < agent.scan ? agent : latest),
+      null,
+    );
+    if (latest === null || latest.scan === null || now - latest.scan < BAND_AFTER_MS) return null;
+    return attention !== null && attention.session === latest.session && attention.since >= latest.scan ? null : latest;
+  });
+
+  /** The agent reading, if it is one of the scene's. */
+  const reader = $derived(attention === null ? null : (scene.agents.find((agent) => agent.session === attention.session) ?? null));
+
+  /** Its work off the screen under way: a command, a file read or written. */
+  function running(agent: AgentScene): Call | null {
+    const call = agent.current?.call ?? null;
+    return call !== null && call.gesture === "run" ? call : null;
+  }
 </script>
 
 <div class="overlay" aria-hidden="true">
   {#if scanning !== null && scanning.scan !== null}
     <div class="scan" style={colours(scanning)} style:left="{drawn.left}px" style:top="{drawn.top}px" style:width="{drawn.width}px" style:height="{drawn.height}px">
       <span class="band" style:top="{-30 + swept(scanning.scan, now) * 130}%"></span>
+    </div>
+  {/if}
+  {#if attention !== null && reader !== null && attention.lit.length > 0}
+    <div class="reading" style={colours(reader)} style:opacity={attention.presence}>
+      {#each attention.lit as { glance, glow } (glance.index)}
+        {@const rect = box(glance.frame)}
+        {@const head = attention.head?.index === glance.index}
+        <div
+          class={["glance", { head }]}
+          style:left="{rect.left}px"
+          style:top="{rect.top}px"
+          style:width="{rect.width}px"
+          style:height="{rect.height}px"
+          style:--glow={glow}
+        ></div>
+      {/each}
     </div>
   {/if}
   {#each scene.agents as agent (agent.session)}
@@ -218,20 +254,34 @@
   {/each}
 
   {#each scene.agents as agent (agent.session)}
-    {#if agent.cursor !== null}
-      {@const at = px(agent.cursor)}
+    {@const run = running(agent)}
+    {#if run !== null}
+      <span class="run" style={colours(agent)} style:left="{drawn.left + 12}px" style:top="{drawn.top + drawn.height - 40}px">
+        <Terminal size={13} /><span>{named && agent.client !== "" ? `${agent.client} · ` : ""}{run.caption === "" ? describe(run) : run.caption}</span><span class="spinner"></span>
+      </span>
+    {/if}
+  {/each}
+
+  {#each scene.agents as agent (agent.session)}
+    {@const pointer = pointerOf(agent, attention)}
+    {@const reads = attention !== null && attention.session === agent.session && attention.presence > 0}
+    {#if pointer !== null}
+      {@const at = px(pointer)}
       {@const current = agent.current?.call ?? null}
       {@const CurrentIcon = current === null ? null : icon(current.gesture)}
       {@const side = captionSide(at.x, drawn.left + drawn.width)}
+      {@const head = reads && current === null ? (attention?.head ?? null) : null}
       <div
-        class={["cursor", { shown: agent.current !== null || now - agent.active < POINTER_MS }]}
+        class={["cursor", { shown: agent.current !== null || reads || now - agent.active < POINTER_MS, reading: head !== null }]}
         style={colours(agent)}
         style:transform="translate({at.x}px, {at.y}px)"
       >
         <svg class="arrow" width="22" height="22" viewBox="0 0 24 24">
           <path d="M4 2.5 L4 19 L8.6 14.8 L11.6 21.4 L14.6 20 L11.7 13.6 L18 13.6 Z" />
         </svg>
-        {#if current !== null && CurrentIcon !== null}
+        {#if head !== null}
+          <span class={["caption", "read", side]}><ScanEye size={13} /><span>{head.label}</span></span>
+        {:else if current !== null && CurrentIcon !== null && running(agent) === null}
           <span class={["caption", side]}>
             <CurrentIcon size={13} />
             <span>{saying(agent, current)}</span>
@@ -345,6 +395,12 @@
   }
   .cursor.shown {
     opacity: 1;
+  }
+  /* Reading, its eyes jump from element to element: the pointer keeps up. */
+  .cursor.reading {
+    transition:
+      transform 0.1s ease-out,
+      opacity 0.4s ease;
   }
   .arrow {
     position: absolute;
@@ -486,6 +542,64 @@
   .reason {
     margin: 26px 0 0 -8px;
     background: #c93a3a;
+  }
+
+  /* The agent reads a snapshot: each element it was shown lights up in turn, then settles. */
+  .reading {
+    position: absolute;
+    inset: 0;
+  }
+  .glance {
+    position: absolute;
+    box-sizing: border-box;
+    border: 1.5px solid color-mix(in srgb, var(--agent) calc(var(--glow) * 100%), transparent);
+    background: color-mix(in srgb, var(--agent) calc(var(--glow) * 22%), transparent);
+    animation: settle 0.18s ease-out;
+  }
+  .glance.head {
+    border-width: 2.5px;
+    box-shadow:
+      0 0 0 1px rgba(0, 0, 0, 0.35),
+      0 0 18px color-mix(in srgb, var(--agent) 60%, transparent);
+  }
+  .caption.read {
+    text-transform: none;
+    letter-spacing: 0;
+  }
+
+  /* Work off the screen under way: a command run, a file read or written. */
+  .run {
+    position: absolute;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 9px 5px 7px;
+    font: 500 11px/1.2 var(--mono);
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    max-width: 360px;
+    overflow: hidden;
+    color: #fff;
+    background: var(--agent-ink);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--agent) 60%, transparent);
+    animation: pop 0.2s ease-out;
+  }
+  .run span:not(.spinner) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .spinner {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--agent);
+    animation: blink 0.9s ease-in-out infinite alternate;
+  }
+  @keyframes blink {
+    to {
+      opacity: 0.25;
+    }
   }
 
   /* The agent reads the screen: a soft band sweeps down it, each pass to the end. */

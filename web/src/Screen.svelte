@@ -13,6 +13,7 @@
   import type { Scene } from "./lib/overlay";
   import type { Token } from "./lib/token";
   import Overlay from "./Overlay.svelte";
+  import type { Attention } from "./lib/attention";
 
   interface Props {
     name: MachineName;
@@ -24,13 +25,15 @@
     scene?: Scene | null;
     /** The page's clock, for the scene's fading marks. */
     now?: number;
+    /** What the agent that took the latest snapshot reads of it, drawn with the scene. */
+    attention?: Attention | null;
     /** Drawn over the picture, under the agent's overlay: given where the picture is and the display's size. */
     layer?: Snippet<[Rect, Size]> | undefined;
     /** Where the picture is drawn in the screen's box, for what frames it; null until a frame says. */
     picture?: Rect | null;
   }
 
-  let { name, token, controlling, send, scene = null, now = 0, layer, picture = $bindable(null) }: Props = $props();
+  let { name, token, controlling, send, scene = null, now = 0, attention = null, layer, picture = $bindable(null) }: Props = $props();
 
   let canvas: HTMLCanvasElement | undefined = $state();
   /** The field an on-screen keyboard types into: its edits are sent, never kept. */
@@ -233,7 +236,7 @@
     {@render layer(drawn, display)}
   {/if}
   {#if scene !== null && drawn !== null && display !== null && problem === null}
-    <Overlay {scene} {drawn} {display} {now} />
+    <Overlay {scene} {drawn} {display} {now} {attention} />
   {/if}
   {#if problem !== null}
     <p class="problem">{problem}</p>
