@@ -73,6 +73,12 @@ pub enum Report {
         name: MachineName,
         summary: RecordingSummary,
     },
+    /// A recording's video, with its overlay burned in.
+    Exported {
+        path: PathBuf,
+        /// What the exporter said of it.
+        summary: String,
+    },
     Status {
         name: MachineName,
         status: Status,
@@ -253,6 +259,9 @@ impl fmt::Display for Report {
             Self::NoPassword(name) => writeln!(f, "{name}: no stored password"),
             Self::RecordingStarted { name, path } => {
                 writeln!(f, "{name}: recording to {}", path.display())
+            }
+            Self::Exported { path, summary } => {
+                writeln!(f, "{}: {summary}", path.display())
             }
             Self::RecordingStopped { name, summary } => {
                 #[expect(clippy::cast_precision_loss, reason = "megabytes, to one place")]

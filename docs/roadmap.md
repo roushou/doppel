@@ -21,12 +21,15 @@ files. People watch and take over from a desktop or browser viewer.
 - **The agent's tools over MCP:** `status`, `screenshot`, `snapshot` with
   refs, `act`, `click`, `type`, `key`, `find_text`, `wait_for`, `exec`,
   `read_file`, `write_file`, `mark`, `start`, `stop`, `checkpoint`,
-  `rollback`, `fork`.
+  `rollback`, `fork`; `snapshot` and `wait_for` can list only what changed.
 - **doppeld** ([doppeld.md](doppeld.md)): one daemon per user owns the
   machines; sessions, per-machine call queues, takeover and hand back,
   recordings with traces.
 - **Viewers:** a desktop viewer (GPUI) and a browser viewer, both showing
   what agents do over the screen, an elements tree, read text, and replay.
+  The browser viewer also lights up the elements an agent reads.
+- **Exports:** `doppel record export` writes a recorded session's video
+  with its overlay burned in.
 - **Remote:** another Mac's daemon over `ssh -L` and `--host`; the browser
   viewer over TLS with tokens; several forks side by side with `fork-run`.
 

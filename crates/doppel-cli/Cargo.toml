@@ -21,6 +21,7 @@ doppel-host = { path = "../doppel-host" }
 doppel-machine = { path = "../doppel-machine" }
 doppel-mcp = { path = "../doppel-mcp" }
 doppel-protocol = { path = "../doppel-protocol" }
+doppel-scene = { path = "../doppel-scene" }
 doppel-viewer = { path = "../doppel-viewer" }
 nix = { workspace = true, features = ["signal"] }
 prost.workspace = true
@@ -30,7 +31,6 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync"] }
 
 [dev-dependencies]
 base64.workspace = true
-doppel-scene = { path = "../doppel-scene" }
 insta.workspace = true
 serde_json.workspace = true
 

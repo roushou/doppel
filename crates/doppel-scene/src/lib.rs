@@ -7,6 +7,7 @@
 
 pub mod elements;
 pub mod encoded;
+pub mod film;
 pub mod model;
 pub mod panel;
 pub mod recordings;

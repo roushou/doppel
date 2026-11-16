@@ -9,9 +9,11 @@ use std::time::Duration;
 
 mod copy;
 mod daemon_at;
+mod export;
 mod fork_run;
 mod launchd;
 mod mcp;
+mod reel;
 mod report;
 mod signals;
 mod tokens;
@@ -455,6 +457,19 @@ enum RecordCommand {
     Start { name: MachineName, file: PathBuf },
     /// Stop the recording and complete its file.
     Stop { name: MachineName },
+    /// Write a recorded session's video with what its agent did drawn
+    /// over it, as the viewers show it, to OUT (MP4). RECORDING is a
+    /// folder name in the data directory's `recordings/`.
+    Export {
+        recording: doppel_client::RecordingId,
+        out: PathBuf,
+        /// Which of its videos (`dev-002.mp4`); the first by default.
+        #[arg(long)]
+        video: Option<String>,
+        /// Frames per second.
+        #[arg(long, default_value_t = 30, value_parser = clap::value_parser!(u32).range(1..=120))]
+        fps: u32,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -718,6 +733,7 @@ fn run(cli: Cli) -> Result<Report> {
     let given = [("--home", home.clone()), ("--runtime-dir", runtime.clone())];
     let store = Store::new(DataRoot::new(home.clone())?, RuntimeDir::new(runtime)?);
 
+    let vmm = vmm_path.clone();
     let machines = Machines::new(
         store,
         VmmBinary::new(vmm_path),
@@ -877,6 +893,37 @@ fn run(cli: Cli) -> Result<Report> {
             let by = Deadline::after(SystemClock.now(), FINISH_RECORDING_TIMEOUT);
             let summary = machines.machine(&n).running(by)?.stop_recording(None, by)?;
             Report::RecordingStopped { name: n, summary }
+        }
+        Command::Record(RecordCommand::Export {
+            recording,
+            out,
+            video,
+            fps,
+        }) => {
+            let at = daemon()?;
+            if matches!(at, DaemonAt::Forwarded(_)) {
+                bail!("its video is on the Mac the daemon runs on: export it there");
+            }
+            let client = at.connect()?;
+            let opened = view::recording(client.open_recording(&recording, within(CALL_TIMEOUT))?);
+            let source = |video: &doppel_scene::recordings::Video| {
+                view::Videos::Here
+                    .path(
+                        || {
+                            client.data_root(within(CALL_TIMEOUT)).map_err(|error| {
+                                doppel_viewer::DaemonError::Unreachable(error.to_string())
+                            })
+                        },
+                        &opened.id,
+                        &video.file,
+                    )
+                    .map_err(|error| anyhow::anyhow!("{error}"))
+            };
+            let exported = export::export(&opened, video.as_deref(), source, &out, fps, &vmm)?;
+            Report::Exported {
+                path: exported.path,
+                summary: exported.summary,
+            }
         }
         Command::View {
             names: raw,

@@ -32,7 +32,7 @@ mod fixtures;
 mod port;
 mod recordings;
 
-pub(crate) use recordings::Videos;
+pub(crate) use recordings::{Videos, recording};
 
 /// Why a machine's display can't be shown.
 #[derive(Debug, thiserror::Error)]

@@ -77,7 +77,7 @@ pub(super) fn summary(summary: doppel_client::RecordingSummary) -> RecordingSumm
     }
 }
 
-pub(super) fn recording(recording: doppel_client::Recording) -> Recording {
+pub(crate) fn recording(recording: doppel_client::Recording) -> Recording {
     Recording {
         id: RecordingId::new(recording.id.to_string()),
         videos: recording

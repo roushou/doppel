@@ -264,3 +264,88 @@ message GuestStopped {
   // Present when reason is STOP_REASON_ERROR.
   string error_description = 2;
 }
+
+// --- Export ---------------------------------------------------------------------
+
+// A recording's overlay, burned into its video by `doppel-vmm export`: a
+// picture per frame, each the shapes to draw over it, bottom first. Shapes
+// are in the display's points; the exporter scales them to the video.
+message Reel {
+  // Pictures per second: picture n is drawn from n/fps s into the video.
+  uint32 fps = 1;
+  // The display's size in points, the space the shapes are in.
+  doppel.common.v1.Size display = 2;
+  repeated Picture pictures = 3;
+}
+
+message Picture { repeated Shape shapes = 1; }
+
+// A place in points; unlike a common Point, it may lie off the display.
+message Spot {
+  double x = 1;
+  double y = 2;
+}
+
+message Shape {
+  // The whole shape's opacity, 0 to 1.
+  double opacity = 1;
+  // A colour as 0xRRGGBB.
+  uint32 colour = 2;
+  oneof kind {
+    FrameShape frame = 3;
+    RingShape ring = 4;
+    StrokeShape stroke = 5;
+    PointerShape pointer = 6;
+    TagShape tag = 7;
+  }
+}
+
+// A rectangle's outline, its inside washed with the shape's colour.
+message FrameShape {
+  doppel.common.v1.Rect rect = 1;
+  // How much of the colour fills it, 0 to 1.
+  double wash = 2;
+  double width = 3;
+}
+
+// A circle's outline, its inside washed.
+message RingShape {
+  Spot centre = 1;
+  double radius = 2;
+  double wash = 3;
+  double width = 4;
+}
+
+enum StrokeLine {
+  STROKE_LINE_UNSPECIFIED = 0;
+  STROKE_LINE_SOLID = 1;
+  STROKE_LINE_DASHED = 2;
+  // Solid, with an arrowhead at its end.
+  STROKE_LINE_ARROW = 3;
+}
+
+message StrokeShape {
+  Spot from = 1;
+  Spot to = 2;
+  double width = 3;
+  StrokeLine line = 4;
+}
+
+// An agent's pointer, its tip at `tip`, in the shape's colour.
+message PointerShape { Spot tip = 1; }
+
+enum TagCorner {
+  TAG_CORNER_UNSPECIFIED = 0;
+  TAG_CORNER_TOP_LEFT = 1;
+  TAG_CORNER_TOP_RIGHT = 2;
+  TAG_CORNER_BOTTOM_LEFT = 3;
+}
+
+// One line of words on a plate of the shape's colour; `at` is its `corner`.
+message TagShape {
+  Spot at = 1;
+  TagCorner corner = 2;
+  string text = 3;
+  // The words' colour, as 0xRRGGBB.
+  uint32 ink = 4;
+}

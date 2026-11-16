@@ -3,6 +3,7 @@
 //   doppel-vmm serve   --spec S --disk D --aux A --socket P [--consume-state F] [--window]
 //                      [--provision-user U --provision-full-name N --provision-password-file F]
 //   doppel-vmm install --spec S --disk D --aux A --ipsw I
+//   doppel-vmm export  --video V --reel R --out O
 
 import AppKit
 import DoppelVMM
@@ -26,6 +27,10 @@ Task { @MainActor in
             try await r.run(boot: boot, window: window)
         case .install(let files, let ipsw):
             await Installer(files: files, restoreImage: ipsw).run()
+            exit(0)
+        case .export(let video, let reel, let out):
+            let exported = try await Exporter.export(video: video, reel: try Exporter.reel(at: reel), to: out)
+            print("exported \(exported.frames) frames (\(String(format: "%.1f", exported.seconds)) s)")
             exit(0)
         }
     } catch {

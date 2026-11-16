@@ -130,6 +130,15 @@ viewers replay a recording beside its trace, the call under the playhead
 highlighted. `doppel record start NAME FILE.mp4` records one machine's
 display to a file, outside any session.
 
+`doppel record export RECORDING OUT.mp4` writes one of a recording's videos
+(the first, or `--video NAME`) with what its agent did burned in: the
+pointer gliding to where it acts and what it's doing, the marks its calls
+leave, its marks for the people watching, and a chip while it runs a
+command or moves a file. `doppel_scene::film` decides what is drawn at each
+frame, as shapes in display points; `doppel-vmm export` paints them on the
+frames and encodes the result, at `--fps` (30 by default). It doesn't yet
+draw which elements the agent reads.
+
 A recorded session is a folder in the data directory's `recordings/`, named
 for when it started and its session: `2026-11-13T21-04-05Z-s3/`. It holds:
 
