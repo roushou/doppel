@@ -1435,12 +1435,13 @@ fn run(cli: Cli) -> Result<Report> {
             } else {
                 doppel_client::Record::Off
             };
-            let mut relay = mcp::Relay::connect(&daemon()?, record)?;
-            let default = match from {
-                Some(golden) => Some(relay.make_machine(&golden)?),
-                None => machine,
+            // clap refuses both together.
+            let default = match (from, machine) {
+                (Some(golden), _) => mcp::DefaultMachine::MadeFrom(golden),
+                (None, Some(name)) => mcp::DefaultMachine::Named(name),
+                (None, None) => mcp::DefaultMachine::None,
             };
-            relay.serve(default)?;
+            mcp::Relay::connect(&daemon()?, record, default)?.serve()?;
             Report::Nothing
         }
         Command::Sessions {

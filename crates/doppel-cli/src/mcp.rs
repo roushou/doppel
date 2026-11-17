@@ -37,8 +37,46 @@ pub struct Relay {
     client: Arc<Client<SystemClock>>,
     /// Whether the session it opens once the client introduces itself records.
     record: Record,
-    /// The temporary machine made for this session, when it asked for one.
-    made: Option<MadeMachine>,
+    /// The machine a call targets when it names none.
+    target: Target,
+}
+
+/// Which machine a call targets when it names none, as `doppel mcp` is
+/// asked for it.
+#[derive(Debug, Clone)]
+pub enum DefaultMachine {
+    /// None: each call names its machine.
+    None,
+    /// An existing machine (`--machine`).
+    Named(MachineName),
+    /// A temporary machine made from this golden image (`--from`).
+    MadeFrom(MachineName),
+}
+
+/// The machine a call targets when it names none, once the relay has it.
+#[derive(Debug)]
+enum Target {
+    None,
+    Named(MachineName),
+    Temporary(TemporaryMachine),
+}
+
+impl Target {
+    fn name(&self) -> Option<&MachineName> {
+        match self {
+            Self::None => None,
+            Self::Named(name) => Some(name),
+            Self::Temporary(machine) => Some(&machine.name),
+        }
+    }
+
+    /// The temporary machine, when `machine` is it.
+    fn temporary(&self, machine: &MachineName) -> Option<&TemporaryMachine> {
+        match self {
+            Self::Temporary(temporary) if temporary.name == *machine => Some(temporary),
+            Self::Temporary(_) | Self::None | Self::Named(_) => None,
+        }
+    }
 }
 
 /// How the session's temporary machine is coming up.
@@ -51,15 +89,59 @@ enum Startup {
     Failed(String),
 }
 
-/// The session's temporary machine: the daemon deletes it when the
-/// session's connection closes.
+/// A fresh fork of a golden image's template, made for this relay's
+/// connection and started in the background, hidden. The daemon deletes it
+/// when the connection closes, however the process ends.
 #[derive(Debug)]
-struct MadeMachine {
+struct TemporaryMachine {
     name: MachineName,
     startup: watch::Receiver<Startup>,
 }
 
-impl MadeMachine {
+impl TemporaryMachine {
+    /// Has the daemon make one from `golden` on `client`'s connection, and
+    /// starts it on a thread of its own.
+    ///
+    /// # Errors
+    /// The daemon refused or failed to make it: `golden` isn't a golden
+    /// image, or one more machine wouldn't fit beside the running ones.
+    fn make(client: &Arc<Client<SystemClock>>, golden: &MachineName) -> Result<Self> {
+        let name = client
+            .make_temporary_machine(golden, within(LIFECYCLE))
+            .with_context(|| format!("making a machine from {golden}"))?;
+        eprintln!("doppel mcp: {name} made from {golden}; starting it");
+        let (tell, startup) = watch::channel(Startup::Starting);
+        let client = Arc::clone(client);
+        let starting = name.clone();
+        std::thread::spawn(move || {
+            let started = Self::start(&client, &starting);
+            match &started {
+                Startup::Ready => eprintln!("doppel mcp: {starting} is ready"),
+                Startup::Failed(why) => eprintln!("doppel mcp: {starting}: {why}"),
+                Startup::Starting => {}
+            }
+            // No one waits any more: the server has ended.
+            let _ = tell.send(started);
+        });
+        Ok(Self { name, startup })
+    }
+
+    /// Starts `machine`, hidden, and waits for an agent-ready desktop.
+    fn start(client: &Client<SystemClock>, machine: &MachineName) -> Startup {
+        if let Err(error) = client.start(machine, Window::Hidden, within(LIFECYCLE)) {
+            return Startup::Failed(format!("{machine} didn't start: {error}"));
+        }
+        match client.await_desktop(machine, within(LIFECYCLE)) {
+            Ok(outcome) if outcome.is_ready() => Startup::Ready,
+            Ok(outcome) => Startup::Failed(format!(
+                "{machine} started without an agent-ready desktop: {outcome}"
+            )),
+            Err(error) => Startup::Failed(format!(
+                "{machine} started, but its desktop didn't come up: {error}"
+            )),
+        }
+    }
+
     /// Waits until it has come up, or failed to.
     async fn ready(&self) -> Result<(), String> {
         let mut startup = self.startup.clone();
@@ -87,65 +169,26 @@ impl Relay {
     /// answers at once, and the model's result waits on it.
     const NAME_BUDGET: Duration = Duration::from_secs(2);
 
-    /// Connects to the daemon at `at`. The session opens when the MCP
-    /// client introduces itself, named after it ([`Runner::introduce`]).
-    pub fn connect(at: &DaemonAt, record: Record) -> Result<Self> {
-        let client = at.connect()?;
-        Ok(Self {
-            client: Arc::new(client),
-            record,
-            made: None,
-        })
-    }
-
-    /// Has the daemon make a temporary machine, a fresh fork of `golden`'s
-    /// template, for this session, and starts it in the background, hidden. Tool calls on it
-    /// wait until its desktop is up. The daemon deletes it when this
-    /// process's connection closes, however the process ends.
+    /// Connects to the daemon at `at`, and makes the default machine there
+    /// when it is a temporary one. The session opens when the MCP client
+    /// introduces itself, named after it ([`Runner::introduce`]).
     ///
     /// # Errors
-    /// The daemon refused or failed to make it: `golden` isn't a golden
-    /// image, or one more machine wouldn't fit beside the running ones.
-    pub fn make_machine(&mut self, golden: &MachineName) -> Result<MachineName> {
-        let name = self
-            .client
-            .make_temporary_machine(golden, within(LIFECYCLE))
-            .with_context(|| format!("making a machine from {golden}"))?;
-        eprintln!("doppel mcp: {name} made from {golden}; starting it");
-        let (tell, startup) = watch::channel(Startup::Starting);
-        let client = Arc::clone(&self.client);
-        let starting = name.clone();
-        std::thread::spawn(move || {
-            let started = Self::start(&client, &starting);
-            match &started {
-                Startup::Ready => eprintln!("doppel mcp: {starting} is ready"),
-                Startup::Failed(why) => eprintln!("doppel mcp: {starting}: {why}"),
-                Startup::Starting => {}
+    /// No daemon, or it refused or failed to make the temporary machine.
+    pub fn connect(at: &DaemonAt, record: Record, default: DefaultMachine) -> Result<Self> {
+        let client = Arc::new(at.connect()?);
+        let target = match default {
+            DefaultMachine::None => Target::None,
+            DefaultMachine::Named(name) => Target::Named(name),
+            DefaultMachine::MadeFrom(golden) => {
+                Target::Temporary(TemporaryMachine::make(&client, &golden)?)
             }
-            // No one waits any more: the server has ended.
-            let _ = tell.send(started);
-        });
-        self.made = Some(MadeMachine {
-            name: name.clone(),
-            startup,
-        });
-        Ok(name)
-    }
-
-    /// Starts `machine`, hidden, and waits for an agent-ready desktop.
-    fn start(client: &Client<SystemClock>, machine: &MachineName) -> Startup {
-        if let Err(error) = client.start(machine, Window::Hidden, within(LIFECYCLE)) {
-            return Startup::Failed(format!("{machine} didn't start: {error}"));
-        }
-        match client.await_desktop(machine, within(LIFECYCLE)) {
-            Ok(outcome) if outcome.is_ready() => Startup::Ready,
-            Ok(outcome) => Startup::Failed(format!(
-                "{machine} started without an agent-ready desktop: {outcome}"
-            )),
-            Err(error) => Startup::Failed(format!(
-                "{machine} started, but its desktop didn't come up: {error}"
-            )),
-        }
+        };
+        Ok(Self {
+            client,
+            record,
+            target,
+        })
     }
 
     /// What the session is called when the client gives no name.
@@ -155,7 +198,8 @@ impl Relay {
 
     /// Serves MCP over stdio until the client disconnects. The session ends
     /// with the connection, which completes its recordings.
-    pub fn serve(self, default_machine: Option<MachineName>) -> Result<()> {
+    pub fn serve(self) -> Result<()> {
+        let default_machine = self.target.name().cloned();
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
@@ -254,10 +298,10 @@ impl Runner for Relay {
     /// A cancelled call is cancelled in the daemon: it gives up its place
     /// in the queue, waits end, an exec stops its program.
     async fn run(&self, call: ToolCall, cancellation: Cancellation) -> Ran<ToolError> {
-        if let Some(made) = self.made.as_ref().filter(|made| made.name == call.machine) {
+        if let Some(temporary) = self.target.temporary(&call.machine) {
             let waited = tokio::select! {
-                ready = made.ready() => ready,
-                () = cancellation.cancelled() => Err(format!("{} was still starting", made.name)),
+                ready = temporary.ready() => ready,
+                () = cancellation.cancelled() => Err(format!("{} was still starting", temporary.name)),
             };
             if let Err(why) = waited {
                 return Ran {
@@ -541,8 +585,8 @@ impl Calls<'_> {
 mod tests {
     use super::*;
 
-    fn made(startup: watch::Receiver<Startup>) -> MadeMachine {
-        MadeMachine {
+    fn temporary(startup: watch::Receiver<Startup>) -> TemporaryMachine {
+        TemporaryMachine {
             name: "ready-clean-1".parse().unwrap(),
             startup,
         }
@@ -551,7 +595,7 @@ mod tests {
     #[tokio::test]
     async fn calls_wait_for_the_machine_to_come_up() {
         let (tell, startup) = watch::channel(Startup::Starting);
-        let machine = made(startup);
+        let machine = temporary(startup);
         let told = tokio::spawn(async move {
             tokio::task::yield_now().await;
             tell.send(Startup::Ready).unwrap();
@@ -564,7 +608,7 @@ mod tests {
     #[tokio::test]
     async fn a_failed_start_is_every_call_s_answer() {
         let (tell, startup) = watch::channel(Startup::Starting);
-        let machine = made(startup);
+        let machine = temporary(startup);
         tell.send(Startup::Failed("no VMM".into())).unwrap();
         assert_eq!(machine.ready().await, Err("no VMM".into()));
         assert_eq!(machine.ready().await, Err("no VMM".into()));
@@ -573,7 +617,7 @@ mod tests {
     #[tokio::test]
     async fn a_start_that_never_reports_is_lost_not_ready() {
         let (tell, startup) = watch::channel(Startup::Starting);
-        let machine = made(startup);
+        let machine = temporary(startup);
         drop(tell);
         assert_eq!(machine.ready().await, Err("its start was lost".into()));
     }
