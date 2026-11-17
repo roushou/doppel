@@ -35,7 +35,10 @@ with AVFoundation; `web` reaches the daemon over the gateway's WebSocket,
 decodes with WebCodecs and plays videos with a `<video>`, each through
 `web/glue.js`. `scripts/build-web.sh` builds it for the browser into
 `target/viewer-web`, with the page in `crates/doppel-viewer/page/`, and
-`doppel-gateway` embeds that build. The desktop's `Daemon` port is the
+`doppel-gateway` embeds that build. The build is for size (the `web`
+profile), with brotli and gzip copies of each file; the gateway sends the
+smallest copy a browser takes, with an ETag, so a browser that has the
+file gets `304 Not Modified` instead. The desktop's `Daemon` port is the
 CLI's (`view/port.rs`, over `doppel-client`); the browser's is the
 viewer's own (`web/daemon.rs`), since no other crate runs there.
 

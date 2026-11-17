@@ -51,3 +51,14 @@ self_named_module_files = "deny"
 # after a clean takes longer (~7 min here).
 [profile.dev.package."*"]
 opt-level = 3
+
+# The viewer built for the browser (scripts/build-web.sh): every byte is
+# downloaded, so it's built for size, in one unit, without debug info
+# (wasm-bindgen drops its names).
+[profile.web]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = "debuginfo"
+panic = "abort"

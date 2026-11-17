@@ -1,9 +1,11 @@
 //! Embeds the browser viewer's build, `target/viewer-web` (made by
 //! `scripts/build-web.sh`), when there is one: each file becomes an `Asset`,
-//! its bytes compiled in. Without a build, the gateway serves a page that
-//! says so.
+//! its bytes compiled in, with the `.br` and `.gz` copies the script made
+//! of it and a hash of its bytes for its ETag. Without a build, the
+//! gateway serves a page that says so.
 
 use std::fmt::Write as _;
+use std::hash::{DefaultHasher, Hash as _, Hasher as _};
 use std::path::{Path, PathBuf};
 
 fn files(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
@@ -18,8 +20,12 @@ fn files(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
     Ok(())
 }
 
+fn extension(path: &Path) -> Option<&str> {
+    path.extension()?.to_str()
+}
+
 fn content_type(path: &Path) -> Option<&'static str> {
-    Some(match path.extension()?.to_str()? {
+    Some(match extension(path)? {
         "html" => "text/html; charset=utf-8",
         "js" => "text/javascript; charset=utf-8",
         "css" => "text/css; charset=utf-8",
@@ -54,6 +60,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         code.push_str("pub(crate) const BUILT: Option<Assets> = Some(Assets::new(&[\n");
         for file in &found {
+            // Compressed copies ride with the file they're of.
+            if matches!(extension(file), Some("br" | "gz")) {
+                continue;
+            }
             let relative = file
                 .strip_prefix(&dist)?
                 .to_string_lossy()
@@ -61,12 +71,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let Some(content_type) = content_type(file) else {
                 continue;
             };
+            let bytes = std::fs::read(file)?;
+            let mut hasher = DefaultHasher::new();
+            bytes.hash(&mut hasher);
+            let etag = format!("\"{:016x}\"", hasher.finish());
+            // A copy is kept only when it's smaller.
+            let copy = |suffix: &str| -> std::io::Result<String> {
+                let mut name = file.clone().into_os_string();
+                name.push(suffix);
+                let path = PathBuf::from(name);
+                Ok(match std::fs::metadata(&path) {
+                    Ok(meta) if meta.len() < bytes.len() as u64 => format!(
+                        "Some(include_bytes!({:?}))",
+                        std::fs::canonicalize(&path)?.display().to_string()
+                    ),
+                    Ok(_) | Err(_) => "None".to_owned(),
+                })
+            };
             let absolute = std::fs::canonicalize(file)?;
             writeln!(
                 code,
-                "    Asset {{ path: {:?}, content_type: {content_type:?}, body: include_bytes!({:?}), cache: Cache::Revalidate }},",
+                "    Asset {{ path: {:?}, content_type: {content_type:?}, etag: {etag:?}, body: include_bytes!({:?}), brotli: {}, gzip: {} }},",
                 format!("/{relative}"),
                 absolute.display().to_string(),
+                copy(".br")?,
+                copy(".gz")?,
             )?;
         }
         code.push_str("]));\n");
