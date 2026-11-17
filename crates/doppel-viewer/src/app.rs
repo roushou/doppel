@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 
 use doppel_machine::machine::MachineName;
 use futures::StreamExt;
-use futures::channel::{mpsc, oneshot};
+use futures::channel::oneshot;
 use gpui::{
     AnyElement, App, AppContext, Bounds, Context, Div, ElementId, Entity, FocusHandle, FontWeight,
     Hsla, InteractiveElement, IntoElement, KeyDownEvent, MouseButton, ParentElement, Render,
@@ -41,7 +41,7 @@ use crate::steering::Steering;
 use crate::theme::{FONTS, Hue, MONO, SANS, Theme};
 use crate::timeline;
 use crate::ui::{self, Button, Enabled, Look};
-use crate::{Daemon, DaemonError, LocalClock, NextActivity, Settings, ThemeChoice};
+use crate::{Daemon, DaemonError, LocalClock, Settings, ThemeChoice};
 
 /// How far back a live timeline shows.
 const WINDOW_MS: f64 = 60_000.0;
@@ -69,19 +69,6 @@ const RIM: f32 = 22.0;
 const RAIL: f32 = 264.0;
 /// The group a segment's icon follows on hover.
 const SEGMENT: &str = "doppel-segment";
-
-/// Runs `work` on a thread of its own: the daemon's calls block.
-fn blocking<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> oneshot::Receiver<T> {
-    let (answer, answered) = oneshot::channel();
-    let spawned = std::thread::Builder::new()
-        .name("doppel-viewer-daemon".into())
-        .spawn(move || {
-            let _ = answer.send(work());
-        });
-    // No thread: the receiver sees its sender dropped, as a lost answer.
-    drop(spawned);
-    answered
-}
 
 /// Opens the window.
 pub(crate) struct Window;
@@ -381,14 +368,10 @@ impl Root {
     fn look(&mut self, name: &MachineName, now: f64, cx: &mut Context<Self>) {
         self.panels.of(name).looking(now);
         cx.notify();
-        let daemon = self.daemon.clone();
-        let asked = name.clone();
-        let observed = blocking(move || daemon.observe(&asked));
+        let observed = self.daemon.observe(name);
         let name = name.clone();
         cx.spawn(async move |root, cx| {
-            let observed = observed
-                .await
-                .unwrap_or_else(|_| Err(DaemonError::Unreachable("no answer".into())));
+            let observed = observed.await;
             let _ = root.update(cx, |root, cx| {
                 // Only the latest look's answer counts.
                 let outcome = match observed {
@@ -409,14 +392,10 @@ impl Root {
         let now = self.now();
         self.panels.of(name).reading(now);
         cx.notify();
-        let daemon = self.daemon.clone();
-        let asked = name.clone();
-        let read = blocking(move || daemon.observe_text(&asked));
+        let read = self.daemon.observe_text(name);
         let name = name.clone();
         cx.spawn(async move |root, cx| {
-            let read = read
-                .await
-                .unwrap_or_else(|_| Err(DaemonError::Unreachable("no answer".into())));
+            let read = read.await;
             let _ = root.update(cx, |root, cx| {
                 // Only the latest read's answer counts.
                 let read = read.map(Arc::new).map_err(|error| error.to_string());
@@ -436,53 +415,34 @@ impl Root {
             * 1000.0
     }
 
-    /// Watches what agents do, on a thread of its own, opening the stream
-    /// again a little after it ends; the events land on the timelines.
+    /// Watches what agents do, opening the stream again a little after it
+    /// ends or fails; the events land on the timelines.
     fn watch(daemon: Arc<dyn Daemon>, cx: &mut Context<Self>) -> Task<()> {
-        let (events, mut arrived) = mpsc::unbounded();
-        let _ = std::thread::Builder::new()
-            .name("doppel-viewer-activity".into())
-            .spawn(move || {
-                while !events.is_closed() {
-                    if let Ok(mut source) = daemon.watch() {
-                        loop {
-                            match source.next() {
-                                Ok(NextActivity::Event(event)) => {
-                                    if events.unbounded_send(event).is_err() {
-                                        return;
-                                    }
-                                }
-                                Ok(NextActivity::Unchanged) if events.is_closed() => return,
-                                Ok(NextActivity::Unchanged) => {}
-                                Ok(NextActivity::Ended) | Err(_) => break,
-                            }
+        cx.spawn(async move |root, cx| {
+            loop {
+                if let Ok(mut activity) = daemon.watch().await {
+                    while let Some(Ok(event)) = activity.next().await {
+                        let recorded = root.update(cx, |root, cx| {
+                            let now = root.now();
+                            root.panels.record(event, now);
+                            cx.notify();
+                        });
+                        if recorded.is_err() {
+                            return;
                         }
                     }
-                    std::thread::sleep(REWATCH);
                 }
-            });
-        cx.spawn(async move |root, cx| {
-            while let Some(event) = arrived.next().await {
-                let recorded = root.update(cx, |root, cx| {
-                    let now = root.now();
-                    root.panels.record(event, now);
-                    cx.notify();
-                });
-                if recorded.is_err() {
-                    return;
-                }
+                cx.background_executor().timer(REWATCH).await;
             }
         })
     }
 
     /// Reads the machines and the sessions again.
     fn refresh(&mut self, cx: &mut Context<Self>) {
-        let daemon = self.daemon.clone();
-        let read = blocking(move || (daemon.machines(), daemon.sessions()));
+        let machines = self.daemon.machines();
+        let sessions = self.daemon.sessions();
         cx.spawn(async move |root, cx| {
-            let Ok((machines, sessions)) = read.await else {
-                return;
-            };
+            let (machines, sessions) = futures::join!(machines, sessions);
             let _ = root.update(cx, |root, cx| root.listed(machines, sessions, cx));
         })
         .detach();
@@ -525,11 +485,9 @@ impl Root {
         let stage = self.stage();
         self.panels.keep_reports_of(&stage);
         for name in stage {
-            let daemon = self.daemon.clone();
-            let asked = name.clone();
-            let read = blocking(move || daemon.report(&asked));
+            let read = self.daemon.report(&name);
             cx.spawn(async move |root, cx| {
-                let Ok(Ok(read)) = read.await else {
+                let Ok(read) = read.await else {
                     return;
                 };
                 let _ = root.update(cx, |root, cx| {
@@ -579,13 +537,9 @@ impl Root {
             .panels
             .sync_screens(&wanted, |shown| shown.view.read(cx).ended());
         for name in open {
-            let daemon = self.daemon.clone();
-            let asked = name.clone();
-            let opened = blocking(move || daemon.open_screen(&asked));
+            let opened = self.daemon.open_screen(&name);
             cx.spawn(async move |root, cx| {
-                let opened = opened
-                    .await
-                    .unwrap_or_else(|_| Err(DaemonError::Unreachable("no answer".into())));
+                let opened = opened.await;
                 let _ = root.update(cx, |root, cx| {
                     match opened {
                         Ok(screen) => {
@@ -668,14 +622,12 @@ impl Root {
 
     /// Holds a session's calls, or lets them go on.
     fn hold(&mut self, session: &Session, hold: Hold, cx: &mut Context<Self>) {
-        let daemon = self.daemon.clone();
-        let id = session.id;
+        let held = self.daemon.hold(session.id, hold);
         let who = session.who().to_owned();
-        let held = blocking(move || daemon.hold(id, hold));
         cx.spawn(async move |root, cx| {
             let held = held.await;
             let _ = root.update(cx, |root, cx| {
-                if let Ok(Err(error)) = held {
+                if let Err(error) = held {
                     root.toast(ToastTone::Refused, format!("{who}: {error}"), cx);
                 }
                 root.refresh(cx);
@@ -771,10 +723,7 @@ impl Root {
             if let Some(handed_back) = handed_back {
                 let _ = handed_back.await;
             }
-            let asked = (name.clone(), order.clone());
-            let verdict = blocking(move || daemon.run(&asked.0, &asked.1))
-                .await
-                .unwrap_or_else(|_| Verdict::Unknown("the daemon's answer was lost".into()));
+            let verdict = daemon.run(&name, &order).await;
             let _ = root.update(cx, |root, cx| {
                 root.panels.of(&name).finish();
                 match verdict {

@@ -1378,6 +1378,7 @@ dependencies = [
  "doppel-protocol",
  "doppel-scene",
  "doppel-viewer",
+ "futures",
  "insta",
  "nix",
  "prost",

@@ -12,7 +12,7 @@ core-foundation = "=0.10.0"
 core-video = "0.4.3"
 doppel-machine = { path = "../doppel-machine" }
 doppel-scene = { path = "../doppel-scene" }
-futures = "0.3"
+futures.workspace = true
 gpui = { package = "gpui-pre", version = "=0.3.12" }
 gpui_platform = { package = "gpui-pre-platform", version = "=0.3.12", features = ["font-kit"] }
 objc2 = "0.6"

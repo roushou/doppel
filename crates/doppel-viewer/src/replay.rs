@@ -37,7 +37,7 @@ use crate::theme::{Hue, MONO, Theme};
 use crate::timeline::{self, Moment};
 use crate::transport::{Follow, Transport};
 use crate::ui::{Button, Look};
-use crate::{Daemon, DaemonError, LocalClock};
+use crate::{Daemon, LocalClock};
 
 /// Narrower than this, the trace goes under the video.
 const NARROW: f32 = 860.0;
@@ -45,25 +45,6 @@ const NARROW: f32 = 860.0;
 const TRACE_MIN: f32 = 280.0;
 /// A queue shorter than this isn't worth a line.
 const QUEUED_SHOWN_MS: u64 = 100;
-
-/// Runs `work` on a thread of its own: the daemon's calls block.
-fn blocking<T: Send + 'static>(
-    work: impl FnOnce() -> T + Send + 'static,
-) -> futures::channel::oneshot::Receiver<T> {
-    let (answer, answered) = futures::channel::oneshot::channel();
-    let spawned = std::thread::Builder::new()
-        .name("doppel-viewer-recordings".into())
-        .spawn(move || {
-            let _ = answer.send(work());
-        });
-    // No thread: the receiver sees its sender dropped, as a lost answer.
-    drop(spawned);
-    answered
-}
-
-fn lost<T>(_: futures::channel::oneshot::Canceled) -> Result<T, DaemonError> {
-    Err(DaemonError::Unreachable("no answer".into()))
-}
 
 /// Where the Recordings view is.
 enum Showing {
@@ -110,10 +91,9 @@ impl Recordings {
 
     fn load(&mut self, cx: &mut Context<Self>) {
         self.showing = Showing::Loading;
-        let daemon = self.daemon.clone();
-        let listed = blocking(move || daemon.recordings());
+        let listed = self.daemon.recordings();
         self._load = Some(cx.spawn(async move |page, cx| {
-            let listed = listed.await.unwrap_or_else(lost);
+            let listed = listed.await;
             let _ = page.update(cx, |page, cx| {
                 page.showing = match listed {
                     Ok(listed) => Showing::Listed(listed),
@@ -127,10 +107,9 @@ impl Recordings {
 
     fn open(&mut self, id: RecordingId, cx: &mut Context<Self>) {
         self.showing = Showing::Opening(id.clone());
-        let daemon = self.daemon.clone();
-        let opened = blocking(move || daemon.open_recording(&id));
+        let opened = self.daemon.open_recording(&id);
         self._load = Some(cx.spawn(async move |page, cx| {
-            let opened = opened.await.unwrap_or_else(lost);
+            let opened = opened.await;
             let _ = page.update(cx, |page, cx| {
                 page.showing = match opened {
                     Ok(recording) => {
@@ -548,12 +527,9 @@ impl Replay {
         self.playing = None;
         self.unplayable = None;
         self.moments = timeline::from_trace(&self.recording, &video.machine);
-        let daemon = self.daemon.clone();
-        let id = self.recording.id.clone();
-        let file = video.file.clone();
-        let located = blocking(move || daemon.video(&id, &file));
+        let located = self.daemon.video(&self.recording.id, &video.file);
         self._locate = Some(cx.spawn(async move |replay, cx| {
-            let located = located.await.unwrap_or_else(lost);
+            let located = located.await;
             let _ = replay.update(cx, |replay, cx| {
                 match located {
                     Ok(path) => {
@@ -745,11 +721,9 @@ impl Replay {
             Some(Fetch::Loading) => Err(Empty::Loading),
             None => {
                 self.fetched.insert(line, Fetch::Loading);
-                let daemon = self.daemon.clone();
-                let id = self.recording.id.clone();
-                let fetched = blocking(move || daemon.seen_snapshot(&id, line));
+                let fetched = self.daemon.seen_snapshot(&self.recording.id, line);
                 self._fetches.push(cx.spawn(async move |replay, cx| {
-                    let fetched = fetched.await.unwrap_or_else(lost);
+                    let fetched = fetched.await;
                     let _ = replay.update(cx, |replay, cx| {
                         replay.fetched.insert(
                             line,

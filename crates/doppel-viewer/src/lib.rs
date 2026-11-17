@@ -61,8 +61,12 @@ pub use timeline::{
 };
 
 use std::error::Error;
+use std::future::Future;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::sync::Arc;
+
+use futures::Stream;
 
 /// A frame lent by a source: 4:2:0 bi-planar YCbCr (NV12), planes packed
 /// without row padding. Checked once, when made.
@@ -321,113 +325,107 @@ pub enum DaemonError {
     Refused(String),
 }
 
-/// What an activity stream has next.
-#[derive(Debug)]
-pub enum NextActivity {
-    Event(ActivityEvent),
-    /// Nothing happened for a while: ask again.
-    Unchanged,
-    /// The stream is done (the daemon closed it).
-    Ended,
-}
+/// What the daemon will answer. The window awaits it on its own thread,
+/// which it must never block: a port that blocks does its work elsewhere
+/// (the desktop's on threads of its own) and hands the answer back.
+pub type Later<T> = Pin<Box<dyn Future<Output = T>>>;
 
-/// What agents do, as it happens. Called on a thread of its own, as
-/// [`FrameSource`] is.
-pub trait ActivitySource: Send + 'static {
-    /// # Errors
-    /// The stream failed; the window opens another a little later.
-    fn next(&mut self) -> Result<NextActivity, SourceError>;
-}
+/// An answer from the daemon, or why there is none.
+pub type Answer<T> = Later<Result<T, DaemonError>>;
 
-/// Everything the window asks of the daemon. Each call may block: the
-/// window makes them from threads of its own, never its own.
-pub trait Daemon: Send + Sync + 'static {
+/// What agents do, as it happens, until the daemon closes the stream or it
+/// fails; the window opens another a little later.
+pub type Activity = Pin<Box<dyn Stream<Item = Result<ActivityEvent, SourceError>>>>;
+
+/// Everything the window asks of the daemon. Each call answers later: the
+/// window awaits it without waiting for it.
+pub trait Daemon: 'static {
     /// Every machine, with where it is.
     ///
     /// # Errors
     /// [`DaemonError::Unreachable`] shows the window as disconnected.
-    fn machines(&self) -> Result<Vec<Machine>, DaemonError>;
+    fn machines(&self) -> Answer<Vec<Machine>>;
 
     /// The agents' sessions.
     ///
     /// # Errors
     /// See [`DaemonError`].
-    fn sessions(&self) -> Result<Vec<Session>, DaemonError>;
+    fn sessions(&self) -> Answer<Vec<Session>>;
 
     /// Holds a session's calls, or lets them go on.
     ///
     /// # Errors
     /// See [`DaemonError`].
-    fn hold(&self, session: SessionId, hold: Hold) -> Result<(), DaemonError>;
+    fn hold(&self, session: SessionId, hold: Hold) -> Answer<()>;
 
     /// A machine's checkpoints, oldest first.
     ///
     /// # Errors
     /// See [`DaemonError`].
-    fn checkpoints(&self, name: &MachineName) -> Result<Vec<CheckpointLabel>, DaemonError>;
+    fn checkpoints(&self, name: &MachineName) -> Answer<Vec<CheckpointLabel>>;
 
     /// A machine's report: its guest agent's state and its checkpoints.
     ///
     /// # Errors
     /// See [`DaemonError`].
-    fn report(&self, name: &MachineName) -> Result<MachineReport, DaemonError>;
+    fn report(&self, name: &MachineName) -> Answer<MachineReport>;
 
     /// Carries out a lifecycle order on `name`, and says how it went. It
     /// may take minutes (a start waits for the desktop).
-    fn run(&self, name: &MachineName, order: &Order) -> Verdict;
+    fn run(&self, name: &MachineName, order: &Order) -> Later<Verdict>;
 
     /// Opens a running machine's screen, with input that waits for
     /// control ([`Screen::with_takeover`]).
     ///
     /// # Errors
     /// See [`DaemonError`]: the machine isn't running.
-    fn open_screen(&self, name: &MachineName) -> Result<Screen, DaemonError>;
+    fn open_screen(&self, name: &MachineName) -> Answer<Screen>;
 
     /// Starts watching what agents do.
     ///
     /// # Errors
     /// See [`DaemonError`].
-    fn watch(&self) -> Result<Box<dyn ActivitySource>, DaemonError>;
+    fn watch(&self) -> Answer<Activity>;
 
     /// The recorded sessions, newest first.
     ///
     /// # Errors
     /// See [`DaemonError`].
-    fn recordings(&self) -> Result<Vec<RecordingSummary>, DaemonError>;
+    fn recordings(&self) -> Answer<Vec<RecordingSummary>>;
 
     /// One recording: its videos and its trace.
     ///
     /// # Errors
     /// See [`DaemonError`]: it doesn't exist, or can't be read.
-    fn open_recording(&self, id: &RecordingId) -> Result<Recording, DaemonError>;
+    fn open_recording(&self, id: &RecordingId) -> Answer<Recording>;
 
     /// The accessibility snapshot line `line` (from 0) of a recording's
     /// trace kept.
     ///
     /// # Errors
     /// See [`DaemonError`]: that line kept none.
-    fn seen_snapshot(&self, id: &RecordingId, line: u32) -> Result<AxSnapshot, DaemonError>;
+    fn seen_snapshot(&self, id: &RecordingId, line: u32) -> Answer<AxSnapshot>;
 
     /// A person's look at a machine's elements (its frontmost app's focused
     /// window), which costs the agents driving it nothing.
     ///
     /// # Errors
     /// See [`DaemonError`]: the guest's agent is unreachable, or too old.
-    fn observe(&self, name: &MachineName) -> Result<AxSnapshot, DaemonError>;
+    fn observe(&self, name: &MachineName) -> Answer<AxSnapshot>;
 
     /// A person's own read of a machine's screen text, which costs the
     /// agents driving it nothing (it reads the host's view of the display).
     ///
     /// # Errors
     /// See [`DaemonError`].
-    fn observe_text(&self, name: &MachineName) -> Result<TextRead, DaemonError>;
+    fn observe_text(&self, name: &MachineName) -> Answer<TextRead>;
 
     /// Where one of a recording's videos is on this Mac, to play.
     ///
     /// # Errors
     /// [`DaemonError::Refused`]: its file isn't here (the daemon is on
     /// another Mac), with why.
-    fn video(&self, id: &RecordingId, file: &VideoName) -> Result<PathBuf, DaemonError>;
+    fn video(&self, id: &RecordingId, file: &VideoName) -> Answer<PathBuf>;
 }
 
 /// Which theme the window shows: the system's appearance, or light or

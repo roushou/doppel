@@ -23,6 +23,7 @@ doppel-mcp = { path = "../doppel-mcp" }
 doppel-protocol = { path = "../doppel-protocol" }
 doppel-scene = { path = "../doppel-scene" }
 doppel-viewer = { path = "../doppel-viewer" }
+futures.workspace = true
 nix = { workspace = true, features = ["signal"] }
 prost.workspace = true
 rmcp = { workspace = true, features = ["server", "transport-io"] }

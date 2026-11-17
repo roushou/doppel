@@ -7,6 +7,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant, SystemTime};
 
+use futures::channel::{mpsc, oneshot};
+
 use doppel_client::{
     ActivityStream, CheckpointResult, Client, ClientError, Listing, MachineFailure, SessionInfo,
     SessionStatus, StopMode, StopOutcome, Window,
@@ -17,8 +19,8 @@ use doppel_machine::machine::MachineName;
 use doppel_machine::outcome::{Certainty, Failure};
 use doppel_machine::vm::{RunState, Status};
 use doppel_viewer::{
-    ActivityEvent, ActivitySource, AxSnapshot, CheckpointLabel, Daemon, DaemonError, Hold,
-    LocalTime, Machine, MachineReport, MachineState, NextActivity, Order, Recording, RecordingId,
+    Activity, ActivityEvent, Answer, AxSnapshot, CheckpointLabel, Daemon, DaemonError, Hold, Later,
+    LocalTime, Machine, MachineReport, MachineState, Order, Recording, RecordingId,
     RecordingSummary, Run, Screen, Session, SessionActivity, SessionId, SourceError, TextRead,
     Verdict, VideoName,
 };
@@ -32,14 +34,10 @@ const CALL: Duration = Duration::from_secs(10);
 /// How long the activity stream waits before saying nothing happened.
 const QUIET: Duration = Duration::from_secs(1);
 
-/// The daemon on a socket, as the viewer's port.
-pub(crate) struct DaemonPort {
-    socket: PathBuf,
-    frames: Frames,
-    videos: Videos,
-    /// The connection lists and holds go on; made again once it breaks.
-    client: Mutex<Option<Arc<Client<SystemClock>>>>,
-}
+/// The daemon on a socket, as the viewer's port: each call made on a
+/// thread of its own, since the client's calls block and the window's
+/// thread must not.
+pub(crate) struct DaemonPort(Arc<Blocking>);
 
 impl DaemonPort {
     pub(crate) fn new(
@@ -48,6 +46,50 @@ impl DaemonPort {
         videos: Videos,
         client: Client<SystemClock>,
     ) -> Self {
+        Self(Arc::new(Blocking::new(socket, frames, videos, client)))
+    }
+
+    /// `work` on a thread of its own, answered later. No thread: the
+    /// answer is lost, as a broken connection's is.
+    fn later<T: Send + 'static>(
+        &self,
+        work: impl FnOnce(&Blocking) -> Result<T, DaemonError> + Send + 'static,
+    ) -> Answer<T> {
+        let port = Arc::clone(&self.0);
+        let answered = off_thread(move || work(&port));
+        Box::pin(async move {
+            answered
+                .await
+                .unwrap_or_else(|_| Err(DaemonError::Unreachable("no answer".into())))
+        })
+    }
+}
+
+/// Runs `work` on a thread of its own; its answer arrives on the receiver.
+fn off_thread<T: Send + 'static>(
+    work: impl FnOnce() -> T + Send + 'static,
+) -> oneshot::Receiver<T> {
+    let (answer, answered) = oneshot::channel();
+    // No thread: the receiver sees its sender dropped.
+    let _ = std::thread::Builder::new()
+        .name("doppel-viewer-daemon".into())
+        .spawn(move || {
+            let _ = answer.send(work());
+        });
+    answered
+}
+
+/// The daemon on a socket, called and waited for.
+pub(crate) struct Blocking {
+    socket: PathBuf,
+    frames: Frames,
+    videos: Videos,
+    /// The connection lists and holds go on; made again once it breaks.
+    client: Mutex<Option<Arc<Client<SystemClock>>>>,
+}
+
+impl Blocking {
+    fn new(socket: PathBuf, frames: Frames, videos: Videos, client: Client<SystemClock>) -> Self {
         Self {
             socket,
             frames,
@@ -311,7 +353,7 @@ fn session(info: SessionInfo) -> Session {
     }
 }
 
-impl Daemon for DaemonPort {
+impl Blocking {
     fn machines(&self) -> Result<Vec<Machine>, DaemonError> {
         let listings = self.call(|client| client.machines(within(CALL)))?;
         Ok(listings.into_iter().filter_map(machine).collect())
@@ -350,9 +392,8 @@ impl Daemon for DaemonPort {
             .map_err(|error| DaemonError::Refused(error.to_string()))
     }
 
-    fn watch(&self) -> Result<Box<dyn ActivitySource>, DaemonError> {
+    fn watch(&self) -> Result<ActivityStream<SystemClock>, DaemonError> {
         ActivityStream::open(&self.socket, SystemClock, within(CALL))
-            .map(|stream| Box::new(Watching(stream)) as Box<dyn ActivitySource>)
             .map_err(|error| DaemonError::Unreachable(error.to_string()))
     }
 
@@ -405,18 +446,104 @@ impl Daemon for DaemonPort {
     }
 }
 
-/// The daemon's activity stream, as the viewer's source.
-struct Watching(ActivityStream<SystemClock>);
-
-impl ActivitySource for Watching {
-    fn next(&mut self) -> Result<NextActivity, SourceError> {
-        match self.0.next(within(QUIET)) {
-            Ok(event) => Ok(NextActivity::Event(ActivityEvent::of(event))),
-            Err(ClientError::Timeout) => Ok(NextActivity::Unchanged),
-            Err(ClientError::Closed) => Ok(NextActivity::Ended),
-            Err(error) => Err(SourceError::new(error)),
-        }
+impl Daemon for DaemonPort {
+    fn machines(&self) -> Answer<Vec<Machine>> {
+        self.later(Blocking::machines)
     }
+
+    fn sessions(&self) -> Answer<Vec<Session>> {
+        self.later(Blocking::sessions)
+    }
+
+    fn hold(&self, session: SessionId, hold: Hold) -> Answer<()> {
+        self.later(move |port| port.hold(session, hold))
+    }
+
+    fn checkpoints(&self, name: &MachineName) -> Answer<Vec<CheckpointLabel>> {
+        let name = name.clone();
+        self.later(move |port| port.checkpoints(&name))
+    }
+
+    fn report(&self, name: &MachineName) -> Answer<MachineReport> {
+        let name = name.clone();
+        self.later(move |port| port.report(&name))
+    }
+
+    fn run(&self, name: &MachineName, order: &Order) -> Later<Verdict> {
+        let port = Arc::clone(&self.0);
+        let (name, order) = (name.clone(), order.clone());
+        let answered = off_thread(move || port.run(&name, &order));
+        Box::pin(async move {
+            answered
+                .await
+                .unwrap_or_else(|_| Verdict::Unknown("the daemon's answer was lost".into()))
+        })
+    }
+
+    fn open_screen(&self, name: &MachineName) -> Answer<Screen> {
+        let name = name.clone();
+        self.later(move |port| port.open_screen(&name))
+    }
+
+    fn watch(&self) -> Answer<Activity> {
+        let opened = self.later(Blocking::watch);
+        Box::pin(async move {
+            let stream = opened.await?;
+            Ok(watching(stream))
+        })
+    }
+
+    fn recordings(&self) -> Answer<Vec<RecordingSummary>> {
+        self.later(Blocking::recordings)
+    }
+
+    fn open_recording(&self, id: &RecordingId) -> Answer<Recording> {
+        let id = id.clone();
+        self.later(move |port| port.open_recording(&id))
+    }
+
+    fn seen_snapshot(&self, id: &RecordingId, line: u32) -> Answer<AxSnapshot> {
+        let id = id.clone();
+        self.later(move |port| port.seen_snapshot(&id, line))
+    }
+
+    fn observe(&self, name: &MachineName) -> Answer<AxSnapshot> {
+        let name = name.clone();
+        self.later(move |port| port.observe(&name))
+    }
+
+    fn observe_text(&self, name: &MachineName) -> Answer<TextRead> {
+        let name = name.clone();
+        self.later(move |port| port.observe_text(&name))
+    }
+
+    fn video(&self, id: &RecordingId, file: &VideoName) -> Answer<PathBuf> {
+        let (id, file) = (id.clone(), file.clone());
+        self.later(move |port| port.video(&id, &file))
+    }
+}
+
+/// The daemon's activity stream, read on a thread of its own until it
+/// ends or fails, or the window stops listening.
+fn watching(mut stream: ActivityStream<SystemClock>) -> Activity {
+    let (events, arrived) = mpsc::unbounded();
+    let _ = std::thread::Builder::new()
+        .name("doppel-viewer-activity".into())
+        .spawn(move || {
+            while !events.is_closed() {
+                let event = match stream.next(within(QUIET)) {
+                    Ok(event) => Ok(ActivityEvent::of(event)),
+                    Err(ClientError::Timeout) => continue,
+                    Err(ClientError::Closed) => return,
+                    Err(error) => Err(SourceError::new(error)),
+                };
+                let failed = event.is_err();
+                if events.unbounded_send(event).is_err() || failed {
+                    return;
+                }
+            }
+        });
+    Box::pin(arrived)
 }
 
 /// The time, for the viewer: monotonic, and local to name checkpoints by.
