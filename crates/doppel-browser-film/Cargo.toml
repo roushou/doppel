@@ -1,0 +1,21 @@
+[package]
+name = "doppel-browser-film"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+description = "A machine's film in the browser viewer, as WebAssembly: the shapes an export burns in, drawn live and in replay."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+doppel-machine = { path = "../doppel-machine" }
+doppel-protocol = { path = "../doppel-protocol" }
+doppel-scene = { path = "../doppel-scene" }
+prost.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true
