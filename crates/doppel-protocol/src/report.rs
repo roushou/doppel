@@ -1,14 +1,14 @@
-//! What the daemon answers, in the client's own terms: parsed once from the
+//! What the daemon answers, in its clients' terms: parsed once from the
 //! wire, so callers never see a protobuf message.
 
 use std::fmt;
 use std::time::Duration;
 
+use crate::convert::ParseError;
+use crate::pb::daemon::v1 as daemon;
 use doppel_machine::checkpoint::{GuestAfterFailure, GuestSync, Step};
 use doppel_machine::machine::MachineName;
 use doppel_machine::outcome::{Certainty, Failure};
-use doppel_protocol::convert::ParseError;
-use doppel_protocol::pb::daemon::v1 as daemon;
 
 /// Why a machine operation failed on the daemon's side: its description,
 /// whether the operation may still have taken effect, and its causes.
@@ -63,7 +63,7 @@ impl MachineFailure {
         &self.message
     }
 
-    pub(crate) fn from_wire(failure: daemon::MachineFailure) -> Self {
+    pub fn from_wire(failure: daemon::MachineFailure) -> Self {
         Self {
             certainty: daemon::Certainty::try_from(failure.certainty)
                 .map_or(Certainty::MaybeDone, Certainty::from),
@@ -136,7 +136,7 @@ pub struct StopReport {
 }
 
 impl StopReport {
-    pub(crate) fn from_wire(stopped: daemon::MachineStopped) -> Result<Self, ParseError> {
+    pub fn from_wire(stopped: daemon::MachineStopped) -> Result<Self, ParseError> {
         use daemon::machine_stopped::Request;
         let request = match stopped.request {
             None => return Err(ParseError::Missing("machine_stopped.request")),
@@ -217,7 +217,7 @@ pub struct CheckpointReport {
 }
 
 impl CheckpointReport {
-    pub(crate) fn from_wire(report: daemon::CheckpointReport) -> Result<Self, ParseError> {
+    pub fn from_wire(report: daemon::CheckpointReport) -> Result<Self, ParseError> {
         use daemon::checkpoint_report::Result as Wire;
         let failure = |failure: Option<daemon::MachineFailure>, field| {
             failure
@@ -312,7 +312,7 @@ pub struct HandedBack {
 }
 
 impl HandedBack {
-    pub(crate) fn from_wire(note: &daemon::HandedBack) -> Result<Self, ParseError> {
+    pub fn from_wire(note: &daemon::HandedBack) -> Result<Self, ParseError> {
         Ok(Self {
             machine: note
                 .machine
@@ -324,7 +324,7 @@ impl HandedBack {
 }
 
 impl SessionInfo {
-    pub(crate) fn from_wire(entry: daemon::SessionEntry) -> Result<Self, ParseError> {
+    pub fn from_wire(entry: daemon::SessionEntry) -> Result<Self, ParseError> {
         Ok(Self {
             id: entry.id,
             machines: entry

@@ -9,6 +9,8 @@
 //! - [`exchange`]: one client's side of a conversation over those frames,
 //!   sans-IO too: the greeting, requests matched to their responses, pushed
 //!   events, and descriptors tied to the frame they came with.
+//! - [`report`]: what the daemon answers (machine failures, stops,
+//!   checkpoints, sessions), parsed from its messages once for every client.
 //! - `transport`: the blocking `transport::Channel` that carries an
 //!   exchange over a unix socket, with deadlines and passed descriptors.
 //!   Unix only: the rest builds anywhere, WebAssembly included.
@@ -18,6 +20,7 @@ pub mod convert;
 pub mod display;
 pub mod exchange;
 pub mod frame;
+pub mod report;
 pub mod rpc;
 #[cfg(unix)]
 pub mod transport;

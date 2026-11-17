@@ -45,7 +45,6 @@ use doppel_protocol::transport::ChannelError;
 mod activity;
 mod connection;
 mod display;
-mod report;
 
 use connection::Connection;
 pub use connection::Notes;
@@ -63,7 +62,7 @@ pub use doppel_machine::recording::{
     TraceLine, TraceOutcome, VideoFile,
 };
 
-pub use report::{
+pub use doppel_protocol::report::{
     Acted, CheckpointReport, CheckpointResult, Cleanup, HandedBack, MachineFailure, Resumed,
     SessionInfo, SessionStatus, StopMode, StopOutcome, StopReport, StopRequest, Window,
 };
