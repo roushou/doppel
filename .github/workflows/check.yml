@@ -16,7 +16,9 @@ concurrency:
 
 jobs:
   check:
-    runs-on: macos-latest
+    # macOS 27 with Xcode 27 (a preview image). `macos-latest` is macOS 26,
+    # which has no Xcode 27.
+    runs-on: xcode-27
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
