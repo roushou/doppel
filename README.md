@@ -18,14 +18,8 @@ and roll back.
 
 </div>
 
-<p align="center">
-  <img
-    src="https://github.com/user-attachments/assets/5f16e1ee-f0f7-4acb-805e-32a656aef77a"
-    alt="The browser viewer: an agent's mark over a note in a macOS VM, beside the accessibility tree it acts on"
-    width="800"
-  >
-</p>
-
+https://github.com/user-attachments/assets/78873b78-fdf0-4ae1-a396-48e23d04dc6f
+  
 Doppel runs macOS VMs on your Mac and serves them to agents over MCP. One
 daemon owns every machine, so agents, viewers and recordings all see the
 same state.
