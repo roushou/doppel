@@ -9,6 +9,7 @@ use std::time::Duration;
 
 mod copy;
 mod daemon_at;
+mod error_message;
 mod export;
 mod fork_run;
 mod launchd;
@@ -49,6 +50,7 @@ use doppel_protocol::transport::Cancel;
 
 use crate::copy::CopyEnd;
 use crate::daemon_at::{DaemonAt, LIFECYCLE, within};
+pub use crate::error_message::ErrorMessage;
 pub use crate::report::{GuestAfter, Report};
 
 /// The `doppel` command line: what to do, and where machines are.
