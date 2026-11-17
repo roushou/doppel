@@ -18,6 +18,10 @@ pub const SWEEP_MS: f64 = 650.0;
 pub const LOCK_MS: f64 = 380.0;
 /// What was taken in fades this long once the agent moves on.
 pub const LET_GO_MS: f64 = 300.0;
+/// An agent that does nothing next lets go of what it took in this long
+/// after it landed: someone watching an idle agent isn't left with a
+/// dimmed screen.
+pub const HELD_MS: f64 = 4000.0;
 /// A target a point stands for: this wide, around it.
 const POINT_TARGET: f64 = 28.0;
 
@@ -50,6 +54,15 @@ pub struct Attention {
     pub moved_on: Option<f64>,
     /// What that next call aimed at, if it aimed at a place.
     pub lock: Option<Lock>,
+}
+
+impl Attention {
+    /// When it lets go of what it took in: as the agent moves on, or once
+    /// it has held it [`HELD_MS`] with nothing next.
+    #[must_use]
+    pub fn lets_go(&self) -> f64 {
+        self.moved_on.unwrap_or(self.since + HELD_MS)
+    }
 }
 
 /// Elements worth taking in: what has content or can be acted on.
@@ -305,6 +318,22 @@ mod tests {
                 until: Some(2530.0)
             })
         );
+    }
+
+    #[test]
+    fn it_lets_go_as_the_agent_moves_on_or_after_a_while_with_nothing_next() {
+        let [held] = Attention::at(&[look(1000.0, vec![1, 2])], display(), 2000.0)
+            .try_into()
+            .unwrap();
+        assert_eq!(held.lets_go(), held.since + HELD_MS);
+        let moments = [
+            look(1000.0, vec![1, 2]),
+            moment(2, 2500.0, Some(2530.0), Target::Nowhere),
+        ];
+        let [moved] = Attention::at(&moments, display(), 2000.0)
+            .try_into()
+            .unwrap();
+        assert_eq!(moved.lets_go(), 2500.0);
     }
 
     #[test]

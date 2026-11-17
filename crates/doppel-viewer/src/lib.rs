@@ -29,6 +29,7 @@ mod player;
 mod reading;
 mod replay;
 mod screen;
+mod shapes;
 mod srgb;
 mod theme;
 mod ui;

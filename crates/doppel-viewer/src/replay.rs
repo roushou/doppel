@@ -26,7 +26,7 @@ use crate::elements::Named;
 use crate::icons::Icon;
 use crate::input::Placement;
 use crate::inspect::{self, Act, Empty, Inspect, Pointing};
-use crate::overlay::{self, Glide};
+use crate::overlay;
 use crate::player::Player;
 use crate::reading;
 use crate::recordings::{
@@ -463,8 +463,6 @@ pub(crate) struct Replay {
     _locate: Option<Task<()>>,
     /// The current machine's calls, on a live machine's timeline.
     moments: Vec<Moment>,
-    /// Each agent's pointer, by session.
-    glides: std::collections::HashMap<u64, Glide>,
     /// The screen's box and the strip's, as last laid out.
     screen: Rc<Cell<Option<Bounds<Pixels>>>>,
     strip: Rc<Cell<Option<Bounds<Pixels>>>>,
@@ -515,7 +513,6 @@ impl Replay {
             unplayable: None,
             _locate: None,
             moments: Vec::new(),
-            glides: std::collections::HashMap::new(),
             screen: Rc::default(),
             strip: Rc::default(),
             scrub: Rc::default(),
@@ -550,7 +547,6 @@ impl Replay {
         self.current = index;
         self.playing = None;
         self.unplayable = None;
-        self.glides.clear();
         self.moments = timeline::from_trace(&self.recording, &video.machine);
         let daemon = self.daemon.clone();
         let id = self.recording.id.clone();
@@ -771,6 +767,20 @@ impl Replay {
         (found, shown)
     }
 
+    /// The moments with each snapshot fetched so far in place, so the film
+    /// shows what the agent took in as soon as it's here.
+    fn with_seen(&self) -> Vec<Moment> {
+        let mut moments = self.moments.clone();
+        for moment in &mut moments {
+            if let Some(timeline::Seen::Recorded(line)) = moment.seen
+                && let Some(Fetch::Seen(snapshot)) = self.fetched.get(&line)
+            {
+                moment.seen = Some(timeline::Seen::Live(snapshot.clone()));
+            }
+        }
+        moments
+    }
+
     /// Takes in what a person did in the elements panel.
     fn inspected(&mut self, pointing: Pointing, cx: &mut Context<Self>) {
         let now = self.now();
@@ -899,16 +909,9 @@ impl Replay {
         if let (Some(picture), Some(now)) = (picture, now)
             && !self.moments.is_empty()
         {
-            let scene = timeline::scene_at(&self.moments, now);
-            Glide::follow_scene(&mut self.glides, &scene, now);
-            let glides = &self.glides;
-            frame = frame.child(overlay::layer(
-                &scene,
-                |session| glides.get(&session).copied(),
-                picture,
-                now,
-                theme,
-            ));
+            let moments = self.with_seen();
+            let scene = timeline::scene_at(&moments, now);
+            frame = frame.child(overlay::layer(&moments, &scene, picture, now));
         }
         if let Some(problem) = problem {
             frame = frame.child(
@@ -1296,8 +1299,11 @@ impl Render for Replay {
             });
             Rc::new(move |pointing, window, cx| listener(&pointing, window, cx))
         };
+        // Fetched whether or not the elements show: the film over the
+        // screen shows what the agent took in.
+        let seen = self.seen(now, cx);
         let (found, shown) = if self.inspect.is_some() {
-            self.seen(now, cx)
+            seen
         } else {
             (None, Err(Empty::None))
         };

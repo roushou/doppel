@@ -49,32 +49,33 @@ macro_rules! icons {
 icons! {
     ArrowDownUp => "arrow-down-up",
     Bookmark => "bookmark",
-    Bot => "bot",
+    Check => "check",
     ChevronRight => "chevron-right",
     CircleStop => "circle-stop",
     Copy => "copy",
     Ellipsis => "ellipsis",
     Eye => "eye",
     Film => "film",
+    Flag => "flag",
     EyeOff => "eye-off",
     GitFork => "git-fork",
     Hand => "hand",
-    Highlighter => "highlighter",
     Hourglass => "hourglass",
     Keyboard => "keyboard",
+    MapPin => "map-pin",
     ListTree => "list-tree",
     LoaderCircle => "loader-circle",
     Columns2 => "columns-2",
     Monitor => "monitor",
     Moon => "moon",
     MousePointer2 => "mouse-pointer-2",
-    MousePointerClick => "mouse-pointer-click",
-    Move => "move",
     Pause => "pause",
     Play => "play",
     Plus => "plus",
+    Pointer => "pointer",
     Power => "power",
     RotateCcw => "rotate-ccw",
+    Rewind => "rewind",
     ScanEye => "scan-eye",
     ScanText => "scan-text",
     Sun => "sun",
@@ -106,14 +107,17 @@ mod tests {
     #[test]
     fn every_icon_is_built_in() {
         for icon in [
-            Icon::Bot,
+            Icon::Pointer,
             Icon::X,
             Icon::TrashTwo,
             Icon::TriangleAlert,
             Icon::ListTree,
             Icon::ChevronRight,
             Icon::ScanText,
-            Icon::Highlighter,
+            Icon::Flag,
+            Icon::MapPin,
+            Icon::Rewind,
+            Icon::Check,
             Icon::Columns2,
             Icon::Sun,
             Icon::Moon,
@@ -121,6 +125,6 @@ mod tests {
             assert!(matches!(Assets.load(icon.path()), Ok(Some(_))), "{icon:?}");
         }
         assert!(matches!(Assets.load("icons/none.svg"), Ok(None)));
-        assert_eq!(Assets.list("icons/").map(|all| all.len()).ok(), Some(37));
+        assert_eq!(Assets.list("icons/").map(|all| all.len()).ok(), Some(38));
     }
 }

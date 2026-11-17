@@ -8,7 +8,6 @@
 //! makes every daemon call from a thread of its own.
 
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -31,7 +30,7 @@ use crate::model::{
     Action, Bay, Group, Hold, Machine, MachineState, Order, Provenance, Run, Session,
     SessionActivity, Tone, Verdict, forks_of,
 };
-use crate::overlay::{self, Glide};
+use crate::overlay;
 use crate::panel::{Overlay, Panels};
 use crate::reading;
 use crate::replay::Recordings;
@@ -236,19 +235,14 @@ struct Shown {
 }
 
 /// What the window holds for a machine's panel besides its screen: its
-/// lens (with the elements' scroll and layer), and its agents' pointers,
-/// by session.
+/// lens (with the elements' scroll and layer).
 struct Handles {
     lens: Lens,
-    glides: HashMap<u64, Glide>,
 }
 
 impl Default for Handles {
     fn default() -> Self {
-        Self {
-            lens: Lens::Screen,
-            glides: HashMap::new(),
-        }
+        Self { lens: Lens::Screen }
     }
 }
 
@@ -890,12 +884,7 @@ impl Root {
         let moving = self
             .panels
             .iter()
-            .any(|(_, panel)| timeline::moving(panel.timeline(), now))
-            || self
-                .panels
-                .iter()
-                .flat_map(|(_, panel)| panel.handles().glides.values())
-                .any(|glide| glide.moving(now));
+            .any(|(_, panel)| timeline::moving(panel.timeline(), now));
         if moving {
             window.request_animation_frame();
             return;
@@ -1953,16 +1942,7 @@ impl Root {
                     ));
                 }
                 if let (true, Some(picture)) = (overlay_on && !moments.is_empty(), picture) {
-                    let glides = &mut self.panels.of(&name).handles_mut().glides;
-                    Glide::follow_scene(glides, &scene, now);
-                    let glides = glides.clone();
-                    frame = frame.child(overlay::layer(
-                        &scene,
-                        |session| glides.get(&session).copied(),
-                        picture,
-                        now,
-                        theme,
-                    ));
+                    frame = frame.child(overlay::layer(&moments, &scene, picture, now));
                 }
                 if paused {
                     let resumed = name.clone();

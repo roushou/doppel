@@ -357,12 +357,12 @@ fn grown(rect: Rect, by: f64) -> Rect {
 fn taken_in(attention: &Attention, at: f64, shapes: &mut Vec<Shape>) {
     let (fill, ink) = hue(attention.session);
     let landing = ((at - attention.since) / VEIL_IN_MS).clamp(0.0, 1.0);
-    let rest = attention
-        .moved_on
-        .filter(|moved| at >= *moved)
-        .map_or(1.0, |moved| {
-            (1.0 - (at - moved) / LET_GO_MS).clamp(0.0, 1.0)
-        });
+    let lets_go = attention.lets_go();
+    let rest = if at >= lets_go {
+        (1.0 - (at - lets_go) / LET_GO_MS).clamp(0.0, 1.0)
+    } else {
+        1.0
+    };
     let lock = attention.lock.filter(|lock| at >= lock.since).map(|lock| {
         let shown = lock.until.map_or(1.0, |until| {
             ((until + LOCK_SETTLE_MS - at) / MARK_FADE_MS).clamp(0.0, 1.0)
@@ -455,8 +455,9 @@ fn between(from: Spot, to: Spot, f: f64) -> Spot {
 }
 
 /// Where a session's pointer is at `at`: gliding from where it was to
-/// where its latest call with a place acted.
-fn pointer_at(moments: &[Moment], session: u64, at: f64) -> Option<Spot> {
+/// where its latest call with a place acted. A viewer puts words beside it.
+#[must_use]
+pub fn pointer_at(moments: &[Moment], session: u64, at: f64) -> Option<Spot> {
     let mut placed = moments
         .iter()
         .filter(|m| !m.person && m.call.key.session == session && m.start_ms <= at)
