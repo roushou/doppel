@@ -131,6 +131,7 @@ impl From<&Lineage> for bundle::Lineage {
             Role::Golden { template } => StoredRole::Golden(bundle::GoldenRole {
                 checkpoint: template.to_string(),
             }),
+            Role::Temporary => StoredRole::Temporary(bundle::Temporary {}),
         };
         let origin = match &lineage.origin {
             Origin::Unrecorded => StoredOrigin::Unrecorded(bundle::Unrecorded {}),
@@ -167,6 +168,7 @@ impl TryFrom<&bundle::Lineage> for Lineage {
             Some(StoredRole::Golden(golden)) => Role::Golden {
                 template: label("lineage.golden.checkpoint", &golden.checkpoint)?,
             },
+            Some(StoredRole::Temporary(_)) => Role::Temporary,
             None => return Err(ParseError::Missing("lineage.role")),
         };
         let origin = match &stored.origin {
@@ -275,7 +277,7 @@ mod tests {
             from: "golden-27".parse().unwrap(),
             checkpoint: "ready".parse().unwrap(),
         };
-        for role in [Role::Working, golden] {
+        for role in [Role::Working, golden, Role::Temporary] {
             for origin in [
                 Origin::Unrecorded,
                 Origin::Installed,

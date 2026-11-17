@@ -215,6 +215,12 @@ impl Machine {
             (Role::Golden { template }, _) => {
                 Some(Provenance::Said(format!("Template · {template}")))
             }
+            (Role::Temporary, Origin::Forked { from, checkpoint }) => Some(Provenance::Said(
+                format!("Temporary · from {from} · {checkpoint}"),
+            )),
+            (Role::Temporary, Origin::Unrecorded | Origin::Installed | Origin::Imported) => {
+                Some(Provenance::Said("Temporary".to_owned()))
+            }
             (Role::Working, Origin::Forked { from, checkpoint }) => {
                 Some(Provenance::Said(format!("From {from} · {checkpoint}")))
             }
@@ -654,6 +660,19 @@ mod tests {
         assert_eq!(
             fork.provenance(),
             Some(Provenance::Said("From golden-27 · ready".into()))
+        );
+        let temporary = Machine {
+            lineage: RecordedLineage::Known(
+                Lineage::forked("golden-27".parse().unwrap(), "ready".parse().unwrap())
+                    .with_role(Role::Temporary),
+            ),
+            ..machine("golden-27-ready-1", MachineState::Stopped)
+        };
+        assert_eq!(
+            temporary.provenance(),
+            Some(Provenance::Said(
+                "Temporary · from golden-27 · ready".into()
+            ))
         );
         assert_eq!(machine("a", MachineState::Stopped).provenance(), None);
         let unreadable = Machine {

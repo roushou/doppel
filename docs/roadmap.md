@@ -23,6 +23,8 @@ files. People watch and take over from a desktop or browser viewer.
   refs, `act`, `click`, `type`, `key`, `find_text`, `wait_for`, `exec`,
   `read_file`, `write_file`, `mark`, `start`, `stop`, `checkpoint`,
   `rollback`, `fork`; `snapshot` and `wait_for` can list only what changed.
+  `doppel mcp --from GOLDEN` gives each session a temporary machine, a
+  fresh fork of a golden image deleted when the session ends.
 - **doppeld** ([doppeld.md](doppeld.md)): one daemon per user owns the
   machines; sessions, per-machine call queues, takeover and hand back,
   recordings with traces.

@@ -7,11 +7,21 @@ document is how the tools fit together.
 ## Setup
 
 ```bash
-claude mcp add doppel -- /path/to/doppel mcp --machine work
+claude mcp add doppel -- /path/to/doppel mcp --from ready
 ```
 
-- `--machine` (or `DOPPEL_MACHINE`) is the machine a call targets when it
-  names none. Every tool takes `machine` to target another.
+- `--from GOLDEN` gives the session a temporary machine of its own: a fresh
+  fork of the golden image's template, which calls target when they name
+  none. It
+  starts in the background as soon as `doppel mcp` does, and calls on it
+  wait until its desktop is up. When the session ends, however `doppel mcp`
+  ends, the daemon powers it off and deletes it; its recordings stay.
+  `doppel mcp` refuses to start when the golden image doesn't exist, isn't
+  one, or one more machine wouldn't fit beside the running ones (macOS runs
+  two VMs at a time).
+- `--machine` (or `DOPPEL_MACHINE`) instead names an existing machine that a
+  call targets when it names none. Every tool takes `machine` to target
+  another.
 - `--record` (or `DOPPEL_RECORD=1`) records the session: videos, captions and
   a trace of every call. The format is in [doppeld.md](doppeld.md#recordings-and-traces).
 - Each `doppel mcp` process is one session in the daemon. People see it in

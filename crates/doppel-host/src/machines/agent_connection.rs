@@ -1,30 +1,34 @@
-//! A machine's agent session, kept between MCP calls: one connection instead
-//! of a connect and handshake per call, and the agent's pushed events, which
-//! wake a wait as soon as the guest changes instead of at its next backoff.
+//! A machine's connection to its guest agent, kept between calls: one
+//! connection instead of a connect and handshake per call, and the agent's
+//! pushed events, which wake a wait as soon as the guest changes instead of
+//! at its next backoff.
 //!
-//! Exec keeps a channel of its own: a long program mustn't hold the session,
-//! and cancelling one closes its channel.
+//! Exec keeps a channel of its own: a long program mustn't hold the
+//! connection, and cancelling one closes its channel.
 
 use std::time::Instant;
 
-use doppel_host::agent::{AgentClient, AgentError, Pushes};
-use doppel_host::capabilities::Clock;
-use doppel_host::files::Filesystem;
-use doppel_host::machines::{MachineError, Machines};
 use doppel_machine::deadline::Deadline;
 use doppel_machine::machine::MachineName;
 use doppel_protocol::transport::{Cancel, Slept, Waited, Wakeup};
 
-/// The session slot of one machine. It lives in the machine's queue, so
-/// only the call whose turn it is uses it.
+use crate::agent::{AgentClient, AgentError, Pushes};
+use crate::capabilities::Clock;
+use crate::files::Filesystem;
+
+use super::{MachineError, Machines};
+
+/// A machine's connection to its guest agent: opened when first used, and
+/// again after it broke (the guest stopped, the agent restarted). It holds
+/// at most one open [`AgentClient`].
 #[derive(Debug)]
-pub(crate) struct Session<C> {
+pub struct AgentConnection<C> {
     client: Option<AgentClient<C>>,
 }
 
-/// How a [`Session::pause`] ended.
+/// How an [`AgentConnection::pause`] ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Paused {
+pub enum Paused {
     /// The time came.
     Due,
     /// The guest reported a change first.
@@ -32,16 +36,19 @@ pub(crate) enum Paused {
     Cancelled,
 }
 
-impl<C> Default for Session<C> {
+impl<C> Default for AgentConnection<C> {
     fn default() -> Self {
         Self { client: None }
     }
 }
 
-impl<C: Clock + Clone> Session<C> {
-    /// The open session, connecting (and subscribing) when there is none or
-    /// the last one was closed: the guest stopped, the agent restarted.
-    pub(crate) fn client<F: Filesystem>(
+impl<C: Clock + Clone> AgentConnection<C> {
+    /// The open connection, connecting (and subscribing) when there is none
+    /// or the last one was closed.
+    ///
+    /// # Errors
+    /// The machine isn't running, or its agent can't be reached.
+    pub fn client<F: Filesystem>(
         &mut self,
         machines: &Machines<C, F>,
         machine: &MachineName,
@@ -49,20 +56,23 @@ impl<C: Clock + Clone> Session<C> {
     ) -> Result<&mut AgentClient<C>, MachineError> {
         let client = match self.client.take() {
             Some(open) if open.is_open() => open,
-            Some(_) | None => machines.machine(machine).running(by)?.session(by)?,
+            Some(_) | None => machines.machine(machine).running(by)?.connect_agent(by)?,
         };
         Ok(self.client.insert(client))
     }
 
-    /// Runs one request on the session. A broken exchange ends the session,
-    /// so the next call starts afresh; a refusal from the agent keeps it.
-    pub(crate) fn run<F: Filesystem, T>(
+    /// Runs one request on the connection. A broken exchange drops it, so
+    /// the next call connects afresh; a refusal from the agent keeps it.
+    ///
+    /// # Errors
+    /// See [`AgentConnectionError`].
+    pub fn run<F: Filesystem, T>(
         &mut self,
         machines: &Machines<C, F>,
         machine: &MachineName,
         by: Deadline,
         request: impl FnOnce(&mut AgentClient<C>, Deadline) -> Result<T, AgentError>,
-    ) -> Result<T, SessionError> {
+    ) -> Result<T, AgentConnectionError> {
         let result = request(self.client(machines, machine, by)?, by);
         match &result {
             // Refused before it was sent: the connection is fine.
@@ -77,28 +87,29 @@ impl<C: Clock + Clone> Session<C> {
                 | AgentError::Protocol(_)
                 | AgentError::Parse(_)
                 | AgentError::Cancelled,
-            ) => self.end(),
+            ) => self.close(),
         }
         Ok(result?)
     }
 
-    /// Drops the session: the guest is about to change under it (a stop,
-    /// a restore), or it failed.
-    pub(crate) fn end(&mut self) {
+    /// Drops the connection: the guest is about to change under it (a
+    /// stop, a restore), or it failed.
+    pub fn close(&mut self) {
         self.client = None;
     }
 
     /// Forgets events received so far: they arrived before the reply to the
     /// last request, so that request already saw their effect.
-    pub(crate) fn seen(&mut self) {
+    pub fn seen(&mut self) {
         if let Some(client) = &mut self.client {
             client.discard_events();
         }
     }
 
     /// Waits until `at`, ending early if the guest reports a change or the
-    /// call is cancelled. Without a session that receives events, it sleeps.
-    pub(crate) fn pause(&mut self, clock: &impl Clock, at: Instant, cancel: &Cancel) -> Paused {
+    /// call is cancelled. Without a connection that receives events, it
+    /// sleeps.
+    pub fn pause(&mut self, clock: &impl Clock, at: Instant, cancel: &Cancel) -> Paused {
         let asleep = |cancel: &Cancel| match cancel.sleep(at.saturating_duration_since(clock.now()))
         {
             Slept::Elapsed => Paused::Due,
@@ -124,21 +135,23 @@ impl<C: Clock + Clone> Session<C> {
             Ok(Waited::Event(_)) => Paused::Changed,
             Ok(Waited::TimedOut) => Paused::Due,
             Ok(Waited::WokenUp) => Paused::Cancelled,
-            // The session broke: finish the pause asleep; the next request
-            // reconnects.
+            // The connection broke: finish the pause asleep; the next
+            // request reconnects.
             Err(_) => {
-                self.end();
+                self.close();
                 asleep(cancel)
             }
         }
     }
 }
 
-/// Why a request on the session failed.
+/// Why a request on an [`AgentConnection`] failed.
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum SessionError {
+pub enum AgentConnectionError {
+    /// It couldn't connect.
     #[error(transparent)]
     Connect(#[from] MachineError),
+    /// The agent refused the request, or the exchange broke.
     #[error(transparent)]
     Request(#[from] AgentError),
 }
@@ -149,7 +162,7 @@ mod tests {
     use std::os::unix::net::UnixStream;
     use std::time::Duration;
 
-    use doppel_host::capabilities::SystemClock;
+    use crate::capabilities::SystemClock;
     use doppel_protocol::PROTOCOL_VERSION;
     use doppel_protocol::frame::{FrameEncoder, MaxFrameLen};
     use doppel_protocol::pb::agent::v1 as agent;
@@ -172,8 +185,8 @@ mod tests {
         }))
     }
 
-    /// A session on a socketpair; the other end plays the agent.
-    fn session(pushes: bool) -> (Session<SystemClock>, UnixStream) {
+    /// A connection on a socketpair; the other end plays the agent.
+    fn connection(pushes: bool) -> (AgentConnection<SystemClock>, UnixStream) {
         let (ours, mut theirs) = UnixStream::pair().unwrap();
         let capabilities = if pushes {
             vec![common::Capability::Events as i32]
@@ -190,7 +203,7 @@ mod tests {
         let by = Deadline::after(SystemClock.now(), Duration::from_secs(2));
         let client = AgentClient::connect(ours, SystemClock, by).unwrap();
         (
-            Session {
+            AgentConnection {
                 client: Some(client),
             },
             theirs,
@@ -203,14 +216,14 @@ mod tests {
 
     #[test]
     fn a_pushed_change_ends_the_pause_early() {
-        let (mut session, mut agent) = session(true);
+        let (mut connection, mut agent) = connection(true);
         let pusher = std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(150));
             agent.write_all(&ui_changed()).unwrap();
             agent
         });
         let started = SystemClock.now();
-        let paused = session.pause(&SystemClock, in_secs(5), &Cancel::never());
+        let paused = connection.pause(&SystemClock, in_secs(5), &Cancel::never());
         assert_eq!(paused, Paused::Changed);
         assert!(SystemClock.now().duration_since(started) < Duration::from_secs(2));
         drop(pusher.join().unwrap());
@@ -218,7 +231,7 @@ mod tests {
 
     #[test]
     fn a_cancel_ends_the_pause_while_listening() {
-        let (mut session, _agent) = session(true);
+        let (mut connection, _agent) = connection(true);
         let cancel = Cancel::new();
         let canceller = cancel.clone();
         let later = std::thread::spawn(move || {
@@ -226,7 +239,7 @@ mod tests {
             canceller.cancel();
         });
         assert_eq!(
-            session.pause(&SystemClock, in_secs(5), &cancel),
+            connection.pause(&SystemClock, in_secs(5), &cancel),
             Paused::Cancelled
         );
         later.join().unwrap();
@@ -234,26 +247,26 @@ mod tests {
 
     #[test]
     fn without_pushes_a_pause_waits_out_its_time() {
-        let (mut session, mut agent) = session(false);
+        let (mut connection, mut agent) = connection(false);
         // Not asked for, so never read as a change.
         agent.write_all(&ui_changed()).unwrap();
         let at = SystemClock.now() + Duration::from_millis(150);
         assert_eq!(
-            session.pause(&SystemClock, at, &Cancel::never()),
+            connection.pause(&SystemClock, at, &Cancel::never()),
             Paused::Due
         );
         assert!(SystemClock.now() >= at);
     }
 
     #[test]
-    fn a_closed_session_falls_back_to_sleeping_and_is_dropped() {
-        let (mut session, agent) = session(true);
+    fn a_closed_connection_falls_back_to_sleeping_and_is_dropped() {
+        let (mut connection, agent) = connection(true);
         drop(agent);
         let at = SystemClock.now() + Duration::from_millis(100);
         assert_eq!(
-            session.pause(&SystemClock, at, &Cancel::never()),
+            connection.pause(&SystemClock, at, &Cancel::never()),
             Paused::Due
         );
-        assert!(session.client.is_none(), "the next request reconnects");
+        assert!(connection.client.is_none(), "the next request reconnects");
     }
 }

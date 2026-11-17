@@ -76,7 +76,7 @@ second framing (gRPC) or second schema (JSON-RPC).
 
 ### MCP
 
-The tool runner lives in the daemon: the queues, agent sessions and refs.
+The tool runner lives in the daemon: the queues, agent connections and refs.
 `doppel mcp` is the command MCP clients launch (`claude mcp add doppel --
 doppel mcp --machine dev`); it serves rmcp over stdio and forwards each typed
 `ToolCall` to the daemon. Parsing stays in `doppel-mcp`, at the edge, so the
@@ -109,6 +109,23 @@ Ended { Closed | Disconnected | DaemonStopped }
   control, so it knows to look again before relying on an earlier snapshot.
 - **Ended:** recordings complete, and the trace is closed. A daemon that
   stops ends its sessions as `DaemonStopped`, never silently as `Closed`.
+
+### Temporary machines
+
+A connection can ask for a machine of its own (`MakeTemporaryMachine`, which
+`doppel mcp --from GOLDEN` sends): a fresh fork of a golden image's
+template, made under the golden image's turn and named
+`{golden}-{template}-{n}`, like `fork-run`'s. Its lineage gives it the role
+`temporary`, written with the fork, so it never appears without it. It is
+refused before anything is made when one more wouldn't fit beside the
+running machines.
+
+When the connection closes, however it closes, the daemon powers the machine
+off and deletes it; its recordings stay. One whose role was changed since
+(`doppel golden mark`, say) is kept. A daemon that stops or crashes first
+leaves temporary machines no connection holds, so the next daemon deletes
+every one it finds when it starts. One that can't be deleted stays, and is
+tried again then.
 
 ### Display streams
 
@@ -243,7 +260,7 @@ its bundle: one `doppel.bundle.v1.Lineage` message, pinned as
 `fixtures/bundle/lineage.v1.bin`. The machine list carries the same fields in
 its own message (`doppel.daemon.v1.Lineage`, in `MachineEntry.lineage`), so
 the protocol can change without changing bundles. The pure types are
-`doppel-machine::lineage`: `Role::{Working, Golden { template }}`,
+`doppel-machine::lineage`: `Role::{Working, Golden { template }, Temporary}`,
 `Origin::{Unrecorded, Installed, Imported, Forked { from, checkpoint }}`, and
 `RecordedLineage::{Known, Unreadable}` for what a read found.
 
@@ -254,13 +271,17 @@ the protocol can change without changing bundles. The pure types are
   doesn't exist; `doppel golden unmark NAME` makes it a working machine
   again. Both take the machine's claim and rewrite the file whole (a
   temporary file, then a rename), keeping the origin. They open the store
-  themselves; the daemon reads the file on each list.
+  themselves; the daemon reads the file on each list. A temporary machine
+  is one made for a connection, deleted when it closes
+  ([Temporary machines](#temporary-machines)); `golden mark` or `unmark`
+  keeps it.
 - **Origin.** Written once, by what made the machine: `create` writes
   `Installed` as it makes the bundle; `import`, `fork` and fresh forks
   (`fork-run`, a viewer's new copy) write `Imported` or `Forked { from,
   checkpoint }` into the staging directory before the rename that makes the
   bundle appear, so a machine never appears without it. A fork is a working
-  machine whatever its source's role. `from` names the source as it was; it
+  machine whatever its source's role, except a temporary machine, whose
+  role is written with its origin. `from` names the source as it was; it
   may since have been deleted.
 - **Unrecorded.** A bundle without the file reads as a working machine whose
   origin is `Unrecorded`: unknown, never guessed from its name or its spec.

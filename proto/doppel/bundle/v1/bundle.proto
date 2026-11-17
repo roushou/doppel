@@ -67,6 +67,9 @@ message Lineage {
     Working working = 1;
     // A template to fork from.
     GoldenRole golden = 2;
+    // Made for one client of the daemon: deleted when the connection that
+    // asked for it closes, or when the daemon next starts.
+    Temporary temporary = 7;
   }
   oneof origin {
     // Made before origins were recorded: unknown.
@@ -81,6 +84,8 @@ message Lineage {
 }
 
 message Working {}
+
+message Temporary {}
 
 message GoldenRole {
   // The checkpoint new machines start from.

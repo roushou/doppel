@@ -39,7 +39,7 @@ use crate::call_events::{Answered, CallEvent, SessionCall};
 use crate::forks::PlanError;
 use crate::handle::{Guest, Handle, Traits, Turn};
 use crate::library::{self, Library, LibraryError, RecordingId, TraceLine};
-use crate::operations::{ForkStart, ForksError};
+use crate::operations::{ForkStart, ForksError, TemporaryMachineError};
 use crate::recording::{Recordings, Traced};
 use crate::scheduler::Call;
 use crate::scheduler::session::SessionState;
@@ -290,6 +290,7 @@ where
             | Outcome::DisplayLayout(_)
             | Outcome::EncodedDisplay(_)
             | Outcome::ForksRun(_)
+            | Outcome::TemporaryMachineMade(_)
             | Outcome::Token(_)
             | Outcome::TokenList(_)
             | Outcome::RecordingList(_)
@@ -330,6 +331,7 @@ where
             | Outcome::DisplayLayout(_)
             | Outcome::EncodedDisplay(_)
             | Outcome::ForksRun(_)
+            | Outcome::TemporaryMachineMade(_)
             | Outcome::Token(_)
             | Outcome::TokenList(_)
             | Outcome::RecordingList(_)
@@ -383,6 +385,7 @@ where
             | Outcome::DisplayLayout(_)
             | Outcome::EncodedDisplay(_)
             | Outcome::ForksRun(_)
+            | Outcome::TemporaryMachineMade(_)
             | Outcome::Token(_)
             | Outcome::TokenList(_)
             | Outcome::RecordingList(_)
@@ -703,6 +706,39 @@ where
                     }
                 })
                 .collect(),
+        })
+    }
+
+    /// Makes a temporary machine and holds it on `link`, which removes it
+    /// when the connection closes.
+    pub(super) fn make_temporary_machine_request(
+        &self,
+        request: &daemon::MakeTemporaryMachine,
+        call: &Call,
+        link: &Link,
+    ) -> Result<daemon::TemporaryMachineMade, Refusal> {
+        let golden = Refusal::name("golden", &request.golden)?;
+        let name =
+            self.make_temporary_machine(&golden, call)
+                .map_err(|error| match error {
+                    TemporaryMachineError::NoSuchMachine(_)
+                    | TemporaryMachineError::NotGolden(_) => Refusal::argument("golden", &error),
+                    TemporaryMachineError::Plan(PlanError::NoForks | PlanError::Name(_)) => {
+                        Refusal::argument("golden", &error)
+                    }
+                    TemporaryMachineError::Plan(PlanError::TooMany { .. })
+                    | TemporaryMachineError::LineageUnreadable { .. } => {
+                        Refusal::State(error.to_string())
+                    }
+                    TemporaryMachineError::Mac(_)
+                    | TemporaryMachineError::Turn(_)
+                    | TemporaryMachineError::Listing(_)
+                    | TemporaryMachineError::Making { .. } => Refusal::failed(&error),
+                })?;
+        link.temporary_machines().push(name.clone());
+        eprintln!("doppeld: {name} made from {golden}, temporary");
+        Ok(daemon::TemporaryMachineMade {
+            name: name.to_string(),
         })
     }
 

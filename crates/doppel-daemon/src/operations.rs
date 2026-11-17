@@ -8,9 +8,11 @@ use doppel_host::files::Filesystem;
 use doppel_host::launcher::Window;
 use doppel_host::login::AwaitDesktopError;
 use doppel_host::machines::{
-    CHECKPOINT_TIMEOUT, CLAIM_TIMEOUT, CheckpointReport, Claim, Listing, MachineError, Machines,
-    Resumed, START_TIMEOUT, STOP_TIMEOUT, StopOutcome, StopReport,
+    AgentConnection, AgentConnectionError, CHECKPOINT_TIMEOUT, CLAIM_TIMEOUT, CheckpointReport,
+    Claim, Listing, MachineError, Machines, Paused, Resumed, START_TIMEOUT, STOP_TIMEOUT,
+    StopOutcome, StopReport,
 };
+use doppel_host::store::{Listed, StoreError};
 use doppel_host::vmm::{StopMode, VmmError};
 use doppel_machine::agent::AgentReport;
 use doppel_machine::ax::tree::{ActOn, AxSnapshot, Menus, Scope, SnapshotRequest};
@@ -22,6 +24,7 @@ use doppel_machine::exec::{ExecOutput, ExecRequest};
 use doppel_machine::files::{ReadRequest, WriteRequest};
 use doppel_machine::input::Input;
 use doppel_machine::input::Via;
+use doppel_machine::lineage::{RecordedLineage, Role};
 use doppel_machine::login::{LoginOutcome, LoginPolicy};
 use doppel_machine::machine::MachineName;
 use doppel_machine::outcome::{Certainty, Failure, Outcome, Unconfirmed};
@@ -41,7 +44,6 @@ use crate::call_events::CallEvent;
 use crate::forks::{ForkPlan, MacError, PlanError};
 use crate::scheduler::Cancelled;
 use crate::scheduler::{Begun, Call, Turn};
-use crate::session::{Paused, Session, SessionError};
 
 /// How an action on an element ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,11 +100,11 @@ impl Failure for CallError {
     }
 }
 
-impl From<SessionError> for CallError {
-    fn from(error: SessionError) -> Self {
+impl From<AgentConnectionError> for CallError {
+    fn from(error: AgentConnectionError) -> Self {
         match error {
-            SessionError::Connect(error) => Self::Machine(error),
-            SessionError::Request(error) => Self::Agent(error),
+            AgentConnectionError::Connect(error) => Self::Machine(error),
+            AgentConnectionError::Request(error) => Self::Agent(error),
         }
     }
 }
@@ -116,7 +118,7 @@ where
     /// started at its first.
     fn turn<'s>(&'s self, machine: &MachineName, call: &'s Call) -> Result<Turn<'s, C>, CallError> {
         let (turn, begun) = call
-            .turn(machine, &self.agent_sessions, || {
+            .turn(machine, &self.agent_connections, || {
                 self.machines.clock().now()
             })
             .map_err(|Cancelled| CallError::Cancelled)?;
@@ -136,14 +138,14 @@ where
     }
 
     /// A turn for an operation that stops, pauses or restarts the guest:
-    /// the agent session ends, and the next call opens a fresh one.
+    /// the agent connection is closed, and the next call opens a fresh one.
     fn lifecycle_turn<'s>(
         &'s self,
         machine: &MachineName,
         call: &'s Call,
     ) -> Result<Turn<'s, C>, CallError> {
         let mut turn = self.turn(machine, call)?;
-        turn.session().end();
+        turn.agent().close();
         Ok(turn)
     }
 
@@ -161,7 +163,7 @@ where
             Status::Live(state) if state.is_running() => {
                 let by = self.machines.deadline();
                 match turn
-                    .session()
+                    .agent()
                     .run(&self.machines, machine, by, |agent, by| agent.status(by))
                 {
                     Ok(status) => AgentReport::Connected(status),
@@ -194,18 +196,16 @@ where
         let mut turn = self.turn(machine, call)?;
         let by = self.machines.deadline();
         match via {
-            Via::Agent => Ok(turn
-                .session()
-                .run(&self.machines, machine, by, |agent, by| {
-                    let max = match size {
-                        ScreenshotSize::MaxPixels(n) => n,
-                        ScreenshotSize::MatchPoints => {
-                            let display = agent.status(by)?.display;
-                            Self::longest_side(display.width(), display.height())
-                        }
-                    };
-                    agent.capture(max, by)
-                })?),
+            Via::Agent => Ok(turn.agent().run(&self.machines, machine, by, |agent, by| {
+                let max = match size {
+                    ScreenshotSize::MaxPixels(n) => n,
+                    ScreenshotSize::MatchPoints => {
+                        let display = agent.status(by)?.display;
+                        Self::longest_side(display.width(), display.height())
+                    }
+                };
+                agent.capture(max, by)
+            })?),
             Via::Host => {
                 let max = match size {
                     ScreenshotSize::MaxPixels(n) => n,
@@ -265,10 +265,9 @@ where
         match via {
             Via::Agent => {
                 let by = self.machines.deadline();
-                turn.session()
-                    .run(&self.machines, machine, by, |agent, by| {
-                        agent.input(input, by)
-                    })?;
+                turn.agent().run(&self.machines, machine, by, |agent, by| {
+                    agent.input(input, by)
+                })?;
             }
             Via::Host => {
                 let by = self.machines.deadline();
@@ -301,11 +300,9 @@ where
     ) -> Result<AxSnapshot, CallError> {
         let mut turn = self.turn(machine, call)?;
         let by = self.machines.deadline();
-        Ok(turn
-            .session()
-            .run(&self.machines, machine, by, |agent, by| {
-                Self::take(agent, spec, by)
-            })?)
+        Ok(turn.agent().run(&self.machines, machine, by, |agent, by| {
+            Self::take(agent, spec, by)
+        })?)
     }
 
     /// A person's look at the frontmost app's focused window. It takes no
@@ -329,18 +326,19 @@ where
         let mut turn = self.turn(machine, call)?;
         let by = self.machines.deadline();
         match turn
-            .session()
+            .agent()
             .run(&self.machines, machine, by, |agent, by| agent.act(act, by))
         {
             Ok(()) => Ok(Acted::Done),
-            Err(SessionError::Request(AgentError::Remote(RemoteError::StaleReference {
-                ..
-            }))) => Ok(Acted::StaleReference),
+            Err(AgentConnectionError::Request(AgentError::Remote(
+                RemoteError::StaleReference { .. },
+            ))) => Ok(Acted::StaleReference),
             Err(error) => Err(error.into()),
         }
     }
 
-    /// Waits on accessibility snapshots, taken on the machine's session.
+    /// Waits on accessibility snapshots, taken on the machine's agent
+    /// connection.
     pub(crate) fn wait_for(
         &self,
         machine: &MachineName,
@@ -352,15 +350,15 @@ where
         let machines = &self.machines;
         Self::poll_until(
             machines,
-            turn.session(),
+            turn.agent(),
             call.cancel(),
             wait,
-            |session, by| match session.run(machines, machine, by, |agent, by| {
+            |connection, by| match connection.run(machines, machine, by, |agent, by| {
                 Self::take(agent, spec, by)
             }) {
                 Ok(snapshot) => Poll::Seen(snapshot),
-                Err(SessionError::Connect(error)) => Self::machine_poll(&error),
-                Err(SessionError::Request(error)) => Self::agent_poll(&error),
+                Err(AgentConnectionError::Connect(error)) => Self::machine_poll(&error),
+                Err(AgentConnectionError::Request(error)) => Self::agent_poll(&error),
             },
         )
     }
@@ -375,12 +373,10 @@ where
         let mut turn = self.turn(machine, call)?;
         let machines = &self.machines;
         // Not needed to read the screen, but its events wake the wait.
-        let _ = turn
-            .session()
-            .client(machines, machine, machines.deadline());
+        let _ = turn.agent().client(machines, machine, machines.deadline());
         Self::poll_until(
             machines,
-            turn.session(),
+            turn.agent(),
             call.cancel(),
             wait,
             |_, by| match machines
@@ -394,7 +390,7 @@ where
         )
     }
 
-    /// A channel of its own: a long program mustn't hold the session, and
+    /// A channel of its own: a long program mustn't hold the connection, and
     /// cancelling it closes the channel.
     pub(crate) fn exec(
         &self,
@@ -420,11 +416,9 @@ where
     ) -> Result<Vec<u8>, CallError> {
         let mut turn = self.turn(machine, call)?;
         let by = self.machines.deadline();
-        Ok(turn
-            .session()
-            .run(&self.machines, machine, by, |agent, by| {
-                agent.read_file(request, by)
-            })?)
+        Ok(turn.agent().run(&self.machines, machine, by, |agent, by| {
+            agent.read_file(request, by)
+        })?)
     }
 
     pub(crate) fn write_file(
@@ -435,11 +429,9 @@ where
     ) -> Result<(), CallError> {
         let mut turn = self.turn(machine, call)?;
         let by = self.machines.deadline();
-        Ok(turn
-            .session()
-            .run(&self.machines, machine, by, |agent, by| {
-                agent.write_file(request, by)
-            })?)
+        Ok(turn.agent().run(&self.machines, machine, by, |agent, by| {
+            agent.write_file(request, by)
+        })?)
     }
 
     pub(crate) fn checkpoint(
@@ -658,24 +650,24 @@ where
     /// gets the usual call budget, cut short by the wait's own end.
     fn poll_until<W: Watch>(
         machines: &Machines<C, F>,
-        session: &mut Session<C>,
+        agent: &mut AgentConnection<C>,
         cancel: &Cancel,
         wait: WaitSpec<W>,
-        mut poll: impl FnMut(&mut Session<C>, Deadline) -> Poll<W::Seen>,
+        mut poll: impl FnMut(&mut AgentConnection<C>, Deadline) -> Poll<W::Seen>,
     ) -> Result<WaitOutcome<W::Seen>, CallError> {
         let clock = machines.clock();
         let mut waiting = Waiting::start(wait, clock.now());
         loop {
             let by = machines.deadline().earlier(waiting.poll_deadline());
-            let seen = poll(session, by);
+            let seen = poll(agent, by);
             // Whatever changed before this poll's reply, it has seen.
-            session.seen();
+            agent.seen();
             let (mut next, mut at) = match waiting.observe(seen, clock.now()) {
                 Next::Done(outcome) => return Ok(outcome),
                 Next::PollAt(next, at) => (next, at),
             };
             loop {
-                match session.pause(clock, at, cancel) {
+                match agent.pause(clock, at, cancel) {
                     Paused::Due => break,
                     Paused::Changed => (next, at) = next.on_change(clock.now()),
                     Paused::Cancelled => return Err(CallError::Cancelled),
@@ -694,7 +686,7 @@ where
                 | RemoteError::Internal(_)
                 | RemoteError::Timeout { .. },
             )
-            // A broken session: the next poll connects afresh.
+            // A broken connection: the next poll connects afresh.
             | AgentError::Timeout
             | AgentError::Io(_)
             | AgentError::Closed => Poll::Retryable(error.to_string()),
@@ -762,7 +754,7 @@ mod tests {
             LocalFilesystem,
         );
         let cancel = Cancel::new();
-        let mut session = Session::default();
+        let mut agent = AgentConnection::default();
         let wait =
             WaitSpec::new(Condition::Appears("Save".into()), Duration::from_secs(60)).unwrap();
         let canceller = cancel.clone();
@@ -772,7 +764,7 @@ mod tests {
         });
         let started = SystemClock.now();
         // Never satisfied: only the cancel can end it early.
-        let result = Daemon::poll_until(&machines, &mut session, &cancel, wait, |_, _| {
+        let result = Daemon::poll_until(&machines, &mut agent, &cancel, wait, |_, _| {
             Poll::<AxSnapshot>::Retryable("no window yet".into())
         });
         later.join().unwrap();
@@ -840,6 +832,221 @@ impl Failure for ForksError {
     }
 }
 
+/// Why a temporary machine wasn't made. Nothing is left behind: a fork
+/// that failed partway is removed.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum TemporaryMachineError {
+    #[error("machine '{0}' does not exist")]
+    NoSuchMachine(MachineName),
+    #[error(
+        "machine '{0}' isn't a golden image: `doppel golden prepare {0}` makes it one, or name one `doppel ls` lists as golden"
+    )]
+    NotGolden(MachineName),
+    #[error("machine '{machine}' has a lineage file that can't be read ({reason})")]
+    LineageUnreadable {
+        machine: MachineName,
+        reason: String,
+    },
+    #[error(transparent)]
+    Plan(#[from] PlanError),
+    #[error(transparent)]
+    Mac(#[from] MacError),
+    #[error(transparent)]
+    Turn(CallError),
+    #[error(transparent)]
+    Listing(MachineError),
+    #[error("making {name} failed")]
+    Making {
+        name: MachineName,
+        #[source]
+        source: Box<CallError>,
+    },
+}
+
+impl Failure for TemporaryMachineError {
+    fn certainty(&self) -> Certainty {
+        match self {
+            Self::NoSuchMachine(_)
+            | Self::NotGolden(_)
+            | Self::LineageUnreadable { .. }
+            | Self::Plan(_)
+            | Self::Mac(_)
+            | Self::Turn(_)
+            | Self::Listing(_) => Certainty::NotDone,
+            // A fork that failed partway is removed before this is answered,
+            // or left marked temporary for the daemon's next start.
+            Self::Making { source, .. } => source.certainty(),
+        }
+    }
+}
+
+impl<C, F> Daemon<C, F>
+where
+    C: Clock + Clone + Send + Sync,
+    F: Filesystem + Sync,
+{
+    /// Makes a fresh fork of `golden`'s template, under `golden`'s turn,
+    /// marked [`Role::Temporary`] as it is made. Refused before anything is
+    /// made for a machine that isn't a golden image, or when one more
+    /// wouldn't fit beside the running machines.
+    pub(crate) fn make_temporary_machine(
+        &self,
+        golden: &MachineName,
+        call: &Call,
+    ) -> Result<MachineName, TemporaryMachineError> {
+        let _turn = self
+            .turn(golden, call)
+            .map_err(TemporaryMachineError::Turn)?;
+        let mut existing = Vec::new();
+        let mut running = 0;
+        let mut found = None;
+        for listing in self
+            .machines
+            .list(self.machines.deadline())
+            .map_err(TemporaryMachineError::Listing)?
+        {
+            match listing {
+                Listing::Machine {
+                    name,
+                    status,
+                    lineage,
+                } => {
+                    if matches!(status, Ok(Status::Live(_))) {
+                        running += 1;
+                    }
+                    if name == *golden {
+                        found = Some(lineage);
+                    }
+                    existing.push(name);
+                }
+                Listing::Unrecognized(_) => {}
+            }
+        }
+        let template = match found {
+            None => return Err(TemporaryMachineError::NoSuchMachine(golden.clone())),
+            Some(RecordedLineage::Unreadable(reason)) => {
+                return Err(TemporaryMachineError::LineageUnreadable {
+                    machine: golden.clone(),
+                    reason,
+                });
+            }
+            Some(RecordedLineage::Known(lineage)) => match lineage.role {
+                Role::Golden { template } => template,
+                Role::Working | Role::Temporary => {
+                    return Err(TemporaryMachineError::NotGolden(golden.clone()));
+                }
+            },
+        };
+        let plan = ForkPlan::new(golden, &template, 1, &existing, running)?;
+        let name = plan
+            .names()
+            .first()
+            .cloned()
+            .ok_or(TemporaryMachineError::Plan(PlanError::NoForks))?;
+        let mac = self.macs.mac()?;
+        let making = || -> Result<(), CallError> {
+            let from = self.machines.claim(golden, self.claim_deadline())?;
+            let target = self.machines.claim(&name, self.claim_deadline())?;
+            Ok(from.fork_fresh(&template, &target, mac, Role::Temporary)?)
+        };
+        if let Err(error) = making() {
+            self.remove_temporary_machine(&name);
+            return Err(TemporaryMachineError::Making {
+                name,
+                source: Box::new(error),
+            });
+        }
+        Ok(name)
+    }
+
+    /// Powers a temporary machine off and deletes it. One already gone
+    /// counts as removed; one no longer temporary (its role was changed
+    /// since, to keep it) is kept. One that can't be removed stays, for the
+    /// daemon's next start.
+    pub(crate) fn remove_temporary_machine(&self, machine: &MachineName) {
+        let call = self.scheduler.alone();
+        match self.power_off_and_delete(machine, &call) {
+            Ok(Removed::Gone) => eprintln!("doppeld: {machine} removed: its connection closed"),
+            Ok(Removed::Kept) => eprintln!("doppeld: {machine} kept: it is no longer temporary"),
+            Err(error) => eprintln!(
+                "doppeld: {machine} wasn't removed ({error}); the daemon tries again when it next starts"
+            ),
+        }
+    }
+
+    /// Removes every temporary machine, when the daemon starts: none
+    /// survives its connection, and no connection survives a daemon, so
+    /// each one found was left behind. It reads only the store: a VMM is
+    /// reached only to power a temporary machine off.
+    pub(crate) fn remove_leftover_temporary_machines(&self) {
+        let store = self.machines.store();
+        let listed = match store.machines() {
+            Ok(listed) => listed,
+            Err(error) => {
+                eprintln!("doppeld: temporary machines left behind aren't removed: {error}");
+                return;
+            }
+        };
+        for entry in listed {
+            match entry {
+                Listed::Machine(name) => match store.read_lineage(&store.bundle(&name)) {
+                    RecordedLineage::Known(lineage) if lineage.role == Role::Temporary => {
+                        self.remove_temporary_machine(&name);
+                    }
+                    RecordedLineage::Known(_) | RecordedLineage::Unreadable(_) => {}
+                },
+                Listed::Unrecognized(_) => {}
+            }
+        }
+    }
+
+    /// Its role is read first, so a machine kept since it was made isn't
+    /// deleted.
+    fn power_off_and_delete(
+        &self,
+        machine: &MachineName,
+        call: &Call,
+    ) -> Result<Removed, CallError> {
+        let gone = |error: &CallError| {
+            matches!(
+                error,
+                CallError::Machine(MachineError::Store(StoreError::NoSuchMachine(_)))
+            )
+        };
+        let store = self.machines.store();
+        let bundle = store.bundle(machine);
+        match store.read_spec(&bundle) {
+            Ok(_) => {}
+            Err(StoreError::NoSuchMachine(_)) => return Ok(Removed::Gone),
+            Err(error) => return Err(CallError::Machine(MachineError::Store(error))),
+        }
+        match store.read_lineage(&bundle) {
+            RecordedLineage::Known(lineage) if lineage.role == Role::Temporary => {}
+            RecordedLineage::Known(_) | RecordedLineage::Unreadable(_) => return Ok(Removed::Kept),
+        }
+        match self.stop(machine, StopMode::Force, call) {
+            Ok(_) => {}
+            Err(CallError::Machine(MachineError::NotRunning(_))) => {}
+            Err(error) if gone(&error) => return Ok(Removed::Gone),
+            Err(error) => return Err(error),
+        }
+        match self.delete(machine, call) {
+            Ok(()) => Ok(Removed::Gone),
+            Err(error) if gone(&error) => Ok(Removed::Gone),
+            Err(error) => Err(error),
+        }
+    }
+}
+
+/// What removing a temporary machine did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Removed {
+    /// Deleted now, or already.
+    Gone,
+    /// Not temporary any more, or its role can't be read: left as it is.
+    Kept,
+}
+
 /// How one fresh fork's start went.
 #[derive(Debug)]
 pub(crate) enum ForkStart {
@@ -898,7 +1105,7 @@ where
                 let making = || -> Result<(), CallError> {
                     let from = self.machines.claim(source, self.claim_deadline())?;
                     let target = self.machines.claim(name, self.claim_deadline())?;
-                    Ok(from.fork_fresh(label, &target, mac)?)
+                    Ok(from.fork_fresh(label, &target, mac, Role::Working)?)
                 };
                 if let Err(error) = making() {
                     return Err(ForksError::Making {

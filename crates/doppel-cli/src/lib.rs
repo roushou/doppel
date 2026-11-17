@@ -9,6 +9,7 @@ use std::time::Duration;
 
 mod copy;
 mod daemon_at;
+mod error_message;
 mod export;
 mod fork_run;
 mod launchd;
@@ -49,6 +50,7 @@ use doppel_protocol::transport::Cancel;
 
 use crate::copy::CopyEnd;
 use crate::daemon_at::{DaemonAt, LIFECYCLE, within};
+pub use crate::error_message::ErrorMessage;
 pub use crate::report::{GuestAfter, Report};
 
 /// The `doppel` command line: what to do, and where machines are.
@@ -352,12 +354,18 @@ enum Command {
         #[command(subcommand)]
         action: Option<SessionsCommand>,
     },
-    /// Serve MCP over stdio, for AI agents (e.g. `claude mcp add doppel -- doppel mcp --machine dev`).
+    /// Serve MCP over stdio, for AI agents (e.g. `claude mcp add doppel -- doppel mcp --from ready`).
     /// The calls go to the daemon as one session.
     Mcp {
         /// Machine that tools target when a call names none.
-        #[arg(long, env = "DOPPEL_MACHINE")]
+        #[arg(long, env = "DOPPEL_MACHINE", conflicts_with = "from")]
         machine: Option<MachineName>,
+        /// Give the session a machine of its own: a fresh fork of this
+        /// golden image's template, started in the background, which tools
+        /// target when a call names none. It is powered off and deleted when
+        /// the session ends, however this process ends.
+        #[arg(long, value_name = "GOLDEN")]
+        from: Option<MachineName>,
         /// Record the session into the store's `recordings/`: a video per
         /// VM run of each machine the calls touch, with captions of the
         /// calls, and a trace of them (`trace.jsonl`).
@@ -1419,14 +1427,23 @@ fn run(cli: Cli) -> Result<Report> {
             eprintln!("doppeld: stopped");
             Report::Nothing
         }
-        Command::Mcp { machine, record } => {
-            let default = machine;
+        Command::Mcp {
+            machine,
+            from,
+            record,
+        } => {
             let record = if record {
                 doppel_client::Record::IntoStore
             } else {
                 doppel_client::Record::Off
             };
-            mcp::Relay::connect(&daemon()?, record)?.serve(default)?;
+            // clap refuses both together.
+            let default = match (from, machine) {
+                (Some(golden), _) => mcp::DefaultMachine::MadeFrom(golden),
+                (None, Some(name)) => mcp::DefaultMachine::Named(name),
+                (None, None) => mcp::DefaultMachine::None,
+            };
+            mcp::Relay::connect(&daemon()?, record, default)?.serve()?;
             Report::Nothing
         }
         Command::Sessions {

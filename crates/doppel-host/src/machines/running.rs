@@ -121,7 +121,7 @@ impl<'m, C: Clock> RunningMachine<'m, C> {
     /// # Errors
     /// Nothing listening on the agent port, or a failed handshake.
     pub fn agent(&mut self, by: Deadline) -> Result<AgentClient<&'m C>, MachineError> {
-        self.connect_agent(self.clock, by)
+        self.open_agent(self.clock, by)
     }
 
     /// A connection to the agent to keep between calls (it owns a copy of
@@ -129,16 +129,16 @@ impl<'m, C: Clock> RunningMachine<'m, C> {
     ///
     /// # Errors
     /// As [`Self::agent`], or a failed subscription.
-    pub fn session(&mut self, by: Deadline) -> Result<AgentClient<C>, MachineError>
+    pub fn connect_agent(&mut self, by: Deadline) -> Result<AgentClient<C>, MachineError>
     where
         C: Clone,
     {
-        let mut session = self.connect_agent(self.clock.clone(), by)?;
-        session.subscribe(by)?;
-        Ok(session)
+        let mut client = self.open_agent(self.clock.clone(), by)?;
+        client.subscribe(by)?;
+        Ok(client)
     }
 
-    fn connect_agent<K: Clock>(
+    fn open_agent<K: Clock>(
         &mut self,
         clock: K,
         by: Deadline,

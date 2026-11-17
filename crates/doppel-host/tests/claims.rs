@@ -340,6 +340,7 @@ fn a_fresh_fork_gets_its_own_mac_and_no_memory_or_nothing_at_all() {
                     .claim(&name("base-clean-1"), failing.deadline())
                     .unwrap(),
                 mac,
+                Role::Temporary,
             );
         drop(failing);
         let machines = Machines::new(
@@ -375,9 +376,13 @@ fn a_fresh_fork_gets_its_own_mac_and_no_memory_or_nothing_at_all() {
                     "spec.pb"
                 ]
             );
+            // Its role is in the lineage it appeared with.
             assert_eq!(
                 store.read_lineage(&fork),
-                RecordedLineage::Known(Lineage::forked(name("base"), "clean".parse().unwrap()))
+                RecordedLineage::Known(
+                    Lineage::forked(name("base"), "clean".parse().unwrap())
+                        .with_role(Role::Temporary)
+                )
             );
             assert_eq!(fs::read_to_string(fork.image().disk).unwrap(), "cp-disk");
             let forked = store.read_spec(&fork).unwrap();
