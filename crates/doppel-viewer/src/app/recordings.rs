@@ -5,28 +5,32 @@ use std::sync::Arc;
 
 use doppel_machine::machine::MachineName;
 use gpui::{
-    AnyElement, AppContext, Context, Div, ElementId, Entity, FontWeight, InteractiveElement,
-    IntoElement, ParentElement, Render, SharedString, StatefulInteractiveElement, Styled, Task,
-    Window, div, prelude::FluentBuilder, px, relative,
+    AnyElement, Context, Div, ElementId, EventEmitter, FontWeight, InteractiveElement, IntoElement,
+    ParentElement, Render, SharedString, StatefulInteractiveElement, Styled, Task, Window, div,
+    prelude::FluentBuilder, px, relative,
 };
 
-use super::replay::Replay;
 use crate::icons::Icon;
 use crate::recordings::{self, RecordingId, RecordingSummary};
 use crate::theme::{Hue, MONO, Theme};
 use crate::ui::{Button, Look};
 use crate::{Daemon, LocalClock};
 
-/// Where the Recordings view is.
+/// Where the list is.
 enum Showing {
     Loading,
     Listed(Vec<RecordingSummary>),
-    Opening(RecordingId),
-    Replaying(Entity<Replay>),
     Failed(String),
 }
 
-/// The Recordings view.
+/// What the list tells the window.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum RecordingsEvent {
+    /// The person picked a recording to replay.
+    Open(RecordingId),
+}
+
+/// The recordings page.
 pub(crate) struct Recordings {
     daemon: Arc<dyn Daemon>,
     clock: Arc<dyn LocalClock>,
@@ -60,18 +64,8 @@ impl Recordings {
         self.only.as_ref()
     }
 
-    /// The recording it shows, opening or replaying; `None` while it lists
-    /// them.
-    pub(crate) fn replaying(&self, cx: &gpui::App) -> Option<RecordingId> {
-        match &self.showing {
-            Showing::Opening(id) => Some(id.clone()),
-            Showing::Replaying(replay) => Some(replay.read(cx).id().clone()),
-            Showing::Loading | Showing::Listed(_) | Showing::Failed(_) => None,
-        }
-    }
-
     /// Lists the recordings again.
-    pub(crate) fn load(&mut self, cx: &mut Context<Self>) {
+    fn load(&mut self, cx: &mut Context<Self>) {
         self.showing = Showing::Loading;
         let listed = self.daemon.recordings();
         self._load = Some(cx.spawn(async move |page, cx| {
@@ -79,29 +73,6 @@ impl Recordings {
             let _ = page.update(cx, |page, cx| {
                 page.showing = match listed {
                     Ok(listed) => Showing::Listed(listed),
-                    Err(error) => Showing::Failed(error.to_string()),
-                };
-                cx.notify();
-            });
-        }));
-        cx.notify();
-    }
-
-    /// Opens recording `id` to replay.
-    pub(crate) fn open(&mut self, id: RecordingId, cx: &mut Context<Self>) {
-        self.showing = Showing::Opening(id.clone());
-        let opened = self.daemon.open_recording(&id);
-        self._load = Some(cx.spawn(async move |page, cx| {
-            let opened = opened.await;
-            let _ = page.update(cx, |page, cx| {
-                page.showing = match opened {
-                    Ok(recording) => {
-                        let daemon = page.daemon.clone();
-                        let clock = page.clock.clone();
-                        Showing::Replaying(
-                            cx.new(|cx| Replay::new(daemon, clock, recording.in_start_order(), cx)),
-                        )
-                    }
                     Err(error) => Showing::Failed(error.to_string()),
                 };
                 cx.notify();
@@ -197,82 +168,83 @@ impl Recordings {
                                 .text_color(theme.faint)
                                 .child(group.recordings.len().to_string()),
                         );
-                    let rows = group.recordings.into_iter().map(|summary| {
-                        let id = summary.id.clone();
-                        let share = summary.traced_ms as f32 / longest;
-                        div()
-                            .id(ElementId::Name(format!("recording-{}", summary.id).into()))
-                            .flex()
-                            .items_center()
-                            .gap(px(12.))
-                            .h(px(36.))
-                            .px(px(12.))
-                            .border_b_1()
-                            .border_color(theme.line)
-                            .text_size(px(13.))
-                            .cursor_pointer()
-                            .hover(|row| row.bg(theme.raised))
-                            .child(mono(summary.started.time_of_day(), theme.strong).w(px(44.)))
-                            .child(
-                                div()
-                                    .flex_none()
-                                    .size(px(10.))
-                                    .bg(Hue::of(summary.session).fill),
-                            )
-                            .child(
-                                div()
-                                    .w(px(160.))
-                                    .flex_none()
-                                    .truncate()
-                                    .text_color(theme.text)
-                                    .child(if summary.machines.is_empty() {
-                                        "—".to_owned()
-                                    } else {
-                                        summary
-                                            .machines
-                                            .iter()
-                                            .map(MachineName::as_str)
-                                            .collect::<Vec<_>>()
-                                            .join(", ")
-                                    }),
-                            )
-                            .child(
-                                div().flex_1().h(px(4.)).bg(theme.line).child(
+                    let rows =
+                        group.recordings.into_iter().map(|summary| {
+                            let id = summary.id.clone();
+                            let share = summary.traced_ms as f32 / longest;
+                            div()
+                                .id(ElementId::Name(format!("recording-{}", summary.id).into()))
+                                .flex()
+                                .items_center()
+                                .gap(px(12.))
+                                .h(px(36.))
+                                .px(px(12.))
+                                .border_b_1()
+                                .border_color(theme.line)
+                                .text_size(px(13.))
+                                .cursor_pointer()
+                                .hover(|row| row.bg(theme.raised))
+                                .child(mono(summary.started.time_of_day(), theme.strong).w(px(44.)))
+                                .child(
                                     div()
-                                        .h_full()
-                                        .min_w(px(2.))
-                                        .w(relative(share.clamp(0.0, 1.0)))
-                                        .bg(theme.muted),
-                                ),
-                            )
-                            .child(
-                                mono(recordings::length(summary.traced_ms), theme.muted)
-                                    .w(px(64.))
-                                    .flex()
-                                    .justify_end(),
-                            )
-                            .child(
-                                mono(summary.calls.to_string(), theme.muted)
-                                    .w(px(64.))
-                                    .flex()
-                                    .justify_end()
-                                    .gap(px(4.))
-                                    .child(
-                                        div().text_color(theme.faint).child(
-                                            if summary.calls == 1 { "call" } else { "calls" },
-                                        ),
+                                        .flex_none()
+                                        .size(px(10.))
+                                        .bg(Hue::of(summary.session).fill),
+                                )
+                                .child(
+                                    div()
+                                        .w(px(160.))
+                                        .flex_none()
+                                        .truncate()
+                                        .text_color(theme.text)
+                                        .child(if summary.machines.is_empty() {
+                                            "—".to_owned()
+                                        } else {
+                                            summary
+                                                .machines
+                                                .iter()
+                                                .map(MachineName::as_str)
+                                                .collect::<Vec<_>>()
+                                                .join(", ")
+                                        }),
+                                )
+                                .child(
+                                    div().flex_1().h(px(4.)).bg(theme.line).child(
+                                        div()
+                                            .h_full()
+                                            .min_w(px(2.))
+                                            .w(relative(share.clamp(0.0, 1.0)))
+                                            .bg(theme.muted),
                                     ),
-                            )
-                            .child(Icon::Film.svg(
-                                14.,
-                                if summary.videos == 0 {
-                                    theme.line_strong
-                                } else {
-                                    theme.muted
-                                },
-                            ))
-                            .on_click(cx.listener(move |page, _, _, cx| page.open(id.clone(), cx)))
-                    });
+                                )
+                                .child(
+                                    mono(recordings::length(summary.traced_ms), theme.muted)
+                                        .w(px(64.))
+                                        .flex()
+                                        .justify_end(),
+                                )
+                                .child(
+                                    mono(summary.calls.to_string(), theme.muted)
+                                        .w(px(64.))
+                                        .flex()
+                                        .justify_end()
+                                        .gap(px(4.))
+                                        .child(div().text_color(theme.faint).child(
+                                            if summary.calls == 1 { "call" } else { "calls" },
+                                        )),
+                                )
+                                .child(Icon::Film.svg(
+                                    14.,
+                                    if summary.videos == 0 {
+                                        theme.line_strong
+                                    } else {
+                                        theme.muted
+                                    },
+                                ))
+                                .on_click(cx.listener(move |_, _, _, cx| {
+                                    cx.emit(RecordingsEvent::Open(id.clone()))
+                                }))
+                        });
                     div()
                         .flex()
                         .flex_col()
@@ -288,14 +260,13 @@ impl Recordings {
     }
 }
 
+impl EventEmitter<RecordingsEvent> for Recordings {}
+
 impl Render for Recordings {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = *cx.global::<Theme>();
         let body = match &self.showing {
             Showing::Loading => div().text_color(theme.muted).child("Loading recordings…"),
-            Showing::Opening(id) => div()
-                .text_color(theme.muted)
-                .child(format!("Opening {id}…")),
             Showing::Failed(why) => div()
                 .flex()
                 .flex_col()
@@ -312,36 +283,6 @@ impl Render for Recordings {
                     )
                     .on_press(cx.listener(|page, _, _, cx| page.load(cx))),
                 ),
-            Showing::Replaying(replay) => {
-                let id = replay.read(cx).id().to_string();
-                div()
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(12.))
-                            .mb(px(12.))
-                            .child(
-                                Button::new(
-                                    "recordings-back",
-                                    &theme,
-                                    Look::Ghost,
-                                    Some(Icon::ArrowLeft),
-                                    Some("Recordings".into()),
-                                )
-                                .on_press(cx.listener(|page, _, _, cx| page.load(cx))),
-                            )
-                            .child(
-                                div()
-                                    .min_w_0()
-                                    .text_size(px(15.))
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .text_color(theme.text)
-                                    .child(id),
-                            ),
-                    )
-                    .child(replay.clone())
-            }
             Showing::Listed(listed) => {
                 let listed = listed.clone();
                 self.list(&listed, &theme, cx)

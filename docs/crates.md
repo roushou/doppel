@@ -93,9 +93,12 @@ it:
   words the same way on both targets.
 - **The window's place** (`doppel_viewer::route`) is `/`,
   `/machines/<name>`, `/replay` or `/replay/<id>`, parsed once from the
-  address. In a browser the address bar shows it, Back and Forward move
-  it, and the gateway serves the page at each of them; a desktop window
-  has none.
+  address. The window holds it, and its page with it: one `navigate`
+  changes both, for a click, a link, or Back and Forward. Each page is a
+  module of `app/` (`machines`, `recordings`, `replay`). A machine that
+  can't be shown is refused with why (`doppel_scene::stage::Unstaged`),
+  never ignored. In a browser the address bar shows the place, and the
+  gateway serves the page at each one; a desktop window has none.
 
 ## The command line
 

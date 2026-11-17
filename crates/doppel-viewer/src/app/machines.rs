@@ -1157,7 +1157,7 @@ impl Root {
                     .child(icon.svg(14., ink))
                     .child(ui::upper(label))
                     .on_click(cx.listener(move |root, _, window, cx| match item {
-                        MenuItem::Recordings => root.recordings_view(Some(picked.clone()), cx),
+                        MenuItem::Recordings => root.recordings_of(Some(picked.clone()), cx),
                         MenuItem::Act(action) => root.pick(&picked, action, window, cx),
                     }))
             });

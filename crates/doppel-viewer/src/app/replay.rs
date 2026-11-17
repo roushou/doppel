@@ -13,9 +13,10 @@ use doppel_machine::machine::MachineName;
 use futures::StreamExt;
 use futures::channel::mpsc;
 use gpui::{
-    AnyElement, Bounds, Context, Div, ElementId, FontWeight, InteractiveElement, IntoElement,
-    MouseButton, MouseDownEvent, ParentElement, Pixels, Render, ScrollHandle, SharedString,
-    StatefulInteractiveElement, Styled, Task, Window, canvas, div, prelude::FluentBuilder, px,
+    AnyElement, AppContext, Bounds, Context, Div, ElementId, Entity, EventEmitter, FontWeight,
+    InteractiveElement, IntoElement, MouseButton, MouseDownEvent, ParentElement, Pixels, Render,
+    ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Task, Window, canvas, div,
+    prelude::FluentBuilder, px,
 };
 
 use crate::elements::Named;
@@ -41,6 +42,114 @@ const TRACE_MIN: f32 = 280.0;
 const QUEUED_SHOWN_MS: u64 = 100;
 
 use super::recordings::notice;
+
+/// The replay page: one recording, opened by its id, and the way back to
+/// the list.
+pub(super) struct ReplayPage {
+    id: RecordingId,
+    opened: Opened,
+    _open: Task<()>,
+}
+
+/// How far the recording is opened.
+enum Opened {
+    Opening,
+    Replaying(Entity<Replay>),
+    Failed(String),
+}
+
+/// What the replay page tells the window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ReplayEvent {
+    /// The person went back to the list.
+    Back,
+}
+
+impl EventEmitter<ReplayEvent> for ReplayPage {}
+
+impl ReplayPage {
+    /// Opens recording `id` to replay.
+    pub(super) fn open(
+        daemon: Arc<dyn Daemon>,
+        clock: Arc<dyn LocalClock>,
+        id: RecordingId,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let opened = daemon.open_recording(&id);
+        let open = cx.spawn(async move |page, cx| {
+            let opened = opened.await;
+            let _ = page.update(cx, |page, cx| {
+                page.opened = match opened {
+                    Ok(recording) => {
+                        let recording = recording.in_start_order();
+                        Opened::Replaying(cx.new(|cx| Replay::new(daemon, clock, recording, cx)))
+                    }
+                    Err(error) => Opened::Failed(error.to_string()),
+                };
+                cx.notify();
+            });
+        });
+        Self {
+            id,
+            opened: Opened::Opening,
+            _open: open,
+        }
+    }
+
+    /// The recording it replays.
+    pub(super) const fn id(&self) -> &RecordingId {
+        &self.id
+    }
+}
+
+impl Render for ReplayPage {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.global::<Theme>();
+        let head = div()
+            .flex()
+            .items_center()
+            .gap(px(12.))
+            .mb(px(12.))
+            .child(
+                Button::new(
+                    "recordings-back",
+                    &theme,
+                    Look::Ghost,
+                    Some(Icon::ArrowLeft),
+                    Some("Recordings".into()),
+                )
+                .on_press(cx.listener(|_, _, _, cx| cx.emit(ReplayEvent::Back))),
+            )
+            .child(
+                div()
+                    .min_w_0()
+                    .text_size(px(15.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(theme.text)
+                    .child(self.id.to_string()),
+            );
+        let body = match &self.opened {
+            Opened::Opening => div()
+                .text_color(theme.muted)
+                .child(format!("Opening {}…", self.id))
+                .into_any_element(),
+            Opened::Replaying(replay) => replay.clone().into_any_element(),
+            Opened::Failed(why) => notice(&theme)
+                .child(format!("{}: {why}", self.id))
+                .into_any_element(),
+        };
+        div()
+            .id("replay-page")
+            .flex_1()
+            .min_h_0()
+            .overflow_y_scroll()
+            .p(px(16.))
+            .text_size(px(14.))
+            .text_color(theme.text)
+            .child(head)
+            .child(body)
+    }
+}
 
 /// A video open in the player, and the task that redraws as it plays.
 struct Playing {
@@ -96,12 +205,7 @@ enum Fetch {
 }
 
 impl Replay {
-    /// The recording it replays.
-    pub(super) const fn id(&self) -> &RecordingId {
-        &self.recording.id
-    }
-
-    pub(super) fn new(
+    fn new(
         daemon: Arc<dyn Daemon>,
         clock: Arc<dyn LocalClock>,
         recording: Recording,

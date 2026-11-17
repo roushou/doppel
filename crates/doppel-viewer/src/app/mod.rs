@@ -41,7 +41,8 @@ use crate::timeline;
 use crate::ui::{self, Button, Look};
 use crate::{Daemon, DaemonError, LocalClock, Settings, ThemeChoice};
 use machines::ElementsShown;
-use recordings::Recordings;
+use recordings::{Recordings, RecordingsEvent};
+use replay::{ReplayEvent, ReplayPage};
 
 /// How far back a live timeline shows.
 const WINDOW_MS: f64 = 60_000.0;
@@ -113,7 +114,7 @@ impl Window {
 
 /// Whether the window reaches the daemon.
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum Page {
+enum Link {
     Connecting,
     Connected,
     Closed(String),
@@ -134,10 +135,24 @@ struct Toast {
     _dismiss: Option<Task<()>>,
 }
 
-/// What the main area shows.
-enum View {
+/// The page the main area shows: one for each kind of [`Route`].
+enum Page {
+    /// The stage, showing what [`Stage`] picked.
     Machines,
     Recordings(Entity<Recordings>),
+    Replay(Entity<ReplayPage>),
+}
+
+/// How the window came to a place, which decides what the address bar
+/// does with it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Arrival {
+    /// The window moved there (a click): a new entry, which Back returns
+    /// from.
+    Moved,
+    /// The address bar was there first (the page opened at it, or Back
+    /// and Forward moved it): it's settled in place, as the place shown.
+    Followed,
 }
 
 /// An entry in a panel's menu.
@@ -233,8 +248,8 @@ struct Root {
     /// The timelines' zero.
     /// When the window opened, on the clock in ms.
     origin: f64,
+    link: Link,
     page: Page,
-    view: View,
     /// How the bays and their machines are laid out.
     stage: Stage,
     machines: Vec<Machine>,
@@ -258,8 +273,16 @@ struct Root {
     settings: Arc<dyn Settings>,
     /// The theme chosen: the system's, light or dark.
     theme: ThemeChoice,
-    /// The place last shown in the address bar; `None` before the first.
-    route: Option<Route>,
+    /// Where the window is. [`Root::navigate`] alone changes it, and the
+    /// page with it.
+    route: Route,
+    /// A machine a place named before the machines were listed: shown once
+    /// they are.
+    waiting: Option<MachineName>,
+    /// The machine the next recordings page lists first.
+    recordings_for: Option<MachineName>,
+    /// What the page shown tells the window.
+    _page_events: Option<Subscription>,
     /// Follows Back and Forward.
     _address: Task<()>,
 }
@@ -273,21 +296,16 @@ impl Root {
         window: &mut GpuiWindow,
         cx: &mut Context<Self>,
     ) -> Self {
-        // Opened at a place: a link to a machine, or to a replay.
-        let start = crate::platform::address::current().and_then(|path| Route::parse(&path));
-        let shown = match (&start, shown.is_empty()) {
-            (Some(Route::Machine(name)), true) => vec![name.clone()],
-            (Some(_) | None, _) => shown,
-        };
+        // Where the page was opened, from a link; a desktop window opens on
+        // its machines.
+        let start = crate::platform::address::current().map_or(Route::Machines, |path| {
+            Route::parse(&path).unwrap_or(Route::Machines)
+        });
         let address = cx.spawn(async move |root, cx| {
             let mut changes = crate::platform::address::changes();
             while let Some(path) = changes.next().await {
-                let moved = root.update(cx, |root, cx| {
-                    let route = Route::parse(&path).unwrap_or(Route::Machines);
-                    // Already where the address bar says: nothing to show.
-                    root.route = Some(route.clone());
-                    root.go(&route, cx);
-                });
+                let route = Route::parse(&path).unwrap_or(Route::Machines);
+                let moved = root.update(cx, |root, cx| root.navigate(route, Arrival::Followed, cx));
                 if moved.is_err() {
                     return;
                 }
@@ -320,8 +338,8 @@ impl Root {
             origin: clock.millis(),
             daemon,
             clock,
-            page: Page::Connecting,
-            view: View::Machines,
+            link: Link::Connecting,
+            page: Page::Machines,
             stage: Stage::of(shown),
             machines: Vec::new(),
             sessions: Vec::new(),
@@ -339,80 +357,108 @@ impl Root {
             _appearance: appearance,
             theme: settings.theme(),
             settings,
-            route: None,
+            route: Route::Machines,
+            waiting: None,
+            recordings_for: None,
+            _page_events: None,
             _address: address,
         };
-        if let Some(start) = start {
-            root.go(&start, cx);
-        }
+        root.navigate(start, Arrival::Followed, cx);
         root
     }
 
-    /// Shows `route`'s place. A machine that isn't in a bay leaves the
-    /// stage as it is.
-    fn go(&mut self, route: &Route, cx: &mut Context<Self>) {
+    /// Moves the window to `route`: the one way its page changes. A place
+    /// that can't be shown says why and shows the machines instead, and
+    /// the address bar shows the place shown.
+    fn navigate(&mut self, route: Route, arrival: Arrival, cx: &mut Context<Self>) {
+        let shown = self.show(route, cx);
+        match arrival {
+            Arrival::Moved if shown == self.route => {}
+            Arrival::Moved => crate::platform::address::show(&shown.path(), Entry::Push),
+            Arrival::Followed => crate::platform::address::show(&shown.path(), Entry::Replace),
+        }
+        self.route = shown;
+        cx.notify();
+    }
+
+    /// Shows `route`'s page, and says which place it shows.
+    fn show(&mut self, route: Route, cx: &mut Context<Self>) -> Route {
+        self.menu = None;
         match route {
-            Route::Machines => self.machines_view(cx),
-            Route::Machine(name) => match self.stage.slot_of(name, &self.machines) {
-                Some(slot) => self.show_slot(slot, cx),
-                None => self.machines_view(cx),
-            },
-            Route::Recordings | Route::Replay(_) => {
-                self.recordings_view(None, cx);
-                if let View::Recordings(page) = &self.view {
-                    let id = match route {
-                        Route::Replay(id) => Some(id.clone()),
-                        Route::Machines | Route::Machine(_) | Route::Recordings => None,
-                    };
-                    page.update(cx, |page, cx| {
-                        if page.replaying(cx) != id {
-                            match id {
-                                Some(id) => page.open(id, cx),
-                                None => page.load(cx),
-                            }
-                        }
-                    });
+            Route::Machines => {
+                self.enter_machines(cx);
+                Route::Machines
+            }
+            Route::Machine(name) => {
+                self.enter_machines(cx);
+                match self.link {
+                    Link::Connected => {}
+                    // The machines aren't listed yet: it's shown once they
+                    // are.
+                    Link::Connecting | Link::Closed(_) => {
+                        self.waiting = Some(name.clone());
+                        return Route::Machine(name);
+                    }
                 }
+                match self.stage.bring(&name, &self.machines) {
+                    Ok(()) => {
+                        self.sync_screens(cx);
+                        Route::Machine(name)
+                    }
+                    Err(why) => {
+                        self.toast(ToastTone::Refused, format!("Can't show {name}: {why}."), cx);
+                        Route::Machines
+                    }
+                }
+            }
+            Route::Recordings => {
+                let only = self.recordings_for.take();
+                let kept = match &self.page {
+                    Page::Recordings(page) => page.read(cx).opened_for() == only.as_ref(),
+                    Page::Machines | Page::Replay(_) => false,
+                };
+                if !kept {
+                    let page = cx.new(|cx| {
+                        Recordings::new(self.daemon.clone(), self.clock.clone(), only, cx)
+                    });
+                    self._page_events =
+                        Some(cx.subscribe(&page, |root, _, event, cx| match event {
+                            RecordingsEvent::Open(id) => {
+                                root.navigate(Route::Replay(id.clone()), Arrival::Moved, cx);
+                            }
+                        }));
+                    self.page = Page::Recordings(page);
+                }
+                self.leave_machines(cx);
+                Route::Recordings
+            }
+            Route::Replay(id) => {
+                let kept = match &self.page {
+                    Page::Replay(page) => page.read(cx).id() == &id,
+                    Page::Machines | Page::Recordings(_) => false,
+                };
+                if !kept {
+                    let (daemon, clock, opened) =
+                        (self.daemon.clone(), self.clock.clone(), id.clone());
+                    let page = cx.new(|cx| ReplayPage::open(daemon, clock, opened, cx));
+                    self._page_events =
+                        Some(cx.subscribe(&page, |root, _, event, cx| match event {
+                            ReplayEvent::Back => {
+                                root.navigate(Route::Recordings, Arrival::Moved, cx)
+                            }
+                        }));
+                    self.page = Page::Replay(page);
+                }
+                self.leave_machines(cx);
+                Route::Replay(id)
             }
         }
     }
 
-    /// Where the window is, as a place; `None` until it knows the machines.
-    fn here(&self, cx: &App) -> Option<Route> {
-        match (&self.view, &self.page) {
-            (View::Recordings(page), _) => Some(
-                page.read(cx)
-                    .replaying(cx)
-                    .map_or(Route::Recordings, Route::Replay),
-            ),
-            (View::Machines, Page::Connected) => Some(
-                self.stage
-                    .shows(&self.machines)
-                    .first()
-                    .map_or(Route::Machines, |machine| {
-                        Route::Machine(machine.name.clone())
-                    }),
-            ),
-            (View::Machines, Page::Connecting | Page::Closed(_)) => None,
-        }
-    }
-
-    /// Shows where the window is in the address bar, once it has moved:
-    /// the first place in place of the one the page opened at, each next
-    /// one as an entry Back returns from.
-    fn show_address(&mut self, cx: &App) {
-        let Some(here) = self.here(cx) else {
-            return;
-        };
-        if self.route.as_ref() == Some(&here) {
-            return;
-        }
-        let entry = match self.route {
-            Some(_) => Entry::Push,
-            None => Entry::Replace,
-        };
-        crate::platform::address::show(&here.path(), entry);
-        self.route = Some(here);
+    /// Shows the recordings, of `only` first.
+    fn recordings_of(&mut self, only: Option<MachineName>, cx: &mut Context<Self>) {
+        self.recordings_for = only;
+        self.navigate(Route::Recordings, Arrival::Moved, cx);
     }
 
     /// Moves to the next theme round (system, light, dark) and keeps it.
@@ -544,11 +590,14 @@ impl Root {
     ) {
         match machines {
             Ok(machines) => {
-                self.page = Page::Connected;
+                self.link = Link::Connected;
                 self.machines = machines;
+                if let Some(name) = self.waiting.take() {
+                    self.navigate(Route::Machine(name), Arrival::Followed, cx);
+                }
             }
             Err(DaemonError::Unreachable(why)) => {
-                self.page = Page::Closed(why);
+                self.link = Link::Closed(why);
                 self.panels.disconnected();
                 cx.notify();
                 return;
@@ -594,13 +643,19 @@ impl Root {
         self.stage.names(&self.machines)
     }
 
-    /// Shows slot `index`'s machine alone.
+    /// Shows slot `index`: its machine alone, or its launcher.
     fn show_slot(&mut self, index: usize, cx: &mut Context<Self>) {
-        self.stage.show(index);
-        if !matches!(self.view, View::Machines) {
-            self.machines_view(cx);
+        let name = match self.stage.bays(&self.machines).get(index) {
+            Some(Bay::Machine(machine)) => Some(machine.name.clone()),
+            Some(Bay::Empty(_)) | None => None,
+        };
+        match name {
+            Some(name) => self.navigate(Route::Machine(name), Arrival::Moved, cx),
+            None => {
+                self.stage.show(index);
+                self.navigate(Route::Machines, Arrival::Moved, cx);
+            }
         }
-        cx.notify();
     }
 
     fn machine(&self, name: &MachineName) -> Option<&Machine> {
@@ -610,9 +665,9 @@ impl Root {
     /// Opens the screens of live machines on stage, and closes the rest:
     /// a screen that ended is opened again.
     fn sync_screens(&mut self, cx: &mut Context<Self>) {
-        let on_stage = match self.view {
-            View::Machines => self.stage(),
-            View::Recordings(_) => Vec::new(),
+        let on_stage = match self.page {
+            Page::Machines => self.stage(),
+            Page::Recordings(_) | Page::Replay(_) => Vec::new(),
         };
         let wanted: Vec<MachineName> = on_stage
             .into_iter()
@@ -837,27 +892,15 @@ impl Root {
         cx.notify();
     }
 
-    /// Shows the machines.
-    fn machines_view(&mut self, cx: &mut Context<Self>) {
-        self.view = View::Machines;
+    /// The machines page, with the stage's screens open.
+    fn enter_machines(&mut self, cx: &mut Context<Self>) {
+        self.page = Page::Machines;
         self.sync_screens(cx);
-        cx.notify();
     }
 
-    /// Shows the recordings, of `only` first when it names a machine.
-    /// Leaving the machines hands back the screens the person controls,
-    /// so no agent waits on a screen no one watches, and closes them.
-    fn recordings_view(&mut self, only: Option<MachineName>, cx: &mut Context<Self>) {
-        self.menu = None;
-        let kept = match &self.view {
-            View::Recordings(page) if page.read(cx).opened_for() == only.as_ref() => true,
-            View::Recordings(_) | View::Machines => false,
-        };
-        if !kept {
-            let page =
-                cx.new(|cx| Recordings::new(self.daemon.clone(), self.clock.clone(), only, cx));
-            self.view = View::Recordings(page);
-        }
+    /// Leaving the machines hands back the screens the person controls, so
+    /// no agent waits on a screen no one watches, and closes them.
+    fn leave_machines(&mut self, cx: &mut Context<Self>) {
         let screens: Vec<Entity<ScreenView>> = self
             .panels
             .screens()
@@ -907,7 +950,7 @@ impl Root {
             .panels
             .screens()
             .any(|shown| shown.view.read(cx).driving());
-        if let (View::Machines, None, false) = (&self.view, &self.ask, driving)
+        if let (Page::Machines, None, false) = (&self.page, &self.ask, driving)
             && self.stage.unsplit()
         {
             cx.notify();
@@ -948,8 +991,8 @@ impl Root {
 /// header, and the toasts.
 impl Root {
     fn gate(&self, theme: &Theme, cx: &mut Context<Self>) -> Div {
-        let body = match &self.page {
-            Page::Connecting | Page::Connected => vec![
+        let body = match &self.link {
+            Link::Connecting | Link::Connected => vec![
                 div()
                     .flex()
                     .items_center()
@@ -958,7 +1001,7 @@ impl Root {
                     .child("Connecting…")
                     .into_any_element(),
             ],
-            Page::Closed(why) => vec![
+            Link::Closed(why) => vec![
                 div()
                     .mt(px(12.))
                     .text_size(px(22.))
@@ -979,7 +1022,7 @@ impl Root {
                             Some("Reconnect".into()),
                         )
                         .on_press(cx.listener(|root, _, _, cx| {
-                            root.page = Page::Connecting;
+                            root.link = Link::Connecting;
                             root.refresh(cx);
                             cx.notify();
                         })),
@@ -1012,45 +1055,50 @@ impl Root {
     /// belongs to the view shown, then facts about the whole app. Nothing in
     /// it depends on which panel was clicked.
     fn header(&self, theme: &Theme, cx: &mut Context<Self>) -> Div {
-        let machines_on = matches!(self.view, View::Machines);
-        let views = div()
-            .flex()
-            .flex_none()
-            .h_full()
-            .border_r_1()
-            .border_color(theme.line)
-            .child(
-                current(
-                    segment(
-                        "view-machines",
-                        None,
-                        Some("Machines"),
-                        Segment::Plain,
-                        theme,
-                    ),
-                    machines_on,
-                    theme,
-                )
-                .px(px(14.))
+        let machines_on = matches!(self.page, Page::Machines);
+        let views =
+            div()
+                .flex()
+                .flex_none()
+                .h_full()
                 .border_r_1()
                 .border_color(theme.line)
-                .on_click(cx.listener(|root, _, _, cx| root.machines_view(cx))),
-            )
-            .child(
-                current(
-                    segment(
-                        "view-recordings",
-                        None,
-                        Some("Recordings"),
-                        Segment::Plain,
+                .child(
+                    current(
+                        segment(
+                            "view-machines",
+                            None,
+                            Some("Machines"),
+                            Segment::Plain,
+                            theme,
+                        ),
+                        machines_on,
                         theme,
-                    ),
-                    !machines_on,
-                    theme,
+                    )
+                    .px(px(14.))
+                    .border_r_1()
+                    .border_color(theme.line)
+                    .on_click(cx.listener(|root, _, _, cx| {
+                        root.navigate(Route::Machines, Arrival::Moved, cx)
+                    })),
                 )
-                .px(px(14.))
-                .on_click(cx.listener(|root, _, _, cx| root.recordings_view(None, cx))),
-            );
+                .child(
+                    current(
+                        segment(
+                            "view-recordings",
+                            None,
+                            Some("Recordings"),
+                            Segment::Plain,
+                            theme,
+                        ),
+                        !machines_on,
+                        theme,
+                    )
+                    .px(px(14.))
+                    .on_click(cx.listener(|root, _, _, cx| {
+                        root.navigate(Route::Recordings, Arrival::Moved, cx)
+                    })),
+                );
         let indicators = div()
             .flex()
             .flex_none()
@@ -1100,7 +1148,7 @@ impl Root {
     /// running machine, a + for a free slot that opens what can start
     /// there, and with both running, a button to show them side by side.
     fn slots(&self, theme: &Theme, cx: &mut Context<Self>) -> Div {
-        let machines_on = matches!(self.view, View::Machines);
+        let machines_on = matches!(self.page, Page::Machines);
         let shown = self.stage.bays(&self.machines);
         let stage: Vec<MachineName> = self
             .stage
@@ -1289,7 +1337,6 @@ impl Root {
 
 impl Render for Root {
     fn render(&mut self, window: &mut GpuiWindow, cx: &mut Context<Self>) -> impl IntoElement {
-        self.show_address(cx);
         let theme = *cx.global::<Theme>();
         let root = div()
             .id("root")
@@ -1303,16 +1350,17 @@ impl Render for Root {
             .text_color(theme.text)
             .font_family(SANS)
             .text_size(px(14.));
-        if self.page != Page::Connected {
+        if self.link != Link::Connected {
             return root.child(self.gate(&theme, cx));
         }
         let now = self.now();
         self.tick(now, window, cx);
         let width = f32::from(window.viewport_size().width);
         let narrow = width < NARROW;
-        let main = match &self.view {
-            View::Machines => self.stage_view(width, narrow, now, &theme, cx),
-            View::Recordings(page) => page.clone().into_any_element(),
+        let main = match &self.page {
+            Page::Machines => self.stage_view(width, narrow, now, &theme, cx),
+            Page::Recordings(page) => page.clone().into_any_element(),
+            Page::Replay(page) => page.clone().into_any_element(),
         };
         let root = root.child(self.header(&theme, cx)).child(
             div().flex_1().min_w_0().min_h_0().flex().child(
