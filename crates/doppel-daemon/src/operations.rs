@@ -560,6 +560,8 @@ where
     /// Checks the checkpoint exists before discarding anything, then powers
     /// off, restores and starts, all under one claim, and waits for the
     /// desktop. Once it has begun, a failure can't claim nothing changed.
+    /// The machine comes back shown if its VMM said it was; otherwise
+    /// (stopped, or a VMM that doesn't say) hidden.
     pub(crate) fn rollback(
         &self,
         machine: &MachineName,
@@ -590,20 +592,29 @@ where
                 source: Box::new(error),
             })
         };
-        match self
+        let window = match self
             .machines
             .machine(machine)
             .status(self.machines.deadline())
             .map_err(CallError::from)?
         {
-            Status::Live(_) => self.force_stop(&claim).map_err(begun)?,
-            Status::Stopped(_) => {}
-        }
+            Status::Live(_) => {
+                let window = self
+                    .machines
+                    .machine(machine)
+                    .window(self.machines.deadline())
+                    .map_err(CallError::from)?
+                    .unwrap_or(Window::Hidden);
+                self.force_stop(&claim).map_err(begun)?;
+                window
+            }
+            Status::Stopped(_) => Window::Hidden,
+        };
         claim
             .restore(checkpoint, self.machines.deadline())
             .map_err(|unconfirmed| begun(unconfirmed.into_error().into()))?;
         claim
-            .start(Window::Hidden, self.machines.within(START_TIMEOUT))
+            .start(window, self.machines.within(START_TIMEOUT))
             .map_err(|unconfirmed| begun(unconfirmed.into_error().into()))?;
         self.machines
             .machine(machine)

@@ -18,6 +18,13 @@ public enum Boot: Sendable {
 public enum WindowMode: Sendable {
     case hidden
     case shown
+
+    var wire: Doppel_Vmm_V1_WindowMode {
+        switch self {
+        case .hidden: .hidden
+        case .shown: .shown
+        }
+    }
 }
 
 public enum RuntimeError: Error, CustomStringConvertible {
@@ -43,6 +50,9 @@ public final class MachineRuntime: NSObject, VZVirtualMachineDelegate {
     private var display: DisplayShare?
     private let server: ControlServer
     private var stateObservation: NSKeyValueObservation?
+    /// How `run` shows the VM; reported with its state, so a restart can
+    /// show it the same way.
+    private var windowMode = WindowMode.hidden
     /// Handed-over guest connections. VZ closes a connection when its object
     /// is released, so they're kept alive for the VM's lifetime.
 
@@ -65,6 +75,7 @@ public final class MachineRuntime: NSObject, VZVirtualMachineDelegate {
     }
 
     public func run(boot: Boot, window mode: WindowMode) async throws {
+        windowMode = mode
         switch mode {
         case .hidden: break
         case .shown:
@@ -112,7 +123,10 @@ public final class MachineRuntime: NSObject, VZVirtualMachineDelegate {
         do {
             switch operation {
             case .getState:
-                return Reply(.state(.with { $0.runState = vm.state.wire }))
+                return Reply(.state(.with {
+                    $0.runState = vm.state.wire
+                    $0.window = windowMode.wire
+                }))
             case .pause:
                 try await vm.pause()
                 return Reply(.done(.init()))

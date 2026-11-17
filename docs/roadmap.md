@@ -66,6 +66,15 @@ pass `status` with every permission granted, with nothing typed by a person.
   `convert.rs` for `From` impls that lose values; each becomes lossless, a
   `TryFrom`, or a named method. Done when: every remaining `From` there is
   lossless.
+- **The screen lags after a resume from saved memory.** After a `start`
+  that resumes, a `rollback` or a `checkpoint`, the guest's drawing stalls
+  for 1–10 s while Virtualization.framework rebuilds its paravirtual
+  graphics; the guest and host are idle meanwhile, and a shown window
+  shortens it only a little. Doppel can't speed that up. Make these calls
+  return only once the screen draws again: for example, the guest agent
+  draws a dot nobody sees, and the VMM waits for it to reach the display.
+  Done when: right after each of these calls, a screenshot shows the
+  guest's current windows, without a fixed sleep.
 - **Free functions on placeholder types** (`struct Window;`,
   `struct Launchd;`, the `Verdicts` trait): each becomes a method of the type
   that owns the state it serves, or a module function.

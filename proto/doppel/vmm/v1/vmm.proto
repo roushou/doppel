@@ -250,7 +250,19 @@ enum VmRunState {
   VM_RUN_STATE_ERROR = 10;
 }
 
-message VmState { VmRunState run_state = 1; }
+// How the VMM shows the VM on the host. Unspecified from a VMM that
+// doesn't say: one older than this field, or in an event.
+enum WindowMode {
+  WINDOW_MODE_UNSPECIFIED = 0;
+  WINDOW_MODE_HIDDEN = 1;
+  WINDOW_MODE_SHOWN = 2;
+}
+
+message VmState {
+  VmRunState run_state = 1;
+  // Set in the reply to GetState.
+  WindowMode window = 2;
+}
 
 enum StopReason {
   STOP_REASON_UNSPECIFIED = 0;

@@ -86,6 +86,14 @@ impl std::fmt::Display for RunState {
     }
 }
 
+/// How a VMM shows its VM on the host: hidden (no window anywhere), or in
+/// a window of its own on the host's screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Window {
+    Hidden,
+    Shown,
+}
+
 /// Whether a stopped machine will resume from saved memory.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NextStart {

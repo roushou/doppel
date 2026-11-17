@@ -616,7 +616,7 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
             match client.next_event(by) {
                 Ok(vmm::VmmEvent {
                     kind: Some(vmm::vmm_event::Kind::StateChanged(changed)),
-                }) => state = changed.into(),
+                }) => state = <(RunState, Option<Window>)>::from(changed).0,
                 Ok(_) => {}
                 // The VMM exits once the VM has stopped.
                 Err(VmmError::Closed) => return Ok(None),
@@ -1007,7 +1007,11 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
                     match client.next_event(by) {
                         Ok(vmm::VmmEvent {
                             kind: Some(vmm::vmm_event::Kind::StateChanged(state)),
-                        }) => return StartupEvent::State(state.into()),
+                        }) => {
+                            return StartupEvent::State(
+                                <(RunState, Option<Window>)>::from(state).0,
+                            );
+                        }
                         Ok(_) => {}
                         Err(VmmError::Timeout) => return StartupEvent::TimedOut,
                         Err(VmmError::Closed) => return StartupEvent::Closed,

@@ -164,9 +164,16 @@ enum Canonical {
             $0.data = Data([0, 0, 0, 3, 0x65, 0x88, 0x84])
         }
 
+        var shown = Doppel_Vmm_V1_VmmFrame()
+        shown.response.id = 14
+        shown.response.state = .with {
+            $0.runState = .running
+            $0.window = .shown
+        }
+
         return [
             request, response, state, progress, openDisplay, opened, frame, drag, stop, stopped,
-            openEncoded, encodedOpened, encoded,
+            openEncoded, encodedOpened, encoded, shown,
         ]
     }
 

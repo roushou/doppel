@@ -13,7 +13,7 @@ use doppel_machine::lineage::{Lineage, Origin, RecordedLineage, Role};
 use doppel_machine::login::LoginOutcome;
 use doppel_machine::machine::SpecError;
 use doppel_machine::outcome::{Certainty, Failure};
-use doppel_machine::vm::{MachineReport, NextStart, RunState, Status};
+use doppel_machine::vm::{MachineReport, NextStart, RunState, Status, Window};
 
 use crate::pb::common::v1 as common;
 use crate::pb::daemon::v1 as daemon;
@@ -92,22 +92,33 @@ impl TryFrom<daemon::MachineReport> for MachineReport {
 
 // --- Run state ------------------------------------------------------------------
 
-impl From<vmm::VmState> for RunState {
-    /// Infallible: unknown values are kept as [`RunState::Unrecognized`].
+/// What a VMM says about its VM: how it runs, and how it's shown when it
+/// says (`None` from a VMM that doesn't, or with a value unknown here).
+impl From<vmm::VmState> for (RunState, Option<Window>) {
     fn from(state: vmm::VmState) -> Self {
-        match vmm::VmRunState::try_from(state.run_state) {
-            Ok(vmm::VmRunState::Starting) => Self::Starting,
-            Ok(vmm::VmRunState::Running) => Self::Running,
-            Ok(vmm::VmRunState::Pausing) => Self::Pausing,
-            Ok(vmm::VmRunState::Paused) => Self::Paused,
-            Ok(vmm::VmRunState::Resuming) => Self::Resuming,
-            Ok(vmm::VmRunState::Saving) => Self::Saving,
-            Ok(vmm::VmRunState::Restoring) => Self::Restoring,
-            Ok(vmm::VmRunState::Stopping) => Self::Stopping,
-            Ok(vmm::VmRunState::Stopped) => Self::Stopped,
-            Ok(vmm::VmRunState::Error) => Self::Error,
-            Ok(vmm::VmRunState::Unspecified) | Err(_) => Self::Unrecognized(state.run_state),
-        }
+        let window = match vmm::WindowMode::try_from(state.window) {
+            Ok(vmm::WindowMode::Hidden) => Some(Window::Hidden),
+            Ok(vmm::WindowMode::Shown) => Some(Window::Shown),
+            Ok(vmm::WindowMode::Unspecified) | Err(_) => None,
+        };
+        (run_state(state.run_state), window)
+    }
+}
+
+/// Infallible: unknown values are kept as [`RunState::Unrecognized`].
+fn run_state(raw: i32) -> RunState {
+    match vmm::VmRunState::try_from(raw) {
+        Ok(vmm::VmRunState::Starting) => RunState::Starting,
+        Ok(vmm::VmRunState::Running) => RunState::Running,
+        Ok(vmm::VmRunState::Pausing) => RunState::Pausing,
+        Ok(vmm::VmRunState::Paused) => RunState::Paused,
+        Ok(vmm::VmRunState::Resuming) => RunState::Resuming,
+        Ok(vmm::VmRunState::Saving) => RunState::Saving,
+        Ok(vmm::VmRunState::Restoring) => RunState::Restoring,
+        Ok(vmm::VmRunState::Stopping) => RunState::Stopping,
+        Ok(vmm::VmRunState::Stopped) => RunState::Stopped,
+        Ok(vmm::VmRunState::Error) => RunState::Error,
+        Ok(vmm::VmRunState::Unspecified) | Err(_) => RunState::Unrecognized(raw),
     }
 }
 
@@ -127,7 +138,10 @@ impl From<RunState> for vmm::VmState {
             // Passed on as received, so a newer VMM's state reaches a newer client.
             RunState::Unrecognized(raw) => raw,
         };
-        Self { run_state }
+        Self {
+            run_state,
+            window: vmm::WindowMode::Unspecified as i32,
+        }
     }
 }
 
@@ -226,7 +240,10 @@ impl TryFrom<daemon::MachineStatus> for Status {
     fn try_from(status: daemon::MachineStatus) -> Result<Self, ParseError> {
         match status.kind {
             None => Err(ParseError::Missing("machine_status.kind")),
-            Some(daemon::machine_status::Kind::Live(state)) => Ok(Self::Live(state.into())),
+            // A daemon's status carries the run state only.
+            Some(daemon::machine_status::Kind::Live(state)) => {
+                Ok(Self::Live(run_state(state.run_state)))
+            }
             Some(daemon::machine_status::Kind::Stopped(raw)) => Ok(Self::Stopped(
                 ParseError::next_start("machine_status.stopped", raw)?,
             )),
@@ -606,16 +623,33 @@ mod tests {
 
     #[test]
     fn unknown_run_state_is_kept() {
+        assert_eq!(run_state(77), RunState::Unrecognized(77));
+        assert_eq!(run_state(vmm::VmRunState::Paused as i32), RunState::Paused);
+    }
+
+    #[test]
+    fn a_vmm_state_says_its_window_when_the_vmm_does() {
+        let state = |window: i32| -> (RunState, Option<Window>) {
+            vmm::VmState {
+                run_state: vmm::VmRunState::Running as i32,
+                window,
+            }
+            .into()
+        };
         assert_eq!(
-            RunState::from(vmm::VmState { run_state: 77 }),
-            RunState::Unrecognized(77)
+            state(vmm::WindowMode::Shown as i32),
+            (RunState::Running, Some(Window::Shown))
         );
         assert_eq!(
-            RunState::from(vmm::VmState {
-                run_state: vmm::VmRunState::Paused as i32
-            }),
-            RunState::Paused
+            state(vmm::WindowMode::Hidden as i32),
+            (RunState::Running, Some(Window::Hidden))
         );
+        // An older VMM doesn't say; a newer one may say what isn't known here.
+        assert_eq!(
+            state(vmm::WindowMode::Unspecified as i32),
+            (RunState::Running, None)
+        );
+        assert_eq!(state(9), (RunState::Running, None));
     }
 
     #[test]

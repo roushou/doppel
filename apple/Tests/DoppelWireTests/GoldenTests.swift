@@ -82,7 +82,7 @@ private func decodeAll<M: Envelope>(_ data: Data, as: M.Type) throws -> [M] {
     @Test func vmmStreamDecodesToRustValuesAndReencodesIdentically() throws {
         let bytes = try fixture("vmm_stream.v1.bin")
         let frames = try decodeAll(bytes, as: Doppel_Vmm_V1_VmmFrame.self)
-        try #require(frames.count == 13)
+        try #require(frames.count == 14)
         #expect(frames[0].request.saveState.path == "/tmp/checkpoints/before-install/memory.vzsave")
         #expect(frames[1].response.stateSaved.bytes == 1_744_830_464)
         #expect(frames[2].event.stateChanged.runState == .paused)
@@ -94,6 +94,7 @@ private func decodeAll<M: Envelope>(_ data: Data, as: M.Type) throws -> [M] {
         #expect(frames[11].response.encodedDisplayOpened.displayPoints.width == 1280)
         #expect(frames[12].event.encodedFrame.parameterSets.count == 2)
         #expect(frames[9].response.recordingStopped.seconds == 95.5)
+        #expect(frames[13].response.state.window == .shown)
 
         #expect(frames == Canonical.vmmStream)
         let swiftBytes = try Canonical.vmmStream.reduce(into: Data()) { $0.append(try FrameEncoder().encode($1)) }

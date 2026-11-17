@@ -402,7 +402,7 @@ impl<C: Clock> Client<C> {
             .state
             .ok_or(ParseError::Missing("machine_started.state"))?;
         Ok((
-            state.into(),
+            <(RunState, Option<doppel_machine::vm::Window>)>::from(state).0,
             ParseError::next_start("machine_started.started_by", started.started_by)?,
         ))
     }

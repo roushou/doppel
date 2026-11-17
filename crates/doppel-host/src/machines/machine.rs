@@ -9,7 +9,7 @@ use doppel_machine::bundle::CheckpointLabel;
 use doppel_machine::deadline::Deadline;
 use doppel_machine::login::{LoginOutcome, LoginPolicy};
 use doppel_machine::machine::MachineName;
-use doppel_machine::vm::{NextStart, Status};
+use doppel_machine::vm::{NextStart, Status, Window};
 
 use super::running::RunningMachine;
 use super::{MachineError, Machines};
@@ -62,6 +62,18 @@ impl<'m, C: Clock, F: Filesystem> Machine<'m, C, F> {
                 Ok(Status::Stopped(NextStart::ResumeSavedState))
             }
             None => Ok(Status::Stopped(NextStart::ColdBoot)),
+        }
+    }
+
+    /// How its VMM shows it, while it runs: `None` when it doesn't run, or
+    /// its VMM doesn't say.
+    ///
+    /// # Errors
+    /// See [`MachineError`].
+    pub fn window(&self, by: Deadline) -> Result<Option<Window>, MachineError> {
+        match self.machines.connect(&self.name, by)? {
+            Some(mut client) => Ok(client.window(by)?),
+            None => Ok(None),
         }
     }
 

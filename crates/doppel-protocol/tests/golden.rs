@@ -223,6 +223,7 @@ fn vmm_stream() -> Vec<vmm::VmmFrame> {
             kind: Some(Kind::Event(vmm::VmmEvent {
                 kind: Some(vmm::vmm_event::Kind::StateChanged(vmm::VmState {
                     run_state: vmm::VmRunState::Paused as i32,
+                    window: vmm::WindowMode::Unspecified as i32,
                 })),
             })),
         },
@@ -345,6 +346,15 @@ fn vmm_stream() -> Vec<vmm::VmmFrame> {
                 })),
             })),
         },
+        vmm::VmmFrame {
+            kind: Some(Kind::Response(vmm::VmmResponse {
+                id: 14,
+                outcome: Some(vmm::vmm_response::Outcome::State(vmm::VmState {
+                    run_state: vmm::VmRunState::Running as i32,
+                    window: vmm::WindowMode::Shown as i32,
+                })),
+            })),
+        },
     ]
 }
 
@@ -403,6 +413,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
                                 daemon::MachineStatus {
                                     kind: Some(daemon::machine_status::Kind::Live(vmm::VmState {
                                         run_state: vmm::VmRunState::Running as i32,
+                                        window: vmm::WindowMode::Unspecified as i32,
                                     })),
                                 },
                             )),
@@ -500,6 +511,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
                 outcome: Some(Outcome::MachineStarted(daemon::MachineStarted {
                     state: Some(vmm::VmState {
                         run_state: vmm::VmRunState::Running as i32,
+                        window: vmm::WindowMode::Unspecified as i32,
                     }),
                     started_by: daemon::NextStart::ResumeSavedState as i32,
                 })),

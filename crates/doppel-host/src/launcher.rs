@@ -55,11 +55,7 @@ pub enum Boot {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Window {
-    Hidden,
-    Shown,
-}
+pub use doppel_machine::vm::Window;
 
 #[derive(Debug, Clone)]
 pub struct VmmBinary(PathBuf);

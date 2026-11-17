@@ -531,6 +531,7 @@ impl FakeVmm {
 fn run_state(state: vmm::VmRunState) -> vmm::VmState {
     vmm::VmState {
         run_state: state as i32,
+        window: vmm::WindowMode::Unspecified as i32,
     }
 }
 

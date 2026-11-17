@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use doppel_machine::bundle::SocketPath;
 use doppel_machine::deadline::Deadline;
 use doppel_machine::outcome::{Certainty, Failure};
-use doppel_machine::vm::RunState;
+use doppel_machine::vm::{RunState, Window};
 use doppel_protocol::convert::RemoteError;
 use doppel_protocol::exchange::{ExchangeConfig, ExchangeError};
 use doppel_protocol::frame::{EncodeError, StreamError};
@@ -184,6 +184,18 @@ impl<'c, C: Clock> VmmClient<'c, C> {
     /// # Errors
     /// See [`VmmError`].
     pub fn state(&mut self, by: Deadline) -> Result<RunState, VmmError> {
+        Ok(self.state_and_window(by)?.0)
+    }
+
+    /// How the VMM shows its VM: `None` from a VMM that doesn't say.
+    ///
+    /// # Errors
+    /// See [`VmmError`].
+    pub fn window(&mut self, by: Deadline) -> Result<Option<Window>, VmmError> {
+        Ok(self.state_and_window(by)?.1)
+    }
+
+    fn state_and_window(&mut self, by: Deadline) -> Result<(RunState, Option<Window>), VmmError> {
         match self.call_outcome(vmm::vmm_request::Operation::GetState(vmm::GetState {}), by)? {
             vmm::vmm_response::Outcome::State(state) => Ok(state.into()),
             vmm::vmm_response::Outcome::Error(_)
