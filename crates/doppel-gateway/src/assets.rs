@@ -91,7 +91,7 @@ pub(crate) struct Assets(&'static [Asset]);
 
 impl Assets {
     /// Served until the page is built into this crate: it says so.
-    pub(crate) const PLACEHOLDER: Self = Self(&[Asset {
+    pub(crate) const PLACEHOLDER: Self = Self::new(&[Asset {
         path: "/index.html",
         content_type: "text/html; charset=utf-8",
         body: b"<!doctype html>\n<meta charset=\"utf-8\">\n<title>doppel</title>\n\
