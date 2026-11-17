@@ -4,7 +4,8 @@
   "license": "MIT OR Apache-2.0",
   "type": "module",
   "scripts": {
-    "generate": "buf generate ../proto --template buf.gen.yaml",
+    "generate": "buf generate ../proto --template buf.gen.yaml && pnpm run --silent film",
+    "film": "cargo build --quiet --release -p doppel-browser-film --target wasm32-unknown-unknown && cp ../target/wasm32-unknown-unknown/release/doppel_browser_film.wasm src/gen/film.wasm",
     "build": "pnpm run generate && vite build",
     "check": "pnpm run generate && svelte-check --fail-on-warnings && tsc -p tsconfig.node.json --noEmit",
     "test": "pnpm run generate && vitest run"

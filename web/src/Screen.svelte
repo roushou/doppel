@@ -10,10 +10,9 @@
   import { editInput, keyInput } from "./lib/keys";
   import type { MachineName } from "./lib/machines";
   import { button, Clicks, held, heldButton, pointerInput, scrollInput } from "./lib/pointer";
-  import type { Scene } from "./lib/overlay";
   import type { Token } from "./lib/token";
+  import type { Frame } from "./gen/doppel/film/v1/film_pb";
   import Overlay from "./Overlay.svelte";
-  import type { Attention } from "./lib/attention";
 
   interface Props {
     name: MachineName;
@@ -21,19 +20,15 @@
     /** Whether input goes to this machine: this page has control of it. */
     controlling: boolean;
     send: (input: Input) => void;
-    /** What an agent is doing on it, drawn over the picture; none to draw nothing. */
-    scene?: Scene | null;
-    /** The page's clock, for the scene's fading marks. */
-    now?: number;
-    /** What the agent that took the latest snapshot reads of it, drawn with the scene. */
-    attention?: Attention | null;
+    /** What agents do on it, drawn over the picture: its film's frame for the display's size; none to draw nothing. */
+    film?: ((display: Size) => Frame | null) | null;
     /** Drawn over the picture, under the agent's overlay: given where the picture is and the display's size. */
     layer?: Snippet<[Rect, Size]> | undefined;
     /** Where the picture is drawn in the screen's box, for what frames it; null until a frame says. */
     picture?: Rect | null;
   }
 
-  let { name, token, controlling, send, scene = null, now = 0, attention = null, layer, picture = $bindable(null) }: Props = $props();
+  let { name, token, controlling, send, film = null, layer, picture = $bindable(null) }: Props = $props();
 
   let canvas: HTMLCanvasElement | undefined = $state();
   /** The field an on-screen keyboard types into: its edits are sent, never kept. */
@@ -235,8 +230,9 @@
   {#if layer !== undefined && drawn !== null && display !== null && problem === null}
     {@render layer(drawn, display)}
   {/if}
-  {#if scene !== null && drawn !== null && display !== null && problem === null}
-    <Overlay {scene} {drawn} {display} {now} {attention} />
+  {#if film !== null && drawn !== null && display !== null && problem === null}
+    {@const frame = film(display)}
+    {#if frame !== null}<Overlay {frame} {drawn} {display} />{/if}
   {/if}
   {#if problem !== null}
     <p class="problem">{problem}</p>

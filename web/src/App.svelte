@@ -1,10 +1,11 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
-  import { create } from "@bufbuild/protobuf";
+  import { create, toBinary } from "@bufbuild/protobuf";
   import { Columns2, LoaderCircle, LogOut, Monitor, Moon, Plus, Sun, X } from "@lucide/svelte";
   import { type ThemeChoice, nextTheme, readTheme, shownTheme, themeLabel } from "./lib/theme";
   import type { Input } from "./gen/doppel/common/v1/common_pb";
   import {
+    ActivitySchema,
     GetMachineReportSchema,
     HandBackSchema,
     ListMachinesSchema,
@@ -26,6 +27,8 @@
   import { type Machine, type MachineName, forksOf, parseMachines, template } from "./lib/machines";
   import { type Label, type Order, operation, verdict } from "./lib/operate";
   import { MARK_MS, parseActivity } from "./lib/overlay";
+  import { type Film, Films } from "./lib/film";
+  import filmModule from "./gen/film.wasm?url";
   import { calloutsAt } from "./lib/timeline";
   import { callsPerMinute, parseReport } from "./lib/report";
   import { type Seen, readSnapshot } from "./lib/tree";
@@ -39,6 +42,7 @@
     handedBack,
     held,
     keepReportsOf,
+    machineOf,
     panelOf,
     recorded,
     reported,
@@ -127,6 +131,13 @@
   /** The page's clock for the timelines, ticking while one has something moving. */
   let now = $state(0);
   let ticking = false;
+  /** The film's module, loading; none if it can't be: the screens then show no overlay. */
+  const films: Promise<Films | null> = Films.instantiate(fetch(filmModule)).catch((error: unknown) => {
+    console.warn("the overlay's film didn't load:", error);
+    return null;
+  });
+  /** Each machine's live film, made as its first activity comes. */
+  let live: ReadonlyMap<MachineName, Film> = $state.raw(new Map());
   /** How far back a live timeline shows. */
   const WINDOW_MS = 60_000;
   let refresh: ReturnType<typeof setInterval> | undefined;
@@ -296,14 +307,31 @@
       watching = null;
       setTimeout(() => void watch(), 3000);
     });
+    const made = await films;
     await watching.stream({ case: "watchActivity", value: create(WatchActivitySchema) }, (event) => {
       if (event.kind.case !== "activity") return;
       const read = parseActivity(event.kind.value);
       if (read === null) return;
       now = performance.now();
       panels = recorded(panels, read, now);
+      if (made !== null) told(made, machineOf(read), toBinary(ActivitySchema, event.kind.value));
       tick();
     });
+  }
+
+  /** Tells `name`'s live film of an activity event at `now`, making the film first if it's the machine's first. */
+  function told(made: Films, name: MachineName, activity: Uint8Array): void {
+    let film = live.get(name);
+    if (film === undefined) {
+      film = made.live();
+      live = new Map(live).set(name, film);
+    }
+    try {
+      film.told(activity, now);
+    } catch (error) {
+      // One this build can't read, as the page's own timeline skips it.
+      console.warn(`the overlay skipped an event on ${name}:`, error);
+    }
   }
 
   /**
@@ -662,7 +690,7 @@
     <main>
       {#if view === "recordings"}
         <div class="page">
-          {#key recordingsOf}<Recordings {request} machine={recordingsOf} />{/key}
+          {#key recordingsOf}<Recordings {request} machine={recordingsOf} {films} />{/key}
         </div>
       {:else if machines.length === 0}
         <div class="nothing">
@@ -696,6 +724,7 @@
                 controlling={panelOf(panels, machine.name).control === "held"}
                 busy={panelOf(panels, machine.name).action}
                 moments={panelOf(panels, machine.name).timeline}
+                film={live.get(machine.name) ?? null}
                 {now}
                 windowMs={WINDOW_MS}
                 report={panelOf(panels, machine.name).report}

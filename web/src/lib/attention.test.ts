@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { AxSnapshotSchema, Truncation } from "../gen/doppel/agent/v1/agent_pb";
 import { ActivitySchema, Gesture } from "../gen/doppel/daemon/v1/daemon_pb";
 import { ended, started } from "./activity.fixture";
-import { AFTERGLOW_MS, FADE_MS, FLOOR, GLANCE_MAX_MS, MOST_GLANCES, attentionAt, glances, pointerOf } from "./attention";
+import { AFTERGLOW_MS, FADE_MS, FLOOR, GLANCE_MAX_MS, MOST_GLANCES, attentionAt, glances } from "./attention";
 import { parseActivity } from "./overlay";
 import { type Moment, record, sceneAt, seenAt } from "./timeline";
 import { type Seen, readSnapshot, refsOf } from "./tree";
@@ -80,7 +80,6 @@ describe("what an agent attends to", () => {
     const before = attentionAt(found, seen, named, moments, 100);
     expect(before?.lit.map((lit) => lit.glance.index)).toEqual([2]);
     expect(before?.head?.index).toBe(2);
-    expect(before?.gaze).toEqual({ x: 190, y: 60 });
 
     const reading = attentionAt(found, seen, named, moments, 100 + GLANCE_MAX_MS);
     expect(reading?.lit.map((lit) => lit.glance.index)).toEqual([2, 3]);
@@ -92,7 +91,6 @@ describe("what an agent attends to", () => {
     expect(after?.head).toBeNull();
     expect(after?.lit.every((lit) => lit.glow === FLOOR)).toBe(true);
     // Its eyes stay on the last it read.
-    expect(after?.gaze).toEqual({ x: 160, y: 152 });
     expect(after?.presence).toBe(1);
     expect(AFTERGLOW_MS).toBeLessThan(10_000);
   });
@@ -108,25 +106,11 @@ describe("what an agent attends to", () => {
     // Faded, nothing is lit, but its eyes stay where they were.
     const faded = attentionAt(found, seen, named, moments, 150 + FADE_MS);
     expect(faded?.lit).toEqual([]);
-    expect(faded?.gaze).toEqual({ x: 190, y: 60 });
   });
 
   it("is nothing when the agent named none of the snapshot", () => {
     const { moments, found, seen } = scene([]);
     expect(attentionAt(found, seen, null, moments, 200)).toBeNull();
     expect(attentionAt(found, seen, new Map(), moments, 200)).toBeNull();
-  });
-
-  it("puts the pointer on what it reads, until it acts somewhere", () => {
-    const click = started(2, Gesture.CLICK, { case: "point", value: { x: 1, y: 2 } });
-    const { moments, found, seen, named } = scene([2, 3], [click, 5000]);
-    const at = (ms: number) => {
-      const agent = sceneAt(moments, ms).agents[0];
-      if (agent === undefined) throw new Error("no agent");
-      return pointerOf(agent, attentionAt(found, seen, named, moments, ms));
-    };
-    expect(at(100)).toEqual({ x: 190, y: 60 });
-    expect(at(4000)).toEqual({ x: 80, y: 110 });
-    expect(at(5000)).toEqual({ x: 1, y: 2 });
   });
 });

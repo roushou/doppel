@@ -162,10 +162,13 @@ second rather than jumping. `doppel_scene::film` decides what is drawn at
 each frame, as shapes in display points (`doppel_scene::attention` decides
 what was taken in, from the snapshots the recording kept); `doppel-vmm
 export` paints them on the frames and encodes the result, at `--fps` (30
-by default). The desktop viewer draws the same shapes over the live screen
-and in replay, with the agent's reason for its call beside its pointer;
-an agent that does nothing next lets go of what it took in after a few
-seconds. The browser viewer draws its own overlay.
+by default). Both viewers draw the same shapes over the live screen and in
+replay, with the agent's reason for its call beside its pointer
+(`film::Caption`); an agent that does nothing next lets go of what it took
+in after a few seconds. The browser viewer runs the same Rust as
+WebAssembly (`doppel-browser-film`): the page feeds it the daemon's
+activity events, or a recording and the snapshots it fetches, and draws
+each `doppel.film.v1.Frame` it answers.
 
 A recorded session is a folder in the data directory's `recordings/`, named
 for when it started and its session: `2026-11-13T21-04-05Z-s3/`. It holds:

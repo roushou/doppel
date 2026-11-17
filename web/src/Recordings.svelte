@@ -1,7 +1,9 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { create } from "@bufbuild/protobuf";
-  import { ListRecordingsSchema, OpenRecordingSchema, OpenSeenSnapshotSchema } from "./gen/doppel/daemon/v1/daemon_pb";
+  import { create, toBinary } from "@bufbuild/protobuf";
+  import { AxSnapshotSchema } from "./gen/doppel/agent/v1/agent_pb";
+  import { ListRecordingsSchema, OpenRecordingSchema, OpenSeenSnapshotSchema, RecordingSchema } from "./gen/doppel/daemon/v1/daemon_pb";
+  import type { Films } from "./lib/film";
   import Replay from "./Replay.svelte";
   import { type Operation, type Outcome, refusal } from "./lib/connection";
   import {
@@ -21,9 +23,11 @@
     request: (operation: Operation) => Promise<Outcome | undefined>;
     /** The machine whose recordings to list first; `null` for all. */
     machine?: string | null;
+    /** The film's module, which draws over a replay what agents did; none if it didn't load. */
+    films: Promise<Films | null>;
   }
 
-  let { request, machine = null }: Props = $props();
+  let { request, machine = null, films }: Props = $props();
   // svelte-ignore state_referenced_locally
   let only: string | null = $state(machine);
 
@@ -31,7 +35,7 @@
     | { kind: "loading" }
     | { kind: "list"; recordings: RecordingSummary[] }
     | { kind: "opening"; id: RecordingId }
-    | { kind: "replay"; recording: Recording }
+    | { kind: "replay"; recording: Recording; wire: Uint8Array }
     | { kind: "failed"; why: string };
 
   let view: View = $state({ kind: "loading" });
@@ -50,7 +54,7 @@
     const outcome = await request({ case: "openRecording", value: create(OpenRecordingSchema, { id }) });
     view =
       outcome?.case === "recording"
-        ? { kind: "replay", recording: parseRecording(outcome.value) }
+        ? { kind: "replay", recording: parseRecording(outcome.value), wire: toBinary(RecordingSchema, outcome.value) }
         : { kind: "failed", why: outcome === undefined ? "not connected" : refusal(outcome) };
   }
 
@@ -58,12 +62,13 @@
   async function seen(
     id: RecordingId,
     line: number,
-  ): Promise<{ kind: "seen"; seen: Seen } | { kind: "failed"; why: string }> {
+  ): Promise<{ kind: "seen"; seen: Seen; wire: Uint8Array } | { kind: "failed"; why: string }> {
     const outcome = await request({
       case: "openSeenSnapshot",
       value: create(OpenSeenSnapshotSchema, { recording: id, line }),
     });
-    if (outcome?.case === "axSnapshot") return { kind: "seen", seen: readSnapshot(outcome.value) };
+    if (outcome?.case === "axSnapshot")
+      return { kind: "seen", seen: readSnapshot(outcome.value), wire: toBinary(AxSnapshotSchema, outcome.value) };
     return { kind: "failed", why: outcome === undefined ? "not connected" : refusal(outcome) };
   }
 
@@ -107,7 +112,7 @@
     <h2>{view.recording.id}</h2>
   </div>
   {@const id = view.recording.id}
-  <Replay recording={view.recording} loadSeen={(line) => seen(id, line)} />
+  <Replay recording={view.recording} wire={view.wire} {films} loadSeen={(line) => seen(id, line)} />
 {:else if view.recordings.length === 0}
   <p class="muted">
     No recordings. An agent's session is recorded with <code>doppel mcp --record</code>.

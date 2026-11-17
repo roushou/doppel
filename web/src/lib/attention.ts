@@ -4,7 +4,6 @@
 // and its refs in, the elements lit at an instant out.
 
 import type { DisplayPoint, Rect } from "./geometry";
-import type { AgentScene } from "./overlay";
 import type { Moment, SeenAt } from "./timeline";
 import type { Element, Kind, Seen } from "./tree";
 
@@ -34,8 +33,6 @@ export interface Attention {
   lit: Lit[];
   /** The element read now; `null` once all are read. */
   head: Glance | null;
-  /** Where its eyes are: the head's centre, or the last read's once done. */
-  gaze: DisplayPoint | null;
   /** How much of it shows: 1 while reading and after, fading once the agent calls again, then 0 (its eyes stay). */
   presence: number;
   /** When the snapshot was taken: a look under way before this is over. */
@@ -105,10 +102,6 @@ export function glances(seen: Seen, named: ReadonlyMap<number, string>, since: n
   }));
 }
 
-function centre(frame: Rect): DisplayPoint {
-  return { x: frame.left + frame.width / 2, y: frame.top + frame.height / 2 };
-}
-
 /**
  * What the agent that took `found`'s snapshot attends to at `at`: its
  * glances lit so far, until it calls again, then fading; once faded,
@@ -132,14 +125,5 @@ export function attentionAt(found: SeenAt, seen: Seen, named: ReadonlyMap<number
   const last = lit.at(-1)?.glance ?? null;
   const done = lit.length === all.length || until < at;
   const head = done ? null : last;
-  return { session, lit: presence === 0 ? [] : lit, head, gaze: last === null ? null : centre(last.frame), presence, since };
-}
-
-/**
- * Where an agent's pointer shows: on what it reads, unless it placed its
- * pointer by acting since the snapshot.
- */
-export function pointerOf(agent: AgentScene, attention: Attention | null): DisplayPoint | null {
-  if (attention === null || attention.session !== agent.session || attention.gaze === null) return agent.cursor;
-  return agent.aimed !== null && agent.aimed >= attention.since ? agent.cursor : attention.gaze;
+  return { session, lit: presence === 0 ? [] : lit, head, presence, since };
 }

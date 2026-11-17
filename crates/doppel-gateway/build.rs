@@ -28,6 +28,7 @@ fn content_type(path: &Path) -> Option<&'static str> {
         "woff2" => "font/woff2",
         "json" => "application/json",
         "txt" => "text/plain; charset=utf-8",
+        "wasm" => "application/wasm",
         _ => return None,
     })
 }

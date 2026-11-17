@@ -187,9 +187,10 @@ pub(crate) struct VideoRequest {
     pub(crate) wanted: Wanted,
 }
 
-/// Headers every response carries.
+/// Headers every response carries. Scripts may compile WebAssembly (the
+/// overlay's film), never evaluate strings.
 const SECURITY: &str = "Content-Security-Policy: default-src 'self'; \
-    connect-src 'self'; img-src 'self' data: blob:; \
+    script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; img-src 'self' data: blob:; \
     style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; \
     form-action 'none'\r\n\
     X-Content-Type-Options: nosniff\r\n\

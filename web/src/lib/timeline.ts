@@ -244,13 +244,12 @@ export function sceneAt(moments: readonly Moment[], at: number): Scene {
     const session = moment.call.session;
     let agent = agents.get(session);
     if (agent === undefined) {
-      agent = { session, client: moment.call.client, cursor: null, aimed: null, current: null, scan: null, marks: [], active: -Infinity };
+      agent = { session, client: moment.call.client, cursor: null, current: null, scan: null, marks: [], active: -Infinity };
       agents.set(session, agent);
     }
     const placed = aim(moment.call.target);
     if (placed !== null) {
       agent.cursor = placed;
-      agent.aimed = moment.startMs;
     }
     agent.active = Math.max(agent.active, moment.startMs);
     const shownUntil = moment.endMs === null ? Infinity : Math.max(moment.endMs, moment.startMs + MIN_UNDER_WAY_MS);

@@ -10,12 +10,13 @@
     type TraceLine,
     videoUrl,
   } from "./lib/recordings";
-  import { onDestroy } from "svelte";
+  import { onDestroy, onMount } from "svelte";
+  import type { Film, Films } from "./lib/film";
   import { contain } from "./lib/geometry";
   import { ListTree, Pause, Play, ScanText } from "@lucide/svelte";
   import { follow as place, Transport } from "./lib/transport";
   import { attentionAt } from "./lib/attention";
-  import { fromTrace, readAt, sceneAt, seenAt } from "./lib/timeline";
+  import { fromTrace, readAt, seenAt } from "./lib/timeline";
   import Text from "./Text.svelte";
   import { type Seen, refsOf } from "./lib/tree";
   import Elements from "./Elements.svelte";
@@ -25,11 +26,15 @@
 
   interface Props {
     recording: Recording;
-    /** The snapshot a trace line kept, or why it can't be shown. */
-    loadSeen: (line: number) => Promise<{ kind: "seen"; seen: Seen } | { kind: "failed"; why: string }>;
+    /** The recording as the daemon sent it (`doppel.daemon.v1.Recording`), for the film. */
+    wire: Uint8Array;
+    /** The film's module, which draws what agents did over the video; none if it didn't load. */
+    films: Promise<Films | null>;
+    /** The snapshot a trace line kept, with its `doppel.agent.v1.AxSnapshot` bytes, or why it can't be shown. */
+    loadSeen: (line: number) => Promise<{ kind: "seen"; seen: Seen; wire: Uint8Array } | { kind: "failed"; why: string }>;
   }
 
-  let { recording, loadSeen }: Props = $props();
+  let { recording, wire, films, loadSeen }: Props = $props();
 
   /** Which of the recording's videos is showing. */
   let current = $state(0);
@@ -69,7 +74,34 @@
   const drawn = $derived(
     playing?.points == null ? null : contain({ left: 0, top: 0, width: boxWidth, height: boxHeight }, playing.points),
   );
-  const scene = $derived(now === null || moments.length === 0 ? null : sceneAt(moments, now));
+  /** The film's module, once loaded. */
+  let made: Films | null = $state.raw(null);
+  onMount(() => {
+    void films.then((loaded) => (made = loaded));
+  });
+  /** The playing machine's film. */
+  let film: Film | null = $state.raw(null);
+  /** The trace lines whose snapshots the film has. */
+  let given = new Set<number>();
+  /** Counts what the film has been given, so a paused frame is drawn again with it. */
+  let gave = $state(0);
+  $effect(() => {
+    const shown = playing?.machine;
+    if (made === null || shown === undefined) return;
+    let replayed: Film;
+    try {
+      replayed = made.replay(wire, shown);
+    } catch (error) {
+      console.warn("the overlay can't replay this recording:", error);
+      return;
+    }
+    film = replayed;
+    given = new Set();
+    return () => {
+      replayed.drop();
+      film = null;
+    };
+  });
   /** Whether the elements the agent last saw by the playhead are shown: the tree, and their boxes over the video. */
   let inspecting = $state(false);
   const paused = $derived(transport.kind !== "playing");
@@ -79,7 +111,7 @@
   let pointed: number | null = $state(null);
   let picked: number | null = $state(null);
   /** A trace line's snapshot, as far as it has been fetched. */
-  type Fetch = { kind: "loading" } | { kind: "seen"; seen: Seen } | { kind: "failed"; why: string };
+  type Fetch = { kind: "loading" } | { kind: "seen"; seen: Seen; wire: Uint8Array } | { kind: "failed"; why: string };
   /** Snapshots fetched, by trace line: each is asked for once. */
   let fetched: Map<number, Fetch> = $state(new Map());
   const found = $derived(now === null ? null : seenAt(moments, now));
@@ -106,6 +138,20 @@
     void loadSeen(asked).then((answer) => {
       fetched = new Map(fetched).set(asked, answer);
     });
+  });
+  $effect(() => {
+    // Each snapshot fetched goes into the film, so it shows what the agent took in.
+    if (film === null) return;
+    for (const [at, answer] of fetched) {
+      if (answer.kind !== "seen" || given.has(at)) continue;
+      given.add(at);
+      try {
+        film.seen(at, answer.wire);
+        gave += 1;
+      } catch (error) {
+        console.warn(`the overlay can't read the snapshot of line ${at}:`, error);
+      }
+    }
   });
   $effect(() => {
     void line;
@@ -294,8 +340,9 @@
               onselect={(index) => (picked = index)}
             />
           {/if}
-          {#if scene !== null && drawn !== null && now !== null}
-            <Overlay {scene} {drawn} display={playing.points ?? { width: 1, height: 1 }} {now} {attention} />
+          {#if film !== null && drawn !== null && now !== null && playing.points != null}
+            {@const frame = gave >= 0 ? film.over(playing.points, now) : null}
+            {#if frame !== null}<Overlay {frame} {drawn} display={playing.points} />{/if}
           {/if}
         </div>
       {/key}

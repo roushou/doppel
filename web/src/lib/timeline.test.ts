@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Gesture } from "../gen/doppel/daemon/v1/daemon_pb";
 import { ended, marked, started } from "./activity.fixture";
-import { MARK_MS, SWEEP_MS, arrowEnds, describe as describeCall } from "./overlay";
+import { MARK_MS, SWEEP_MS, describe as describeCall } from "./overlay";
 import type { Call as TraceCall } from "./recordings";
 import { KEPT, MIN_UNDER_WAY_MS, type Moment, family, fromTrace, lanes, record, sceneAt, within } from "./timeline";
 import type { AgentScene, Scene } from "./overlay";
@@ -148,17 +148,6 @@ describe("an agent's marks", () => {
     expect(sceneAt(moments, 500).callouts).toEqual([]);
   });
 
-  it("point arrows from where there is room to just outside what they mark", () => {
-    const picture = { left: 0, top: 0, width: 1000, height: 800 };
-    const { tail, tip } = arrowEnds({ left: 300, top: 300, width: 100, height: 40 }, null, picture);
-    expect(tail).toEqual({ x: 190, y: 220 });
-    expect(tip.y).toBeCloseTo(296);
-    expect(arrowEnds({ left: 10, top: 10, width: 40, height: 20 }, null, picture).tail).toEqual({ x: 160, y: 110 });
-    expect(arrowEnds({ left: 500, top: 500, width: 0, height: 0 }, { x: 500, y: 300 }, picture)).toEqual({
-      tail: { x: 500, y: 300 },
-      tip: { x: 500, y: 496 },
-    });
-  });
 });
 
 describe("several agents on one machine", () => {

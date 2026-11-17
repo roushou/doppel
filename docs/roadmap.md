@@ -28,9 +28,8 @@ files. People watch and take over from a desktop or browser viewer.
   recordings with traces.
 - **Viewers:** a desktop viewer (GPUI) and a browser viewer, both showing
   what agents do over the screen, an elements tree, read text, and replay.
-  The desktop viewer draws the film's shapes (what exports burn in),
-  including the elements an agent reads; the browser viewer lights those
-  up with its own overlay.
+  Both draw the film's shapes (what exports burn in), including the
+  elements an agent reads; the browser runs the film as WebAssembly.
 - **Exports:** `doppel record export` writes a recorded session's video
   with its overlay burned in.
 - **Remote:** another Mac's daemon over `ssh -L` and `--host`; the browser

@@ -339,24 +339,6 @@ export type Mark =
   | { id: number; kind: "path"; from: DisplayPoint; to: DisplayPoint; since: number; until: number }
   | { id: number; kind: "failed"; at: DisplayPoint; reason: string; since: number; until: number };
 
-/** How long a mark takes to fade, at its end. */
-export const MARK_FADE_MS = 150;
-
-/** How opaque `mark` is at `at`: whole, then fading to its end. */
-export function markOpacity(mark: Mark, at: number): number {
-  return Math.min(1, Math.max(0, (mark.until - at) / MARK_FADE_MS));
-}
-
-/** How long a mark stays. */
-/** The widest a pointer's caption gets, and how far right of its pointer it starts. */
-export const CAPTION_MAX = 300;
-export const CAPTION_OFFSET = 18;
-
-/** Which side of a pointer at `x` its caption goes, with the picture's right edge at `edge`: left near the edge, where it would be cut off. */
-export function captionSide(x: number, edge: number): "right" | "left" {
-  return x + CAPTION_OFFSET + CAPTION_MAX > edge ? "left" : "right";
-}
-
 export const MARK_MS = 1600;
 /** How long a mark shows after its call ends: the screen changes then. */
 export const SETTLE_MS = 150;
@@ -374,11 +356,6 @@ export function sweepEnds(start: number, end: number | null): number {
   return start + Math.max(1, Math.ceil((end - start) / SWEEP_MS)) * SWEEP_MS;
 }
 
-/** How far down the screen a band begun at `start` is at `now`, 0 to 1. */
-export function swept(start: number, now: number): number {
-  return (((now - start) % SWEEP_MS) + SWEEP_MS) % SWEEP_MS / SWEEP_MS;
-}
-
 /** One machine's scene: each agent's, and the marks agents put on the screen. */
 export interface Scene {
   /** Each session that has acted on the machine, by session id. */
@@ -394,8 +371,6 @@ export interface AgentScene {
   client: string;
   /** Where its pointer is: the last place it acted. */
   cursor: DisplayPoint | null;
-  /** When its pointer was last placed: when the call that placed it started. */
-  aimed: number | null;
   /** Its call under way, and since when. */
   current: { call: Call; since: number } | null;
   /** When the look whose band is sweeping the screen began, if one is. */
@@ -412,9 +387,6 @@ export interface Shown {
   since: number;
   until: number;
 }
-
-/** How long an agent's mark takes to fade in and out. */
-export const CALLOUT_FADE_MS = 250;
 
 /** Where a target puts the pointer: a point, an element's centre, a drag's end. */
 export function aim(target: Target): DisplayPoint | null {
@@ -478,30 +450,4 @@ export function describe(call: Call): string {
       return never;
     }
   }
-}
-
-/** Where an arrow starts, when the agent didn't say: this far up and left of what it points at, or mirrored to stay on the picture. */
-const ARROW_REACH = { x: 110, y: 80 };
-
-/**
- * Where an arrow to the box `on` starts and ends, in the screen's CSS pixels:
- * from `from`, or from up and left of it (mirrored to stay inside `picture`),
- * to just outside its edge. A point is a box with no size.
- */
-export function arrowEnds(on: Rect, from: { x: number; y: number } | null, picture: Rect): { tail: { x: number; y: number }; tip: { x: number; y: number } } {
-  const right = on.left + on.width;
-  const bottom = on.top + on.height;
-  const centre = { x: on.left + on.width / 2, y: on.top + on.height / 2 };
-  const tail = from ?? {
-    x: on.left - ARROW_REACH.x >= picture.left ? on.left - ARROW_REACH.x : right + ARROW_REACH.x,
-    y: on.top - ARROW_REACH.y >= picture.top ? on.top - ARROW_REACH.y : bottom + ARROW_REACH.y,
-  };
-  const dx = centre.x - tail.x;
-  const dy = centre.y - tail.y;
-  if (Math.hypot(dx, dy) < 1) return { tail, tip: centre };
-  // Where the line from the tail to the centre leaves the box, then a gap.
-  const halfW = on.width / 2 + 4;
-  const halfH = on.height / 2 + 4;
-  const reach = Math.min(1, Math.abs(dx) > 1e-6 ? halfW / Math.abs(dx) : 1, Math.abs(dy) > 1e-6 ? halfH / Math.abs(dy) : 1);
-  return { tail, tip: { x: centre.x - dx * reach, y: centre.y - dy * reach } };
 }

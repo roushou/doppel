@@ -1,7 +1,7 @@
 import { describe as group, expect, it } from "vitest";
 import { Gesture } from "../gen/doppel/daemon/v1/daemon_pb";
 import { ended, started } from "./activity.fixture";
-import { SWEEP_MS, captionSide, describe, sweepEnds, swept } from "./overlay";
+import { SWEEP_MS, describe, sweepEnds } from "./overlay";
 
 group("reading the daemon's activity", () => {
   it("reads an action on an element as its frame and name", () => {
@@ -37,25 +37,11 @@ group("reading the daemon's activity", () => {
   });
 });
 
-group("a pointer's caption", () => {
-  it("goes left of the pointer near the picture's right edge", () => {
-    expect(captionSide(100, 1000)).toBe("right");
-    expect(captionSide(682, 1000)).toBe("right");
-    expect(captionSide(683, 1000)).toBe("left");
-  });
-});
-
 group("the reading band", () => {
   it("leaves the screen at the end of a pass, never midway", () => {
     expect(sweepEnds(100, 150)).toBe(100 + SWEEP_MS);
     expect(sweepEnds(0, SWEEP_MS)).toBe(SWEEP_MS);
     expect(sweepEnds(0, SWEEP_MS + 1)).toBe(2 * SWEEP_MS);
     expect(sweepEnds(0, null)).toBe(Infinity);
-  });
-
-  it("starts each pass at the top", () => {
-    expect(swept(500, 500)).toBe(0);
-    expect(swept(0, SWEEP_MS / 2)).toBe(0.5);
-    expect(swept(0, SWEEP_MS)).toBe(0);
   });
 });
