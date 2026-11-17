@@ -45,25 +45,24 @@ use doppel_protocol::transport::ChannelError;
 mod activity;
 mod connection;
 mod display;
-mod recordings;
-mod report;
 
 use connection::Connection;
 pub use connection::Notes;
 
-pub use activity::{
-    Activity, ActivityStream, Callout, CalloutLasts, CalloutShape, Ended, Ending, Gesture,
-    OnScreen, Phase, Target, TextRead,
-};
+pub use activity::ActivityStream;
 pub use display::{
     Announced, Display, DisplayLayout, EncodedDisplay, EncodedFrame, EncodedSize, FrameKind,
 };
-pub use recordings::{
+pub use doppel_machine::activity::{
+    Activity, Callout, CalloutLasts, CalloutShape, Ended, Ending, Gesture, OnScreen, Phase, Target,
+    TextRead,
+};
+pub use doppel_machine::recording::{
     NotARecording, Recording, RecordingId, RecordingSummary, RecordingVideo, TraceActor, TraceCall,
     TraceLine, TraceOutcome, VideoFile,
 };
 
-pub use report::{
+pub use doppel_protocol::report::{
     Acted, CheckpointReport, CheckpointResult, Cleanup, HandedBack, MachineFailure, Resumed,
     SessionInfo, SessionStatus, StopMode, StopOutcome, StopReport, StopRequest, Window,
 };
@@ -1059,7 +1058,7 @@ impl<C: Clock> Client<C> {
         Ok(list
             .recordings
             .into_iter()
-            .filter_map(RecordingSummary::from_wire)
+            .filter_map(|summary| RecordingSummary::try_from(summary).ok())
             .collect())
     }
 
@@ -1073,7 +1072,8 @@ impl<C: Clock> Client<C> {
         call: impl Into<Call<'a>>,
     ) -> Result<Recording, ClientError> {
         let recording = self.call(daemon::OpenRecording { id: id.to_string() }, call)?;
-        Recording::from_wire(recording).ok_or(ClientError::Protocol("a recording without its id"))
+        Recording::try_from(recording)
+            .map_err(|_| ClientError::Protocol("a recording without its id"))
     }
 
     /// The snapshot line `line` (from 0) of recording `id`'s trace kept.

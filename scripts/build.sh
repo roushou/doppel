@@ -10,8 +10,8 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 profile=debug; cargo_flags=(); swift_config=debug
 if [[ "${1:-}" == "--release" ]]; then profile=release; cargo_flags=(--release); swift_config=release; fi
 
-# The browser viewer's page, which the gateway embeds.
-(cd "$root/web" && pnpm install --frozen-lockfile --silent && pnpm run --silent build)
+# The viewer built for the browser, which the gateway embeds.
+"$root/scripts/build-web.sh"
 cargo build --manifest-path "$root/Cargo.toml" ${cargo_flags[@]+"${cargo_flags[@]}"} -p doppel-cli
 swift build --package-path "$root/apple" -c "$swift_config" --product doppel-vmm
 swift build --package-path "$root/apple" -c "$swift_config" --product doppel-agent

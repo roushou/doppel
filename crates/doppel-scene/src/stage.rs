@@ -16,6 +16,17 @@ pub struct Stage {
     launching: Option<usize>,
 }
 
+/// Why a machine can't be shown on the stage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum Unstaged {
+    /// It exists, and isn't running: only a running machine has a screen.
+    #[error("it isn't running")]
+    NotRunning,
+    /// No machine has that name.
+    #[error("there's no machine by that name")]
+    Unknown,
+}
+
 /// Whether both bays' machines show side by side, when both run.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Split {
@@ -81,6 +92,33 @@ impl Stage {
         self.launching = None;
     }
 
+    /// Shows `name` alone: in the bay it has, or else in the picked bay, in
+    /// place of the machine there (which moves to a free bay if there is
+    /// one).
+    ///
+    /// # Errors
+    /// [`Unstaged`]: it isn't among `machines`, or isn't running; the stage
+    /// is as it was.
+    pub fn bring(&mut self, name: &MachineName, machines: &[Machine]) -> Result<(), Unstaged> {
+        let machine = machines
+            .iter()
+            .find(|machine| &machine.name == name)
+            .ok_or(Unstaged::Unknown)?;
+        if !machine.state.is_live() {
+            return Err(Unstaged::NotRunning);
+        }
+        let slot = match self.slot_of(name, machines) {
+            Some(slot) => slot,
+            None => {
+                self.bays = self.bays.start_in(self.picked, name.clone());
+                self.settle(machines);
+                self.picked
+            }
+        };
+        self.show(slot);
+        Ok(())
+    }
+
     /// Starts `name` from slot `index`: shown there alone, it lands in that
     /// bay once it's live.
     pub fn start_in(&mut self, index: usize, name: MachineName) {
@@ -120,7 +158,7 @@ impl Stage {
 mod tests {
     use doppel_machine::machine::MachineName;
 
-    use super::{Split, Stage};
+    use super::{Split, Stage, Unstaged};
     use doppel_machine::lineage::RecordedLineage;
 
     use crate::model::{Machine, MachineState, Run};
@@ -215,5 +253,36 @@ mod tests {
                 .names(&[machine("b", MachineState::Stopped)])
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn a_machine_is_brought_where_it_is_or_into_the_picked_bay() {
+        let three = [running("a"), running("b"), running("c")];
+        let mut stage = Stage::default();
+        assert_eq!(stage.bring(&name("b"), &three), Ok(()));
+        assert_eq!(shown(&stage, &three), ["b"]);
+        // Not in a bay: it takes the picked one, and the one there goes.
+        assert_eq!(stage.bring(&name("c"), &three), Ok(()));
+        assert_eq!(shown(&stage, &three), ["c"]);
+        assert_eq!(stage.slot_of(&name("c"), &three), Some(1));
+        assert_eq!(stage.slot_of(&name("b"), &three), None);
+        assert_eq!(stage.slot_of(&name("a"), &three), Some(0));
+    }
+
+    #[test]
+    fn a_machine_that_cant_show_leaves_the_stage_as_it_was() {
+        let machines = [running("a"), machine("off", MachineState::Stopped)];
+        let mut stage = Stage::default();
+        stage.toggle_split();
+        let before = stage.clone();
+        assert_eq!(
+            stage.bring(&name("off"), &machines),
+            Err(Unstaged::NotRunning)
+        );
+        assert_eq!(
+            stage.bring(&name("gone"), &machines),
+            Err(Unstaged::Unknown)
+        );
+        assert_eq!(stage, before);
     }
 }

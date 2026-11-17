@@ -913,7 +913,9 @@ fn run(cli: Cli) -> Result<Report> {
                 bail!("its video is on the Mac the daemon runs on: export it there");
             }
             let client = at.connect()?;
-            let opened = view::recording(client.open_recording(&recording, within(CALL_TIMEOUT))?);
+            let opened = doppel_scene::recordings::Recording::of(
+                client.open_recording(&recording, within(CALL_TIMEOUT))?,
+            );
             let source = |video: &doppel_scene::recordings::Video| {
                 view::Videos::Here
                     .path(

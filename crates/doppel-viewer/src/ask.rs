@@ -6,7 +6,6 @@ use std::sync::Arc;
 
 use doppel_machine::bundle::CheckpointLabel;
 use doppel_machine::machine::MachineName;
-use futures::channel::oneshot;
 use gpui::{
     App, AppContext, Context, Entity, EventEmitter, FocusHandle, Focusable, FontWeight,
     InteractiveElement, IntoElement, KeyDownEvent, ParentElement, Render, SharedString,
@@ -188,10 +187,11 @@ impl Ask {
         let focus = cx.focus_handle();
         match &question {
             Question::Checkpoint(_) | Question::Delete(_) => {
-                window.focus(&typed.focus_handle(cx));
+                let handle = typed.focus_handle(cx);
+                window.focus(&handle, cx);
             }
             Question::Choose { .. } | Question::ForceStop(_) | Question::StartGolden { .. } => {
-                window.focus(&focus);
+                window.focus(&focus, cx);
             }
         }
         let mut ask = Self {
@@ -237,19 +237,9 @@ impl Ask {
         };
         self.loaded = Checkpoints::Reading;
         self.chosen = None;
-        let daemon = self.daemon.clone();
-        let (answer, read) = oneshot::channel();
-        let asked = machine.clone();
-        // A thread of its own: the daemon's calls block.
-        let _ = std::thread::Builder::new()
-            .name("doppel-viewer-checkpoints".into())
-            .spawn(move || {
-                let _ = answer.send(daemon.checkpoints(&asked));
-            });
+        let read = self.daemon.checkpoints(&machine);
         self._load = Some(cx.spawn(async move |ask, cx| {
-            let read = read
-                .await
-                .unwrap_or_else(|_| Err(crate::DaemonError::Unreachable("no answer".into())));
+            let read = read.await;
             let _ = ask.update(cx, |ask, cx| {
                 if ask.machine() != Some(&machine) {
                     return;

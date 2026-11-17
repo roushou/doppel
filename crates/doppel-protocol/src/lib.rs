@@ -1,6 +1,6 @@
 //! The Doppel protocol: what crosses between processes, the rules of a
 //! conversation, and the transport that carries one over a unix socket.
-//! Everything but [`transport`] is sans-IO, which `tests/pure.rs` checks.
+//! Everything but `transport` is sans-IO, which `tests/pure.rs` checks.
 //!
 //! - [`pb`]: protobuf DTOs generated from `proto/`. They are boundary types:
 //!   consumers parse them into their own domain types and never pass them deeper.
@@ -9,15 +9,20 @@
 //! - [`exchange`]: one client's side of a conversation over those frames,
 //!   sans-IO too: the greeting, requests matched to their responses, pushed
 //!   events, and descriptors tied to the frame they came with.
-//! - [`transport`]: the blocking [`transport::Channel`] that carries an
+//! - [`report`]: what the daemon answers (machine failures, stops,
+//!   checkpoints, sessions), parsed from its messages once for every client.
+//! - `transport`: the blocking `transport::Channel` that carries an
 //!   exchange over a unix socket, with deadlines and passed descriptors.
+//!   Unix only: the rest builds anywhere, WebAssembly included.
 
 pub mod bundle;
 pub mod convert;
 pub mod display;
 pub mod exchange;
 pub mod frame;
+pub mod report;
 pub mod rpc;
+#[cfg(unix)]
 pub mod transport;
 
 /// Generated code. Lints are relaxed here only: we don't control its shape.

@@ -13,7 +13,7 @@ use gpui::{
 
 use crate::screen::Picture;
 use crate::theme::{Hue, MONO, Theme};
-use crate::timeline::{Family, Moment, Scene};
+use crate::timeline::{Family, Moment};
 use crate::ui;
 
 /// The widest a caption gets.
@@ -59,30 +59,18 @@ fn chip(fill: Hsla, ink: Hsla) -> Div {
 /// What agents do over a screen whose picture is at `picture`, at `now`:
 /// the film's shapes for `moments`, and beside each agent's pointer why it
 /// does what it does (named by its client when several act).
-pub(crate) fn layer(
-    moments: &[Moment],
-    scene: &Scene,
-    picture: Picture,
-    now: f64,
-) -> impl IntoElement {
+pub(crate) fn layer(moments: &[Moment], picture: Picture, now: f64) -> impl IntoElement {
     let drawn = film::Picture::at(moments, picture.points, now);
     let mut layer = crate::shapes::layer(drawn.shapes, picture);
-    let named = scene.agents.len() > 1;
-    for agent in &scene.agents {
-        let why = agent
-            .current
-            .as_ref()
-            .and_then(|(call, _)| call.why.as_deref());
-        let words = match (why, named && !agent.client.is_empty()) {
-            (Some(why), true) => format!("{} · {why}", ui::upper(&agent.client)),
-            (Some(why), false) => why.to_owned(),
-            (None, true) if agent.current.is_some() => ui::upper(&agent.client).to_string(),
-            (None, _) => continue,
+    for caption in film::Caption::at(moments, now) {
+        let words = match (caption.why, caption.client) {
+            (Some(why), Some(client)) => format!("{} · {why}", ui::upper(&client)),
+            (Some(why), None) => why,
+            (None, Some(client)) => ui::upper(&client).to_string(),
+            (None, None) => continue,
         };
-        let Some(tip) = film::pointer_at(moments, agent.session, now) else {
-            continue;
-        };
-        let hue = Hue::of(agent.session);
+        let tip = caption.tip;
+        let hue = Hue::of(caption.session);
         let (x, y) = picture.place(tip.x + CAPTION_FROM.0, tip.y + CAPTION_FROM.1);
         let caption = chip(hue.fill, hue.ink).child(words);
         layer = layer.child(match caption_side(x, picture.left + picture.width) {

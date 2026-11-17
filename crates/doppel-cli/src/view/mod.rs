@@ -12,27 +12,22 @@ use std::time::Duration;
 use anyhow::Result;
 use doppel_client::{Client, ClientError, Display, DisplayLayout, EncodedDisplay};
 use doppel_host::display::{Announcement, DisplayError, Nv12Frame, SharedFrames};
-use doppel_machine::geometry::{GeometryError, Point, Size};
-use doppel_machine::input::{
-    Button, ClickCount, Input, Key, KeyChord, Modifier, NamedKey, Pointer, PointerPhase,
-};
+use doppel_machine::geometry::Size;
 use doppel_machine::machine::MachineName;
 use doppel_protocol::display::{RingLayout, SlotRead};
 use doppel_viewer::{
-    EncodedSource, FrameRef, FrameSource, GuestInput, InputSink, Next, NextEncoded, Position,
-    Screen, SourceError, Takeover, Viewer,
+    EncodedSource, FrameRef, FrameSource, GuestInput, InputSink, Next, NextEncoded, Screen,
+    SourceError, Takeover, Viewer,
 };
 
 use doppel_host::capabilities::SystemClock;
 
 use crate::daemon_at::within;
 
-#[cfg(test)]
-mod fixtures;
 mod port;
 mod recordings;
 
-pub(crate) use recordings::{Videos, recording};
+pub(crate) use recordings::Videos;
 
 /// Why a machine's display can't be shown.
 #[derive(Debug, thiserror::Error)]
@@ -157,7 +152,9 @@ impl EncodedSource for StreamSource {
 struct HostInput {
     client: Arc<Client<SystemClock>>,
     name: MachineName,
-    display: GuestDisplay,
+    /// The guest display's size in points: what the viewer's fractions of
+    /// the screen scale to.
+    display: Size,
 }
 
 impl HostInput {
@@ -167,7 +164,7 @@ impl HostInput {
 
 impl InputSink for HostInput {
     fn send(&mut self, input: GuestInput) -> Result<(), SourceError> {
-        let input = self.display.input(input).map_err(SourceError::new)?;
+        let input = input.on(self.display).map_err(SourceError::new)?;
         self.client
             .host_input(&self.name, &input, within(Self::WAIT))
             .map_err(SourceError::new)
@@ -196,104 +193,6 @@ impl Takeover for MachineControl {
         self.client
             .hand_back(&self.name, within(Self::WAIT))
             .map_err(SourceError::new)
-    }
-}
-
-/// The guest display, as big as it is in points: what the viewer's
-/// fractions of the screen scale to.
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct GuestDisplay(Size);
-
-impl GuestDisplay {
-    /// The VMM takes points inside the display: the far edges are its last
-    /// point, not one past it.
-    fn point(self, at: Position) -> Result<Point, GeometryError> {
-        let (width, height) = (self.0.width(), self.0.height());
-        Point::new(
-            (at.x() * width).min(width - 1.0).max(0.0),
-            (at.y() * height).min(height - 1.0).max(0.0),
-        )
-    }
-
-    fn button(button: doppel_viewer::Button) -> Button {
-        match button {
-            doppel_viewer::Button::Left => Button::Left,
-            doppel_viewer::Button::Right => Button::Right,
-        }
-    }
-
-    fn clicks(clicks: u32) -> ClickCount {
-        // Clicking on past a triple still selects as a triple.
-        ClickCount::try_from(clicks.clamp(1, 3)).unwrap_or(ClickCount::Single)
-    }
-
-    fn modifiers(modifiers: Vec<doppel_viewer::Modifier>) -> Vec<Modifier> {
-        modifiers
-            .into_iter()
-            .map(|modifier| match modifier {
-                doppel_viewer::Modifier::Command => Modifier::Command,
-                doppel_viewer::Modifier::Shift => Modifier::Shift,
-                doppel_viewer::Modifier::Option => Modifier::Option,
-                doppel_viewer::Modifier::Control => Modifier::Control,
-            })
-            .collect()
-    }
-
-    fn key(key: doppel_viewer::Key) -> Key {
-        use doppel_viewer::NamedKey as Viewer;
-        match key {
-            doppel_viewer::Key::Character(c) => Key::Character(c),
-            doppel_viewer::Key::Named(named) => Key::Named(match named {
-                Viewer::Return => NamedKey::Return,
-                Viewer::Tab => NamedKey::Tab,
-                Viewer::Space => NamedKey::Space,
-                Viewer::Delete => NamedKey::Delete,
-                Viewer::ForwardDelete => NamedKey::ForwardDelete,
-                Viewer::Escape => NamedKey::Escape,
-                Viewer::Left => NamedKey::Left,
-                Viewer::Right => NamedKey::Right,
-                Viewer::Up => NamedKey::Up,
-                Viewer::Down => NamedKey::Down,
-                Viewer::Home => NamedKey::Home,
-                Viewer::End => NamedKey::End,
-                Viewer::PageUp => NamedKey::PageUp,
-                Viewer::PageDown => NamedKey::PageDown,
-                Viewer::F(n) => NamedKey::F(n),
-            }),
-        }
-    }
-
-    fn input(self, input: GuestInput) -> Result<Input, GeometryError> {
-        Ok(match input {
-            GuestInput::Pointer {
-                phase,
-                at,
-                modifiers,
-            } => Input::Pointer(Pointer {
-                phase: match phase {
-                    doppel_viewer::PointerPhase::Press { button, clicks } => {
-                        PointerPhase::Press(Self::button(button), Self::clicks(clicks))
-                    }
-                    doppel_viewer::PointerPhase::Release { button, clicks } => {
-                        PointerPhase::Release(Self::button(button), Self::clicks(clicks))
-                    }
-                    doppel_viewer::PointerPhase::Move { held } => {
-                        PointerPhase::Move(held.map(Self::button))
-                    }
-                },
-                at: self.point(at)?,
-                modifiers: Self::modifiers(modifiers),
-            }),
-            GuestInput::Scroll { at, dx, dy } => Input::Scroll {
-                at: self.point(at)?,
-                dx: dx * self.0.width(),
-                dy: dy * self.0.height(),
-            },
-            GuestInput::Key { key, modifiers } => Input::Key(KeyChord {
-                modifiers: Self::modifiers(modifiers),
-                key: Self::key(key),
-            }),
-        })
     }
 }
 
@@ -335,7 +234,7 @@ impl Frames {
             Some(size) => screen.with_points(size).with_input(HostInput {
                 client,
                 name: name.clone(),
-                display: GuestDisplay(size),
+                display: size,
             }),
             // Without the display's size a person's input can't be placed
             // on it, so the screen is view-only.
@@ -373,7 +272,7 @@ impl View {
     /// the daemon listening on `socket`, which `client` is connected to.
     pub(crate) fn run(self, client: Client<SystemClock>, socket: &Path) -> Result<()> {
         let daemon = port::DaemonPort::new(socket.to_path_buf(), self.frames, self.videos, client);
-        Viewer::new(daemon, port::ViewerClock)
+        Viewer::new(daemon, port::ViewerClock::new())
             .keeping(self.settings)
             .showing(self.names)
             .run();
@@ -384,14 +283,6 @@ impl View {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn display() -> GuestDisplay {
-        GuestDisplay(Size::new(1280.0, 800.0).unwrap())
-    }
-
-    fn at(x: f64, y: f64) -> Position {
-        Position::new(x, y).unwrap()
-    }
 
     #[test]
     fn encoded_frames_keep_their_kind_and_bytes() {
@@ -419,62 +310,5 @@ mod tests {
         });
         assert_eq!(delta.kind, doppel_viewer::FrameKind::Delta);
         assert_eq!((delta.sequence, delta.data), (8, vec![1]));
-    }
-
-    #[test]
-    fn fractions_scale_to_points_inside_the_display() {
-        assert_eq!(display().point(at(0.5, 0.25)), Point::new(640.0, 200.0));
-        // The far edges are the display's last point, which the VMM accepts.
-        assert_eq!(display().point(at(1.0, 1.0)), Point::new(1279.0, 799.0));
-    }
-
-    #[test]
-    fn viewer_input_becomes_host_input() {
-        let press = display()
-            .input(GuestInput::Pointer {
-                phase: doppel_viewer::PointerPhase::Press {
-                    button: doppel_viewer::Button::Right,
-                    clicks: 5,
-                },
-                at: at(0.0, 0.0),
-                modifiers: vec![doppel_viewer::Modifier::Shift],
-            })
-            .unwrap();
-        assert_eq!(
-            press,
-            Input::Pointer(Pointer {
-                phase: PointerPhase::Press(Button::Right, ClickCount::Triple),
-                at: Point::new(0.0, 0.0).unwrap(),
-                modifiers: vec![Modifier::Shift],
-            })
-        );
-        let scroll = display()
-            .input(GuestInput::Scroll {
-                at: at(0.5, 0.5),
-                dx: 0.0,
-                dy: -0.1,
-            })
-            .unwrap();
-        assert_eq!(
-            scroll,
-            Input::Scroll {
-                at: Point::new(640.0, 400.0).unwrap(),
-                dx: 0.0,
-                dy: -80.0,
-            }
-        );
-        let key = display()
-            .input(GuestInput::Key {
-                key: doppel_viewer::Key::Named(doppel_viewer::NamedKey::F(5)),
-                modifiers: Vec::new(),
-            })
-            .unwrap();
-        assert_eq!(
-            key,
-            Input::Key(KeyChord {
-                modifiers: Vec::new(),
-                key: Key::Named(NamedKey::F(5)),
-            })
-        );
     }
 }

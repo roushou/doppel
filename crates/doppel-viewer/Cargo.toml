@@ -5,15 +5,20 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 rust-version.workspace = true
-description = "The desktop window for running machines, drawn with GPUI."
+description = "The window for running machines, drawn with GPUI: on the desktop, and in a browser."
 
 [dependencies]
+doppel-machine = { path = "../doppel-machine" }
+doppel-protocol = { path = "../doppel-protocol" }
+doppel-scene = { path = "../doppel-scene" }
+futures.workspace = true
+gpui = { package = "gpui-pre", version = "=0.3.12" }
+thiserror.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "=0.10.0"
 core-video = "0.4.3"
-doppel-machine = { path = "../doppel-machine" }
-doppel-scene = { path = "../doppel-scene" }
-futures = "0.3"
-gpui = "0.2.2"
+gpui_platform = { package = "gpui-pre-platform", version = "=0.3.12", features = ["font-kit"] }
 objc2 = "0.6"
 objc2-av-foundation = { version = "0.3.2", default-features = false, features = [
   "std",
@@ -37,7 +42,12 @@ objc2-core-media = { version = "0.3.2", default-features = false, features = [
   "CMTimeRange",
   "objc2-core-video",
 ] }
-objc2-core-video = { version = "0.3.2", default-features = false, features = ["std", "CVBuffer", "CVImageBuffer"] }
+objc2-core-video = { version = "0.3.2", default-features = false, features = [
+  "std",
+  "CVBuffer",
+  "CVImageBuffer",
+  "CVPixelBuffer",
+] }
 objc2-foundation = { version = "0.3.2", default-features = false, features = [
   "std",
   "NSURL",
@@ -55,7 +65,22 @@ objc2-video-toolbox = { version = "0.3.2", default-features = false, features = 
   "objc2-core-video",
 ] }
 raw-window-handle = "0.6"
-thiserror.workspace = true
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+# Single-threaded: the browser's threads need a nightly compiler.
+gpui_platform = { package = "gpui-pre-platform", version = "=0.3.12", default-features = false }
+image = { version = "0.25.1", default-features = false }
+js-sys = "0.3"
+prost.workspace = true
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = [
+  "BinaryType",
+  "CloseEvent",
+  "Event",
+  "MessageEvent",
+  "WebSocket",
+] }
 
 [lints]
 workspace = true

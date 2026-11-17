@@ -1,6 +1,10 @@
 //! Input for a screen, in the viewer's own terms: positions are fractions
 //! of the screen, so the viewer needn't know the guest's size, and keys are
-//! parsed once from GPUI's keystrokes.
+//! parsed once from GPUI's keystrokes. [`GuestInput::on`] places it on the
+//! guest's display, as the host input the machine takes.
+
+use doppel_machine::geometry::{GeometryError, Point, Size};
+use doppel_machine::input as host;
 
 /// A point on the screen as a fraction of its size: (0, 0) is the top-left
 /// corner, (1, 1) the bottom-right.
@@ -235,9 +239,169 @@ impl Placement {
     }
 }
 
+/// A person's input placed on a guest display `display` points big: the
+/// host input the machine takes. Fractions of the screen scale to points
+/// inside the display (the far edges are its last point, which the VMM
+/// accepts, not one past it).
+impl GuestInput {
+    /// # Errors
+    /// A point that isn't a valid one on the display.
+    pub fn on(self, display: Size) -> Result<host::Input, GeometryError> {
+        let point = |at: Position| {
+            let (width, height) = (display.width(), display.height());
+            Point::new(
+                (at.x() * width).min(width - 1.0).max(0.0),
+                (at.y() * height).min(height - 1.0).max(0.0),
+            )
+        };
+        Ok(match self {
+            Self::Pointer {
+                phase,
+                at,
+                modifiers,
+            } => host::Input::Pointer(host::Pointer {
+                phase: match phase {
+                    PointerPhase::Press { button, clicks } => {
+                        host::PointerPhase::Press(button.on_host(), clicks_on_host(clicks))
+                    }
+                    PointerPhase::Release { button, clicks } => {
+                        host::PointerPhase::Release(button.on_host(), clicks_on_host(clicks))
+                    }
+                    PointerPhase::Move { held } => {
+                        host::PointerPhase::Move(held.map(Button::on_host))
+                    }
+                },
+                at: point(at)?,
+                modifiers: Modifier::on_host(modifiers),
+            }),
+            Self::Scroll { at, dx, dy } => host::Input::Scroll {
+                at: point(at)?,
+                dx: dx * display.width(),
+                dy: dy * display.height(),
+            },
+            Self::Key { key, modifiers } => host::Input::Key(host::KeyChord {
+                modifiers: Modifier::on_host(modifiers),
+                key: key.on_host(),
+            }),
+        })
+    }
+}
+
+/// Clicking on past a triple still selects as a triple.
+fn clicks_on_host(clicks: u32) -> host::ClickCount {
+    host::ClickCount::try_from(clicks.clamp(1, 3)).unwrap_or(host::ClickCount::Single)
+}
+
+impl Button {
+    const fn on_host(self) -> host::Button {
+        match self {
+            Self::Left => host::Button::Left,
+            Self::Right => host::Button::Right,
+        }
+    }
+}
+
+impl Modifier {
+    fn on_host(modifiers: Vec<Self>) -> Vec<host::Modifier> {
+        modifiers
+            .into_iter()
+            .map(|modifier| match modifier {
+                Self::Command => host::Modifier::Command,
+                Self::Shift => host::Modifier::Shift,
+                Self::Option => host::Modifier::Option,
+                Self::Control => host::Modifier::Control,
+            })
+            .collect()
+    }
+}
+
+impl Key {
+    fn on_host(self) -> host::Key {
+        match self {
+            Self::Character(c) => host::Key::Character(c),
+            Self::Named(named) => host::Key::Named(match named {
+                NamedKey::Return => host::NamedKey::Return,
+                NamedKey::Tab => host::NamedKey::Tab,
+                NamedKey::Space => host::NamedKey::Space,
+                NamedKey::Delete => host::NamedKey::Delete,
+                NamedKey::ForwardDelete => host::NamedKey::ForwardDelete,
+                NamedKey::Escape => host::NamedKey::Escape,
+                NamedKey::Left => host::NamedKey::Left,
+                NamedKey::Right => host::NamedKey::Right,
+                NamedKey::Up => host::NamedKey::Up,
+                NamedKey::Down => host::NamedKey::Down,
+                NamedKey::Home => host::NamedKey::Home,
+                NamedKey::End => host::NamedKey::End,
+                NamedKey::PageUp => host::NamedKey::PageUp,
+                NamedKey::PageDown => host::NamedKey::PageDown,
+                NamedKey::F(n) => host::NamedKey::F(n),
+            }),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn display() -> Size {
+        Size::new(1280.0, 800.0).unwrap()
+    }
+
+    fn at(x: f64, y: f64) -> Position {
+        Position::new(x, y).unwrap()
+    }
+
+    #[test]
+    fn input_becomes_host_input_inside_the_display() {
+        let press = GuestInput::Pointer {
+            phase: PointerPhase::Press {
+                button: Button::Right,
+                clicks: 5,
+            },
+            at: at(1.0, 1.0),
+            modifiers: vec![Modifier::Shift],
+        }
+        .on(display())
+        .unwrap();
+        assert_eq!(
+            press,
+            host::Input::Pointer(host::Pointer {
+                phase: host::PointerPhase::Press(host::Button::Right, host::ClickCount::Triple),
+                // The far edges are the display's last point.
+                at: Point::new(1279.0, 799.0).unwrap(),
+                modifiers: vec![host::Modifier::Shift],
+            })
+        );
+        let scroll = GuestInput::Scroll {
+            at: at(0.5, 0.5),
+            dx: 0.0,
+            dy: -0.1,
+        }
+        .on(display())
+        .unwrap();
+        assert_eq!(
+            scroll,
+            host::Input::Scroll {
+                at: Point::new(640.0, 400.0).unwrap(),
+                dx: 0.0,
+                dy: -80.0,
+            }
+        );
+        let key = GuestInput::Key {
+            key: Key::Named(NamedKey::F(5)),
+            modifiers: Vec::new(),
+        }
+        .on(display())
+        .unwrap();
+        assert_eq!(
+            key,
+            host::Input::Key(host::KeyChord {
+                modifiers: Vec::new(),
+                key: host::Key::Named(host::NamedKey::F(5)),
+            })
+        );
+    }
 
     fn keystroke(key: &str) -> gpui::Keystroke {
         gpui::Keystroke {

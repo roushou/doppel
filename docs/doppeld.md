@@ -162,10 +162,11 @@ second rather than jumping. `doppel_scene::film` decides what is drawn at
 each frame, as shapes in display points (`doppel_scene::attention` decides
 what was taken in, from the snapshots the recording kept); `doppel-vmm
 export` paints them on the frames and encodes the result, at `--fps` (30
-by default). The desktop viewer draws the same shapes over the live screen
-and in replay, with the agent's reason for its call beside its pointer;
-an agent that does nothing next lets go of what it took in after a few
-seconds. The browser viewer draws its own overlay.
+by default). The viewer draws the same shapes over the live screen and in
+replay, with the agent's reason for its call beside its pointer
+(`film::Caption`); an agent that does nothing next lets go of what it took
+in after a few seconds. In a browser it is the same window, built for
+WebAssembly.
 
 A recorded session is a folder in the data directory's `recordings/`, named
 for when it started and its session: `2026-11-13T21-04-05Z-s3/`. It holds:
@@ -300,9 +301,9 @@ the protocol can change without changing bundles. The pure types are
 2. **Sessions don't survive a daemon restart.** They end as `DaemonStopped`,
    and clients reconnect into a new session. Resuming one would need
    persisted refs and queues.
-3. **Two viewers.** The browser viewer runs on any device and makes sharing
-   a run a link; the desktop viewer is the fastest view on the Mac itself,
-   from shared memory.
+3. **One viewer, two places.** The same window runs in a browser, on any
+   device, which makes sharing a run a link, and on the desktop, the
+   fastest view on the Mac itself, from shared memory.
 4. **Tokens, not client certificates,** for the browser: pinned client
    certificates would need installing on every device, which phones make
    awkward. The cost: a browser warns about the self-signed certificate

@@ -1,7 +1,6 @@
 //! A recording, as replay needs it: each video with where it sits in the
 //! session, the trace's calls, and the arithmetic between a video's
-//! playhead and the session's clock. Pure: the browser viewer's
-//! `recordings.ts`.
+//! playhead and the session's clock. Pure.
 
 use doppel_machine::geometry::Size;
 use std::fmt;

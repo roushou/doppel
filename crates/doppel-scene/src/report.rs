@@ -1,6 +1,6 @@
 //! A machine's report, parsed once into what the status bar shows: whether
 //! its guest agent answers, the app in front, the display's size, and how
-//! many checkpoints it keeps. The browser viewer's `lib/report.ts`.
+//! many checkpoints it keeps.
 
 use doppel_machine::agent::Session as GuestSession;
 

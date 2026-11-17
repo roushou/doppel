@@ -312,7 +312,7 @@ pub fn initially_folded(snapshot: &AxSnapshot) -> HashSet<NodeIndex> {
 /// The part of an element's frame inside every enclosing element's: what's
 /// on screen of it. A text area's frame is its whole document, scrolled
 /// mostly out of its window. `None` when it has no frame, or none of it
-/// is seen. The browser viewer has the same (`seen` in `lib/tree.ts`).
+/// is seen.
 pub fn seen(snapshot: &AxSnapshot, index: NodeIndex) -> Option<Rect> {
     let own = frame(snapshot.tree.get(index)?)?;
     ancestors(snapshot, index)

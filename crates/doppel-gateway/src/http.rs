@@ -6,7 +6,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use sha1::{Digest as _, Sha1};
 
-use crate::assets::{Asset, Assets};
+use crate::assets::{Asset, Assets, CACHE_CONTROL, Encoding};
 
 /// The longest request head read before giving up on it.
 pub(crate) const MAX_HEAD: usize = 16 * 1024;
@@ -187,9 +187,10 @@ pub(crate) struct VideoRequest {
     pub(crate) wanted: Wanted,
 }
 
-/// Headers every response carries.
+/// Headers every response carries. Scripts may compile WebAssembly (the
+/// viewer), never evaluate strings.
 const SECURITY: &str = "Content-Security-Policy: default-src 'self'; \
-    connect-src 'self'; img-src 'self' data: blob:; \
+    script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; img-src 'self' data: blob:; \
     style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; \
     form-action 'none'\r\n\
     X-Content-Type-Options: nosniff\r\n\
@@ -228,7 +229,13 @@ pub(crate) enum HttpError {
 /// What a request gets.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Route<'a> {
-    File(&'a Asset),
+    /// A file of the page, sent as `encoding`.
+    File {
+        asset: &'a Asset,
+        encoding: Encoding,
+    },
+    /// A file the browser has this version of already.
+    NotModified(&'a Asset),
     /// A recording's video: answered once the token and the file are
     /// checked.
     Video(VideoRequest),
@@ -322,7 +329,16 @@ impl Request {
             });
         }
         if self.path != SOCKET_PATH {
-            return assets.get(&self.path).map_or(Route::NotFound, Route::File);
+            return assets.get(&self.path).map_or(Route::NotFound, |asset| {
+                if asset.matches(self.header("if-none-match")) {
+                    Route::NotModified(asset)
+                } else {
+                    Route::File {
+                        asset,
+                        encoding: Encoding::best(self.header("accept-encoding"), asset),
+                    }
+                }
+            });
         }
         let has = |name, token: &str| {
             self.header(name).is_some_and(|value| {
@@ -376,18 +392,29 @@ impl Route<'_> {
             .into_bytes()
         };
         match self {
-            Self::File(asset) => {
+            Self::File { asset, encoding } => {
+                let body = asset.bytes(*encoding);
+                let coded = encoding
+                    .name()
+                    .map_or_else(String::new, |name| format!("Content-Encoding: {name}\r\n"));
                 let mut bytes = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\n\
-                     Cache-Control: {}\r\n{SECURITY}Connection: close\r\n\r\n",
+                    "HTTP/1.1 200 OK\r\nContent-Type: {}\r\n{coded}Content-Length: {}\r\n\
+                     ETag: {}\r\nCache-Control: {CACHE_CONTROL}\r\nVary: Accept-Encoding\r\n\
+                     {SECURITY}Connection: close\r\n\r\n",
                     asset.content_type,
-                    asset.body.len(),
-                    asset.cache.header(),
+                    body.len(),
+                    asset.etag,
                 )
                 .into_bytes();
-                bytes.extend_from_slice(asset.body);
+                bytes.extend_from_slice(body);
                 bytes
             }
+            Self::NotModified(asset) => format!(
+                "HTTP/1.1 304 Not Modified\r\nETag: {}\r\nCache-Control: {CACHE_CONTROL}\r\n\
+                 Vary: Accept-Encoding\r\n{SECURITY}Connection: close\r\n\r\n",
+                asset.etag,
+            )
+            .into_bytes(),
             Self::Upgrade { accept } => format!(
                 "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n\
                  Connection: Upgrade\r\nSec-WebSocket-Accept: {accept}\r\n\r\n"
@@ -422,13 +449,18 @@ pub(crate) fn not_found() -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::assets::Cache;
 
     const PAGE: Asset = Asset {
         path: "/index.html",
         content_type: "text/html; charset=utf-8",
+        etag: "\"0123abcd\"",
         body: b"<!doctype html>",
-        cache: Cache::Revalidate,
+        brotli: Some(b"br-bytes"),
+        gzip: None,
+    };
+    const PLAIN: Route<'static> = Route::File {
+        asset: &PAGE,
+        encoding: Encoding::Identity,
     };
     const ASSETS: Assets = Assets::new(&[PAGE]);
 
@@ -457,7 +489,7 @@ mod tests {
                 "{cut}"
             );
         }
-        assert_eq!(request(head).route(&ASSETS), Route::File(&PAGE));
+        assert_eq!(request(head).route(&ASSETS), PLAIN);
         assert_eq!(
             Request::parse(&vec![b'a'; MAX_HEAD + 1]),
             Err(HttpError::TooLarge)
@@ -480,7 +512,7 @@ mod tests {
     fn files_are_found_by_path_and_only_got() {
         assert_eq!(
             request("GET /index.html HTTP/1.1\r\n\r\n").route(&ASSETS),
-            Route::File(&PAGE)
+            PLAIN
         );
         assert_eq!(
             request("GET /tokens.json HTTP/1.1\r\n\r\n").route(&ASSETS),
@@ -665,7 +697,8 @@ mod tests {
     #[test]
     fn every_response_but_the_upgrade_closes_and_carries_the_policy() {
         for route in [
-            Route::File(&PAGE),
+            PLAIN,
+            Route::NotModified(&PAGE),
             Route::NotFound,
             Route::MethodNotAllowed,
             Route::ForeignOrigin,
@@ -677,8 +710,67 @@ mod tests {
             assert!(response.contains("Content-Security-Policy: default-src 'self'"));
             assert!(response.contains("frame-ancestors 'none'"));
         }
-        let page = String::from_utf8(Route::File(&PAGE).response()).unwrap();
+        let page = String::from_utf8(PLAIN.response()).unwrap();
         assert!(page.starts_with("HTTP/1.1 200 OK\r\n"));
         assert!(page.ends_with("\r\n\r\n<!doctype html>"));
+    }
+
+    #[test]
+    fn the_page_answers_its_places() {
+        for path in [
+            "/",
+            "/machines",
+            "/machines/live",
+            "/replay",
+            "/replay/2026-11-17T01-55-02Z-s1",
+        ] {
+            let head = format!("GET {path} HTTP/1.1\r\n\r\n");
+            assert_eq!(request(&head).route(&ASSETS), PLAIN, "{path}");
+        }
+        for path in ["/machinesx", "/replays", "/recordings"] {
+            let head = format!("GET {path} HTTP/1.1\r\n\r\n");
+            assert_eq!(request(&head).route(&ASSETS), Route::NotFound, "{path}");
+        }
+    }
+
+    #[test]
+    fn a_file_comes_compressed_when_asked_and_not_again_once_held() {
+        let get = |extra: &str| request(&format!("GET / HTTP/1.1\r\n{extra}\r\n")).route(&ASSETS);
+        let sent = |encoding| Route::File {
+            asset: &PAGE,
+            encoding,
+        };
+        assert_eq!(get(""), sent(Encoding::Identity));
+        assert_eq!(
+            get("Accept-Encoding: gzip, deflate, br\r\n"),
+            sent(Encoding::Brotli)
+        );
+        assert_eq!(
+            get("Accept-Encoding: br;q=0, gzip\r\n"),
+            sent(Encoding::Identity)
+        );
+        assert_eq!(get("Accept-Encoding: BR;q=0.5\r\n"), sent(Encoding::Brotli));
+        assert_eq!(
+            get("If-None-Match: \"0123abcd\"\r\n"),
+            Route::NotModified(&PAGE)
+        );
+        assert_eq!(
+            get("If-None-Match: W/\"0123abcd\"\r\n"),
+            Route::NotModified(&PAGE)
+        );
+        assert_eq!(get("If-None-Match: \"old\"\r\n"), sent(Encoding::Identity));
+
+        let response = String::from_utf8(sent(Encoding::Brotli).response()).unwrap();
+        assert!(
+            response.contains("\r\nContent-Encoding: br\r\n"),
+            "{response}"
+        );
+        assert!(response.contains("\r\nContent-Length: 8\r\n"));
+        assert!(response.contains("\r\nETag: \"0123abcd\"\r\n"));
+        assert!(response.contains("\r\nVary: Accept-Encoding\r\n"));
+        assert!(response.ends_with("\r\n\r\nbr-bytes"));
+        let held = String::from_utf8(Route::NotModified(&PAGE).response()).unwrap();
+        assert!(held.starts_with("HTTP/1.1 304 Not Modified\r\n"), "{held}");
+        assert!(held.ends_with("\r\n\r\n"));
     }
 }
