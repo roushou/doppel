@@ -103,6 +103,7 @@ message DaemonRequest {
     ObserveText observe_text = 55;
     MarkScreen mark_screen = 56;
     DeleteCheckpoint delete_checkpoint = 57;
+    MakeTemporaryMachine make_temporary_machine = 58;
   }
 }
 
@@ -146,6 +147,7 @@ message DaemonResponse {
     WebStatus web_status = 34;
     RecordingList recording_list = 35;
     Recording recording = 36;
+    TemporaryMachineMade temporary_machine_made = 37;
   }
 }
 
@@ -219,6 +221,9 @@ message Lineage {
     Done working = 1;
     // A template to fork from.
     GoldenRole golden = 2;
+    // Made for one client of the daemon: deleted when the connection that
+    // asked for it closes, or when the daemon next starts.
+    Done temporary = 7;
   }
   oneof origin {
     // Made before origins were recorded: unknown.
@@ -445,6 +450,21 @@ message RunForks {
   string name = 1;
   string label = 2;
   uint32 count = 3;
+}
+
+// Makes a fresh fork of a golden image's template for this connection,
+// stopped, named "{golden}-{template}-{n}" with the next free number, and
+// marked temporary in its lineage as it is made. When the connection closes
+// it is powered off and deleted, recordings kept, unless its role was
+// changed since; a daemon that stops first deletes it when it next starts.
+// Refused, before anything is made, for a machine that isn't a golden image
+// or when it wouldn't fit beside the running machines (two VMs at most).
+message MakeTemporaryMachine {
+  string golden = 1;
+}
+
+message TemporaryMachineMade {
+  string name = 1;
 }
 
 message ForksRun {

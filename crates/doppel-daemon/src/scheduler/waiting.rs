@@ -180,8 +180,7 @@ impl Waiting {
         }
     }
 
-    /// A call outside any connection's order.
-    #[cfg(test)]
+    /// A call outside any connection's order: one the daemon makes itself.
     pub(crate) fn alone(self: &Arc<Self>) -> Call {
         let connection = self.connection();
         self.arrive(connection, None, Cancel::never())

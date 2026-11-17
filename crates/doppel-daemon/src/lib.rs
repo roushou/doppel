@@ -38,6 +38,7 @@ use doppel_host::capabilities::WallClock;
 use doppel_host::files::Filesystem;
 use doppel_host::machines::Machines;
 use doppel_host::store::StoreError;
+use doppel_machine::machine::MachineName;
 use doppel_protocol::exchange::Heard;
 use doppel_protocol::pb::common::v1 as common;
 use doppel_protocol::pb::daemon::v1 as daemon;
@@ -198,6 +199,8 @@ where
         std::thread::scope(|scope| {
             // The browser viewer's listener, while its setting is on.
             scope.spawn(|| self.web.supervise(self));
+            // Those a daemon before this one made and didn't remove.
+            scope.spawn(|| self.remove_leftover_temporary_machines());
             let accepted = if self.serving.wake_with(wake) {
                 self.accept(listener, &woken, scope)
             } else {
@@ -285,6 +288,7 @@ where
             replies: Replies::new(&stream, Self::WRITE_TIMEOUT)?,
             in_flight: Mutex::new(HashMap::new()),
             session: Mutex::new(None),
+            temporary_machines: Mutex::new(Vec::new()),
         };
         link.replies.greet()?;
         let read = std::thread::scope(|scope| {
@@ -303,6 +307,10 @@ where
             if let Some(recordings) = self.scheduler.close(session, end) {
                 recordings.finish(&self.machines);
             }
+        }
+        let made = std::mem::take(&mut *link.temporary_machines());
+        for machine in &made {
+            self.remove_temporary_machine(machine);
         }
         read
     }
@@ -456,6 +464,9 @@ pub(crate) struct Link {
     replies: Replies<daemon::DaemonFrame>,
     in_flight: Mutex<HashMap<u64, Cancel>>,
     session: Mutex<Option<SessionId>>,
+    /// The temporary machines made for this connection: removed when it
+    /// closes.
+    temporary_machines: Mutex<Vec<MachineName>>,
 }
 
 impl Link {
@@ -472,6 +483,12 @@ impl Link {
 
     pub(crate) fn session(&self) -> MutexGuard<'_, Option<SessionId>> {
         self.session.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    pub(crate) fn temporary_machines(&self) -> MutexGuard<'_, Vec<MachineName>> {
+        self.temporary_machines
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
     }
 
     fn response(id: u64, outcome: daemon::daemon_response::Outcome) -> daemon::DaemonFrame {
@@ -546,6 +563,7 @@ mod tests {
             replies: Replies::new(&ours, std::time::Duration::from_secs(10)).unwrap(),
             in_flight: Mutex::new(HashMap::new()),
             session: Mutex::new(None),
+            temporary_machines: Mutex::new(Vec::new()),
         }
     }
 

@@ -781,6 +781,27 @@ impl Handle for daemon::RunForks {
     }
 }
 
+impl Handle for daemon::MakeTemporaryMachine {
+    const ASKERS: Askers = Askers::ThisMac;
+    const TURN: Turn = Turn::Waits;
+    // It makes a new machine from the golden image's files; the golden
+    // image itself isn't touched.
+    const GUEST: Guest = Guest::Kept;
+
+    fn machine(&self) -> Option<&str> {
+        Some(&self.golden)
+    }
+
+    fn run<C: WallClock + Clone + Send + Sync, F: Filesystem + Sync>(
+        self,
+        daemon: &Daemon<C, F>,
+        call: &Call,
+        link: &Link,
+    ) -> Result<Self::Answer, Refusal> {
+        daemon.make_temporary_machine_request(&self, call, link)
+    }
+}
+
 impl Handle for daemon::IssueToken {
     const ASKERS: Askers = Askers::ThisMac;
     const TURN: Turn = Turn::Skips;

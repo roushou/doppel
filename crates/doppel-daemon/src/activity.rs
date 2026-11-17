@@ -198,6 +198,7 @@ pub(crate) fn started(
         | Operation::RestoreMachine(_)
         | Operation::ForkMachine(_)
         | Operation::RunForks(_)
+        | Operation::MakeTemporaryMachine(_)
         | Operation::DeleteMachine(_)
         | Operation::DeleteCheckpoint(_) => (Gesture::Lifecycle, None),
         Operation::ListMachines(_)

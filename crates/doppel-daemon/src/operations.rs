@@ -11,6 +11,7 @@ use doppel_host::machines::{
     CHECKPOINT_TIMEOUT, CLAIM_TIMEOUT, CheckpointReport, Claim, Listing, MachineError, Machines,
     Resumed, START_TIMEOUT, STOP_TIMEOUT, StopOutcome, StopReport,
 };
+use doppel_host::store::{Listed, StoreError};
 use doppel_host::vmm::{StopMode, VmmError};
 use doppel_machine::agent::AgentReport;
 use doppel_machine::ax::tree::{ActOn, AxSnapshot, Menus, Scope, SnapshotRequest};
@@ -22,6 +23,7 @@ use doppel_machine::exec::{ExecOutput, ExecRequest};
 use doppel_machine::files::{ReadRequest, WriteRequest};
 use doppel_machine::input::Input;
 use doppel_machine::input::Via;
+use doppel_machine::lineage::{RecordedLineage, Role};
 use doppel_machine::login::{LoginOutcome, LoginPolicy};
 use doppel_machine::machine::MachineName;
 use doppel_machine::outcome::{Certainty, Failure, Outcome, Unconfirmed};
@@ -840,6 +842,221 @@ impl Failure for ForksError {
     }
 }
 
+/// Why a temporary machine wasn't made. Nothing is left behind: a fork
+/// that failed partway is removed.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum TemporaryMachineError {
+    #[error("machine '{0}' does not exist")]
+    NoSuchMachine(MachineName),
+    #[error(
+        "machine '{0}' isn't a golden image: `doppel golden prepare {0}` makes it one, or name one `doppel ls` lists as golden"
+    )]
+    NotGolden(MachineName),
+    #[error("machine '{machine}' has a lineage file that can't be read ({reason})")]
+    LineageUnreadable {
+        machine: MachineName,
+        reason: String,
+    },
+    #[error(transparent)]
+    Plan(#[from] PlanError),
+    #[error(transparent)]
+    Mac(#[from] MacError),
+    #[error(transparent)]
+    Turn(CallError),
+    #[error(transparent)]
+    Listing(MachineError),
+    #[error("making {name} failed")]
+    Making {
+        name: MachineName,
+        #[source]
+        source: Box<CallError>,
+    },
+}
+
+impl Failure for TemporaryMachineError {
+    fn certainty(&self) -> Certainty {
+        match self {
+            Self::NoSuchMachine(_)
+            | Self::NotGolden(_)
+            | Self::LineageUnreadable { .. }
+            | Self::Plan(_)
+            | Self::Mac(_)
+            | Self::Turn(_)
+            | Self::Listing(_) => Certainty::NotDone,
+            // A fork that failed partway is removed before this is answered,
+            // or left marked temporary for the daemon's next start.
+            Self::Making { source, .. } => source.certainty(),
+        }
+    }
+}
+
+impl<C, F> Daemon<C, F>
+where
+    C: Clock + Clone + Send + Sync,
+    F: Filesystem + Sync,
+{
+    /// Makes a fresh fork of `golden`'s template, under `golden`'s turn,
+    /// marked [`Role::Temporary`] as it is made. Refused before anything is
+    /// made for a machine that isn't a golden image, or when one more
+    /// wouldn't fit beside the running machines.
+    pub(crate) fn make_temporary_machine(
+        &self,
+        golden: &MachineName,
+        call: &Call,
+    ) -> Result<MachineName, TemporaryMachineError> {
+        let _turn = self
+            .turn(golden, call)
+            .map_err(TemporaryMachineError::Turn)?;
+        let mut existing = Vec::new();
+        let mut running = 0;
+        let mut found = None;
+        for listing in self
+            .machines
+            .list(self.machines.deadline())
+            .map_err(TemporaryMachineError::Listing)?
+        {
+            match listing {
+                Listing::Machine {
+                    name,
+                    status,
+                    lineage,
+                } => {
+                    if matches!(status, Ok(Status::Live(_))) {
+                        running += 1;
+                    }
+                    if name == *golden {
+                        found = Some(lineage);
+                    }
+                    existing.push(name);
+                }
+                Listing::Unrecognized(_) => {}
+            }
+        }
+        let template = match found {
+            None => return Err(TemporaryMachineError::NoSuchMachine(golden.clone())),
+            Some(RecordedLineage::Unreadable(reason)) => {
+                return Err(TemporaryMachineError::LineageUnreadable {
+                    machine: golden.clone(),
+                    reason,
+                });
+            }
+            Some(RecordedLineage::Known(lineage)) => match lineage.role {
+                Role::Golden { template } => template,
+                Role::Working | Role::Temporary => {
+                    return Err(TemporaryMachineError::NotGolden(golden.clone()));
+                }
+            },
+        };
+        let plan = ForkPlan::new(golden, &template, 1, &existing, running)?;
+        let name = plan
+            .names()
+            .first()
+            .cloned()
+            .ok_or(TemporaryMachineError::Plan(PlanError::NoForks))?;
+        let mac = self.macs.mac()?;
+        let making = || -> Result<(), CallError> {
+            let from = self.machines.claim(golden, self.claim_deadline())?;
+            let target = self.machines.claim(&name, self.claim_deadline())?;
+            Ok(from.fork_fresh(&template, &target, mac, Role::Temporary)?)
+        };
+        if let Err(error) = making() {
+            self.remove_temporary_machine(&name);
+            return Err(TemporaryMachineError::Making {
+                name,
+                source: Box::new(error),
+            });
+        }
+        Ok(name)
+    }
+
+    /// Powers a temporary machine off and deletes it. One already gone
+    /// counts as removed; one no longer temporary (its role was changed
+    /// since, to keep it) is kept. One that can't be removed stays, for the
+    /// daemon's next start.
+    pub(crate) fn remove_temporary_machine(&self, machine: &MachineName) {
+        let call = self.scheduler.alone();
+        match self.power_off_and_delete(machine, &call) {
+            Ok(Removed::Gone) => eprintln!("doppeld: {machine} removed: its connection closed"),
+            Ok(Removed::Kept) => eprintln!("doppeld: {machine} kept: it is no longer temporary"),
+            Err(error) => eprintln!(
+                "doppeld: {machine} wasn't removed ({error}); the daemon tries again when it next starts"
+            ),
+        }
+    }
+
+    /// Removes every temporary machine, when the daemon starts: none
+    /// survives its connection, and no connection survives a daemon, so
+    /// each one found was left behind. It reads only the store: a VMM is
+    /// reached only to power a temporary machine off.
+    pub(crate) fn remove_leftover_temporary_machines(&self) {
+        let store = self.machines.store();
+        let listed = match store.machines() {
+            Ok(listed) => listed,
+            Err(error) => {
+                eprintln!("doppeld: temporary machines left behind aren't removed: {error}");
+                return;
+            }
+        };
+        for entry in listed {
+            match entry {
+                Listed::Machine(name) => match store.read_lineage(&store.bundle(&name)) {
+                    RecordedLineage::Known(lineage) if lineage.role == Role::Temporary => {
+                        self.remove_temporary_machine(&name);
+                    }
+                    RecordedLineage::Known(_) | RecordedLineage::Unreadable(_) => {}
+                },
+                Listed::Unrecognized(_) => {}
+            }
+        }
+    }
+
+    /// Its role is read first, so a machine kept since it was made isn't
+    /// deleted.
+    fn power_off_and_delete(
+        &self,
+        machine: &MachineName,
+        call: &Call,
+    ) -> Result<Removed, CallError> {
+        let gone = |error: &CallError| {
+            matches!(
+                error,
+                CallError::Machine(MachineError::Store(StoreError::NoSuchMachine(_)))
+            )
+        };
+        let store = self.machines.store();
+        let bundle = store.bundle(machine);
+        match store.read_spec(&bundle) {
+            Ok(_) => {}
+            Err(StoreError::NoSuchMachine(_)) => return Ok(Removed::Gone),
+            Err(error) => return Err(CallError::Machine(MachineError::Store(error))),
+        }
+        match store.read_lineage(&bundle) {
+            RecordedLineage::Known(lineage) if lineage.role == Role::Temporary => {}
+            RecordedLineage::Known(_) | RecordedLineage::Unreadable(_) => return Ok(Removed::Kept),
+        }
+        match self.stop(machine, StopMode::Force, call) {
+            Ok(_) => {}
+            Err(CallError::Machine(MachineError::NotRunning(_))) => {}
+            Err(error) if gone(&error) => return Ok(Removed::Gone),
+            Err(error) => return Err(error),
+        }
+        match self.delete(machine, call) {
+            Ok(()) => Ok(Removed::Gone),
+            Err(error) if gone(&error) => Ok(Removed::Gone),
+            Err(error) => Err(error),
+        }
+    }
+}
+
+/// What removing a temporary machine did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Removed {
+    /// Deleted now, or already.
+    Gone,
+    /// Not temporary any more, or its role can't be read: left as it is.
+    Kept,
+}
+
 /// How one fresh fork's start went.
 #[derive(Debug)]
 pub(crate) enum ForkStart {
@@ -898,7 +1115,7 @@ where
                 let making = || -> Result<(), CallError> {
                     let from = self.machines.claim(source, self.claim_deadline())?;
                     let target = self.machines.claim(name, self.claim_deadline())?;
-                    Ok(from.fork_fresh(label, &target, mac)?)
+                    Ok(from.fork_fresh(label, &target, mac, Role::Working)?)
                 };
                 if let Err(error) = making() {
                     return Err(ForksError::Making {

@@ -443,9 +443,10 @@ impl<C: Clock, F: Filesystem> Claim<'_, C, F> {
         self.machines.fork(self, label, into)
     }
 
-    /// Makes `into` a fresh fork of this machine's checkpoint `label`: its
-    /// disk, login and identity at `mac`, with no memory state, so it
-    /// cold-boots and can run beside this one and other fresh forks.
+    /// Makes `into` a fresh fork of this machine's checkpoint `label` in
+    /// `role`: its disk, login and identity at `mac`, with no memory state,
+    /// so it cold-boots and can run beside this one and other fresh forks.
+    /// Its role is written with it, so it never appears without one.
     ///
     /// # Errors
     /// See [`MachineError`]. Interrupted, it leaves a staging directory the
@@ -455,8 +456,9 @@ impl<C: Clock, F: Filesystem> Claim<'_, C, F> {
         label: &CheckpointLabel,
         into: &Self,
         mac: MacAddress,
+        role: Role,
     ) -> Result<(), MachineError> {
-        self.machines.fork_fresh(self, label, into, mac)
+        self.machines.fork_fresh(self, label, into, mac, role)
     }
 
     /// Makes this machine a golden image whose new machines start from
@@ -1482,6 +1484,7 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
         label: &CheckpointLabel,
         into: &Claim<'_, C, F>,
         mac: MacAddress,
+        role: Role,
     ) -> Result<(), MachineError> {
         let from = &source.bundle;
         let checkpoint = self.existing_checkpoint(from, label)?;
@@ -1498,7 +1501,7 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
         self.store.write_spec(&fork.spec, &spec.with_mac(mac))?;
         self.store.write_lineage(
             &fork.lineage,
-            &Lineage::forked(from.name().clone(), label.clone()),
+            &Lineage::forked(from.name().clone(), label.clone()).with_role(role),
         )?;
         self.files.apply(&fork.commit)?;
         Ok(())

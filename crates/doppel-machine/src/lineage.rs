@@ -1,5 +1,5 @@
 //! What a machine is for, and where it came from: its role (a working
-//! machine, or a golden image to fork from) and its origin (installed,
+//! machine, a golden image to fork from, or a temporary machine) and its origin (installed,
 //! imported, forked from another's checkpoint).
 //!
 //! Recorded in the bundle's `lineage.pb` ([`crate::bundle::MachineBundle::lineage`]):
@@ -23,6 +23,10 @@ pub enum Role {
     /// A template to fork from: new machines start from its `template`
     /// checkpoint. Starting it lets it drift from that checkpoint.
     Golden { template: CheckpointLabel },
+    /// Made for one client of the daemon (`doppel mcp --from`): deleted when
+    /// the connection that asked for it closes, or when the daemon next
+    /// starts if it couldn't be then.
+    Temporary,
 }
 
 /// How a machine came to be. Only what was recorded when it was made.
@@ -79,7 +83,7 @@ impl Lineage {
     pub const fn template(&self) -> Option<&CheckpointLabel> {
         match &self.role {
             Role::Golden { template } => Some(template),
-            Role::Working => None,
+            Role::Working | Role::Temporary => None,
         }
     }
 }
@@ -142,13 +146,14 @@ pub enum CheckpointKept {
     LineageUnreadable(String),
 }
 
-/// How `ls` and the viewers say it: `golden (template ready)`, `from
-/// golden-27 · ready`, both, or nothing for a working machine whose
+/// How `ls` and the viewers say it: `golden (template ready)`, `temporary`,
+/// `from golden-27 · ready`, a role and an origin, or nothing for a working machine whose
 /// origin wasn't recorded or isn't a fork.
 impl fmt::Display for Lineage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let role = match &self.role {
             Role::Golden { template } => Some(format!("golden (template {template})")),
+            Role::Temporary => Some("temporary".to_owned()),
             Role::Working => None,
         };
         let origin = match &self.origin {
@@ -225,6 +230,18 @@ mod tests {
         assert_eq!(golden.to_string(), "golden (template ready)");
         let back = golden.with_role(Role::Working);
         assert_eq!(back, Lineage::made(Origin::Installed));
+    }
+
+    #[test]
+    fn a_temporary_fork_says_so_and_keeps_no_checkpoint() {
+        let lineage = Lineage::forked("golden-27".parse().unwrap(), label("ready"))
+            .with_role(Role::Temporary);
+        assert_eq!(lineage.to_string(), "temporary, from golden-27 · ready");
+        assert_eq!(lineage.template(), None);
+        assert_eq!(
+            RecordedLineage::Known(lineage).may_delete(&label("ready")),
+            Ok(())
+        );
     }
 
     #[test]

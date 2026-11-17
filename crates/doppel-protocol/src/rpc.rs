@@ -142,6 +142,7 @@ operations! {$
     ObserveText => ScreenText(vmm::RecognizedText),
     MarkScreen => Done(daemon::Done),
     DeleteCheckpoint => Done(daemon::Done),
+    MakeTemporaryMachine => TemporaryMachineMade(daemon::TemporaryMachineMade),
 }
 
 #[cfg(test)]

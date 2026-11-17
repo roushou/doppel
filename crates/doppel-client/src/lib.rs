@@ -1135,6 +1135,27 @@ impl<C: Clock> Client<C> {
         Ok(snapshot.try_into()?)
     }
 
+    /// Makes a fresh fork of `golden`'s template for this connection,
+    /// stopped and marked temporary. The daemon powers it off and deletes
+    /// it when the connection closes, however that happens.
+    ///
+    /// # Errors
+    /// See [`ClientError`]: refused for a machine that isn't a golden
+    /// image, and when one more wouldn't fit beside the running machines.
+    pub fn make_temporary_machine<'a>(
+        &self,
+        golden: &MachineName,
+        call: impl Into<Call<'a>>,
+    ) -> Result<MachineName, ClientError> {
+        let made = self.call(
+            daemon::MakeTemporaryMachine {
+                golden: golden.to_string(),
+            },
+            call,
+        )?;
+        Ok(made.name.parse().map_err(ParseError::from)?)
+    }
+
     /// Removes a stopped machine, its disk and its checkpoints, for good.
     ///
     /// # Errors

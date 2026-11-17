@@ -313,6 +313,7 @@ impl From<&Lineage> for daemon::Lineage {
             Role::Golden { template } => WireRole::Golden(daemon::GoldenRole {
                 checkpoint: template.to_string(),
             }),
+            Role::Temporary => WireRole::Temporary(daemon::Done {}),
         };
         let origin = match &lineage.origin {
             Origin::Unrecorded => WireOrigin::Unrecorded(daemon::Done {}),
@@ -349,6 +350,7 @@ impl TryFrom<&daemon::Lineage> for Lineage {
             Some(WireRole::Golden(golden)) => Role::Golden {
                 template: label("lineage.golden.checkpoint", &golden.checkpoint)?,
             },
+            Some(WireRole::Temporary(_)) => Role::Temporary,
             None => return Err(ParseError::Missing("lineage.role")),
         };
         let origin = match &wire.origin {
@@ -559,7 +561,7 @@ mod tests {
             from: "golden-27".parse().unwrap(),
             checkpoint: "ready".parse().unwrap(),
         };
-        for role in [Role::Working, golden] {
+        for role in [Role::Working, golden, Role::Temporary] {
             for origin in [
                 Origin::Unrecorded,
                 Origin::Installed,

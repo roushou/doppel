@@ -1498,3 +1498,146 @@ fn a_daemon_stopped_before_it_serves_returns_at_once() {
     daemon.stopper().stop();
     daemon.serve(&listener).unwrap();
 }
+
+/// Gives `name` a checkpoint `clean` and makes it a golden image of it.
+fn golden_with_template(scratch: &Scratch, name: &str) {
+    let spec = golden_spec();
+    scratch.machine(name, &spec);
+    let store = scratch.store();
+    let bundle = store.bundle(&name.parse().unwrap());
+    let checkpoint = bundle.checkpoint(&"clean".parse().unwrap());
+    fs::create_dir_all(checkpoint.image.spec.parent().unwrap()).unwrap();
+    fs::write(&checkpoint.image.spec, &spec).unwrap();
+    fs::write(&checkpoint.image.disk, "cp-disk").unwrap();
+    fs::write(&checkpoint.image.aux, "cp-aux").unwrap();
+    fs::write(&checkpoint.memory, "cp-memory").unwrap();
+    let golden = Lineage::made(Origin::Installed).with_role(Role::Golden {
+        template: "clean".parse().unwrap(),
+    });
+    store.write_lineage(&bundle.lineage(), &golden).unwrap();
+}
+
+/// Waits until `check` holds, for a few seconds.
+fn eventually(what: &str, check: impl Fn() -> bool) {
+    let by = SystemClock.now() + Duration::from_secs(5);
+    while !check() {
+        assert!(SystemClock.now() < by, "{what}: not within 5 s");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// The machines' names, as the daemon lists them.
+fn machine_names(client: &Client<SystemClock>) -> Vec<String> {
+    client
+        .machines(soon())
+        .unwrap()
+        .into_iter()
+        .filter_map(|listing| match listing {
+            Listing::Machine { name, .. } => Some(name.to_string()),
+            Listing::Unrecognized(_) => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_temporary_machine_is_a_fresh_fork_removed_when_its_connection_closes() {
+    let scratch = Scratch::new("tempmach");
+    golden_with_template(&scratch, "base");
+    scratch.machine("work", &golden_spec());
+    let socket = serve(&scratch);
+    let other = Client::connect(&socket, SystemClock, soon()).unwrap();
+
+    let client = Client::connect(&socket, SystemClock, soon()).unwrap();
+    // Only from a golden image, and one that exists.
+    for refused in ["work", "nobody"] {
+        match client.make_temporary_machine(&refused.parse().unwrap(), soon()) {
+            Err(ClientError::Remote(RemoteError::InvalidArgument { field, .. })) => {
+                assert_eq!(field, "golden");
+            }
+            other => panic!("{refused}: {other:?}"),
+        }
+    }
+    assert_eq!(machine_names(&other).len(), 2, "nothing was made");
+
+    let made = client
+        .make_temporary_machine(&"base".parse().unwrap(), soon())
+        .unwrap();
+    assert_eq!(made.as_str(), "base-clean-1");
+    let store = scratch.store();
+    let fork = store.bundle(&made);
+    assert_eq!(fs::read_to_string(fork.image().disk).unwrap(), "cp-disk");
+    assert_eq!(
+        store.read_lineage(&fork),
+        RecordedLineage::Known(
+            Lineage::forked("base".parse().unwrap(), "clean".parse().unwrap())
+                .with_role(Role::Temporary)
+        )
+    );
+    assert_eq!(
+        client.status(&made, soon()).unwrap(),
+        Status::Stopped(NextStart::ColdBoot)
+    );
+    // Not a golden image itself: no temporary machine is made from one.
+    match client.make_temporary_machine(&made, soon()) {
+        Err(ClientError::Remote(RemoteError::InvalidArgument { field, .. })) => {
+            assert_eq!(field, "golden");
+        }
+        other => panic!("{other:?}"),
+    }
+
+    // The connection closes: the machine goes; the others stay.
+    drop(client);
+    eventually("the temporary machine removed", || {
+        !machine_names(&other).contains(&"base-clean-1".to_owned())
+    });
+    assert_eq!(machine_names(&other).len(), 2);
+}
+
+#[test]
+fn a_temporary_machine_whose_role_was_changed_is_kept() {
+    let scratch = Scratch::new("tempkept");
+    golden_with_template(&scratch, "base");
+    let socket = serve(&scratch);
+    let client = Client::connect(&socket, SystemClock, soon()).unwrap();
+    let made = client
+        .make_temporary_machine(&"base".parse().unwrap(), soon())
+        .unwrap();
+    let store = scratch.store();
+    let fork = store.bundle(&made);
+    store
+        .write_lineage(
+            &fork.lineage(),
+            &Lineage::forked("base".parse().unwrap(), "clean".parse().unwrap()),
+        )
+        .unwrap();
+    drop(client);
+    // The removal runs as the connection ends; then the machine is still there.
+    let other = Client::connect(&socket, SystemClock, soon()).unwrap();
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(machine_names(&other).contains(&made.to_string()));
+}
+
+#[test]
+fn temporary_machines_a_daemon_left_behind_are_removed_when_the_next_starts() {
+    let scratch = Scratch::new("templeft");
+    golden_with_template(&scratch, "base");
+    let store = scratch.store();
+    for (name, role) in [
+        ("base-clean-1", Role::Temporary),
+        ("base-clean-2", Role::Working),
+    ] {
+        scratch.machine(name, &golden_spec());
+        store
+            .write_lineage(
+                &store.bundle(&name.parse().unwrap()).lineage(),
+                &Lineage::forked("base".parse().unwrap(), "clean".parse().unwrap()).with_role(role),
+            )
+            .unwrap();
+    }
+    let socket = serve(&scratch);
+    let client = Client::connect(&socket, SystemClock, soon()).unwrap();
+    eventually("the leftover removed", || {
+        !machine_names(&client).contains(&"base-clean-1".to_owned())
+    });
+    assert_eq!(machine_names(&client), ["base", "base-clean-2"]);
+}

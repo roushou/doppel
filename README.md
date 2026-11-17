@@ -70,13 +70,12 @@ Then:
   Settings. The account's password is in
   `~/Library/Application Support/Doppel/machines/dev/login-password`.
 
-- Make it a golden image, fork it, and hand the fork to an agent:
+- Make it a golden image, and give each agent session a fresh fork of it,
+  deleted when the session ends:
 
   ```sh
   doppel golden prepare dev
-  doppel fork dev ready work
-  doppel start work
-  claude mcp add doppel -- "$PWD/target/debug/doppel" mcp --machine work
+  claude mcp add doppel -- "$PWD/target/debug/doppel" mcp --from dev
   ```
 
 - `doppel --help` lists every command.

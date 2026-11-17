@@ -25,8 +25,9 @@ use doppel_mcp::{
     StatusReport, ToolAction, ToolCall, ToolOutcome,
 };
 use rmcp::ServiceExt;
+use tokio::sync::watch;
 
-use crate::daemon_at::DaemonAt;
+use crate::daemon_at::{DaemonAt, LIFECYCLE, within};
 
 /// The [`Runner`] `doppel mcp` serves with: each call is a request on the
 /// session's connection, sent from tokio's blocking pool, so calls run
@@ -36,6 +37,44 @@ pub struct Relay {
     client: Arc<Client<SystemClock>>,
     /// Whether the session it opens once the client introduces itself records.
     record: Record,
+    /// The temporary machine made for this session, when it asked for one.
+    made: Option<MadeMachine>,
+}
+
+/// How the session's temporary machine is coming up.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Startup {
+    Starting,
+    /// At an agent-ready desktop.
+    Ready,
+    /// It didn't start, or started without an agent-ready desktop: why.
+    Failed(String),
+}
+
+/// The session's temporary machine: the daemon deletes it when the
+/// session's connection closes.
+#[derive(Debug)]
+struct MadeMachine {
+    name: MachineName,
+    startup: watch::Receiver<Startup>,
+}
+
+impl MadeMachine {
+    /// Waits until it has come up, or failed to.
+    async fn ready(&self) -> Result<(), String> {
+        let mut startup = self.startup.clone();
+        let settled = startup
+            .wait_for(|state| match state {
+                Startup::Starting => false,
+                Startup::Ready | Startup::Failed(_) => true,
+            })
+            .await;
+        match settled.as_deref() {
+            Ok(Startup::Ready) => Ok(()),
+            Ok(Startup::Failed(why)) => Err(why.clone()),
+            Ok(Startup::Starting) | Err(_) => Err("its start was lost".into()),
+        }
+    }
 }
 
 impl Relay {
@@ -55,7 +94,58 @@ impl Relay {
         Ok(Self {
             client: Arc::new(client),
             record,
+            made: None,
         })
+    }
+
+    /// Has the daemon make a temporary machine, a fresh fork of `golden`'s
+    /// template, for this session, and starts it in the background, hidden. Tool calls on it
+    /// wait until its desktop is up. The daemon deletes it when this
+    /// process's connection closes, however the process ends.
+    ///
+    /// # Errors
+    /// The daemon refused or failed to make it: `golden` isn't a golden
+    /// image, or one more machine wouldn't fit beside the running ones.
+    pub fn make_machine(&mut self, golden: &MachineName) -> Result<MachineName> {
+        let name = self
+            .client
+            .make_temporary_machine(golden, within(LIFECYCLE))
+            .with_context(|| format!("making a machine from {golden}"))?;
+        eprintln!("doppel mcp: {name} made from {golden}; starting it");
+        let (tell, startup) = watch::channel(Startup::Starting);
+        let client = Arc::clone(&self.client);
+        let starting = name.clone();
+        std::thread::spawn(move || {
+            let started = Self::start(&client, &starting);
+            match &started {
+                Startup::Ready => eprintln!("doppel mcp: {starting} is ready"),
+                Startup::Failed(why) => eprintln!("doppel mcp: {starting}: {why}"),
+                Startup::Starting => {}
+            }
+            // No one waits any more: the server has ended.
+            let _ = tell.send(started);
+        });
+        self.made = Some(MadeMachine {
+            name: name.clone(),
+            startup,
+        });
+        Ok(name)
+    }
+
+    /// Starts `machine`, hidden, and waits for an agent-ready desktop.
+    fn start(client: &Client<SystemClock>, machine: &MachineName) -> Startup {
+        if let Err(error) = client.start(machine, Window::Hidden, within(LIFECYCLE)) {
+            return Startup::Failed(format!("{machine} didn't start: {error}"));
+        }
+        match client.await_desktop(machine, within(LIFECYCLE)) {
+            Ok(outcome) if outcome.is_ready() => Startup::Ready,
+            Ok(outcome) => Startup::Failed(format!(
+                "{machine} started without an agent-ready desktop: {outcome}"
+            )),
+            Err(error) => Startup::Failed(format!(
+                "{machine} started, but its desktop didn't come up: {error}"
+            )),
+        }
     }
 
     /// What the session is called when the client gives no name.
@@ -100,6 +190,10 @@ pub enum ToolError {
     StillRunning(MachineName),
     #[error("the call didn't finish: {0}")]
     Interrupted(#[source] tokio::task::JoinError),
+    /// The session's temporary machine didn't come up, so the call wasn't
+    /// sent.
+    #[error("{0}; nothing was done")]
+    NotStarted(String),
 }
 
 impl Failure for ToolError {
@@ -114,7 +208,8 @@ impl Failure for ToolError {
                 | ClientError::Encode(_)
                 | ClientError::Remote(_),
             )
-            | Self::StaleRef { .. } => Certainty::NotDone,
+            | Self::StaleRef { .. }
+            | Self::NotStarted(_) => Certainty::NotDone,
             // Sent, and no answer to trust.
             Self::Daemon(
                 ClientError::Io(_)
@@ -159,6 +254,18 @@ impl Runner for Relay {
     /// A cancelled call is cancelled in the daemon: it gives up its place
     /// in the queue, waits end, an exec stops its program.
     async fn run(&self, call: ToolCall, cancellation: Cancellation) -> Ran<ToolError> {
+        if let Some(made) = self.made.as_ref().filter(|made| made.name == call.machine) {
+            let waited = tokio::select! {
+                ready = made.ready() => ready,
+                () = cancellation.cancelled() => Err(format!("{} was still starting", made.name)),
+            };
+            if let Err(why) = waited {
+                return Ran {
+                    outcome: ToolOutcome::Failed(ToolError::NotStarted(why).into()),
+                    notices: Vec::new(),
+                };
+            }
+        }
         let client = Arc::clone(&self.client);
         let machine = call.machine.clone();
         // The MCP client's cancellation, passed on to the daemon client.
@@ -427,5 +534,47 @@ impl Calls<'_> {
             },
             CheckpointResult::InProgress { .. } => CheckpointEnd::InProgress,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn made(startup: watch::Receiver<Startup>) -> MadeMachine {
+        MadeMachine {
+            name: "ready-clean-1".parse().unwrap(),
+            startup,
+        }
+    }
+
+    #[tokio::test]
+    async fn calls_wait_for_the_machine_to_come_up() {
+        let (tell, startup) = watch::channel(Startup::Starting);
+        let machine = made(startup);
+        let told = tokio::spawn(async move {
+            tokio::task::yield_now().await;
+            tell.send(Startup::Ready).unwrap();
+            tell
+        });
+        assert_eq!(machine.ready().await, Ok(()));
+        drop(told.await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn a_failed_start_is_every_call_s_answer() {
+        let (tell, startup) = watch::channel(Startup::Starting);
+        let machine = made(startup);
+        tell.send(Startup::Failed("no VMM".into())).unwrap();
+        assert_eq!(machine.ready().await, Err("no VMM".into()));
+        assert_eq!(machine.ready().await, Err("no VMM".into()));
+    }
+
+    #[tokio::test]
+    async fn a_start_that_never_reports_is_lost_not_ready() {
+        let (tell, startup) = watch::channel(Startup::Starting);
+        let machine = made(startup);
+        drop(tell);
+        assert_eq!(machine.ready().await, Err("its start was lost".into()));
     }
 }
