@@ -4,28 +4,12 @@
 use std::process::ExitCode;
 
 use clap::Parser as _;
-use doppel_cli::{Cli, ErrorMessage};
+use doppel_cli::Cli;
 
-fn main() -> anyhow::Result<ExitCode> {
-    if let Some(file) = std::env::var_os(doppel_host::bootstrap::ASKPASS_ENV) {
-        return Ok(askpass(&file));
-    }
-    let report = match Cli::parse().run() {
-        Ok(report) => report,
-        // Each cause once: Doppel's errors already say theirs.
-        Err(error) => {
-            eprintln!("Error: {}", ErrorMessage::of(&error));
-            return Ok(ExitCode::FAILURE);
-        }
-    };
-    print!("{report}");
-    match report.exit() {
-        // The status a program run in the guest exited with.
-        Some(code) => {
-            std::io::Write::flush(&mut std::io::stdout())?;
-            std::process::exit(code)
-        }
-        None => Ok(ExitCode::SUCCESS),
+fn main() -> ExitCode {
+    match std::env::var_os(doppel_host::bootstrap::ASKPASS_ENV) {
+        Some(file) => askpass(&file),
+        None => Cli::parse().run(),
     }
 }
 
