@@ -1,6 +1,7 @@
-//! Embeds the browser viewer's build, `web/dist`, when there is one: each
-//! file becomes an `Asset`, its bytes compiled in. Without a build, the
-//! gateway serves a page that says so.
+//! Embeds the browser viewer's build, `target/viewer-web` (made by
+//! `scripts/build-web.sh`), when there is one: each file becomes an `Asset`,
+//! its bytes compiled in. Without a build, the gateway serves a page that
+//! says so.
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -39,7 +40,7 @@ fn content_type(path: &Path) -> Option<&'static str> {
 )]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR")?);
-    let dist = manifest.join("../../web/dist");
+    let dist = manifest.join("../../target/viewer-web");
     println!("cargo::rerun-if-changed={}", dist.display());
     let mut code =
         String::from("/// The browser viewer's build, if this doppel was built with one.\n");
@@ -60,16 +61,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let Some(content_type) = content_type(file) else {
                 continue;
             };
-            // Vite names everything under assets/ by its content.
-            let cache = if relative.starts_with("assets/") {
-                "Cache::Immutable"
-            } else {
-                "Cache::Revalidate"
-            };
             let absolute = std::fs::canonicalize(file)?;
             writeln!(
                 code,
-                "    Asset {{ path: {:?}, content_type: {content_type:?}, body: include_bytes!({:?}), cache: {cache} }},",
+                "    Asset {{ path: {:?}, content_type: {content_type:?}, body: include_bytes!({:?}), cache: Cache::Revalidate }},",
                 format!("/{relative}"),
                 absolute.display().to_string(),
             )?;

@@ -68,6 +68,9 @@ impl Buffer {
     pub(crate) fn size(&self) -> (usize, usize) {
         (self.0.get_width(), self.0.get_height())
     }
+
+    /// It's been replaced: the pool takes it back once GPUI lets go.
+    pub(crate) fn release(self, _cx: &mut gpui::App) {}
 }
 
 /// Why a frame couldn't be put in a buffer.

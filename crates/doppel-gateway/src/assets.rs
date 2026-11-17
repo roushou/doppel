@@ -4,17 +4,14 @@
 /// How long a browser may keep a file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Cache {
-    /// Asked again each time: the page, whose name never changes.
+    /// Asked again each time: every file keeps its name across builds.
     Revalidate,
-    /// Kept: a file whose name changes with its content.
-    Immutable,
 }
 
 impl Cache {
     pub(crate) const fn header(self) -> &'static str {
         match self {
             Self::Revalidate => "no-cache",
-            Self::Immutable => "public, max-age=31536000, immutable",
         }
     }
 }
@@ -39,7 +36,7 @@ impl Assets {
         path: "/index.html",
         content_type: "text/html; charset=utf-8",
         body: b"<!doctype html>\n<meta charset=\"utf-8\">\n<title>doppel</title>\n\
-            <p>This doppel was built without its browser viewer.</p>\n",
+            <p>This doppel was built without its browser viewer: <code>scripts/build-web.sh</code> builds it.</p>\n",
         cache: Cache::Revalidate,
     }]);
 

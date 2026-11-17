@@ -1,5 +1,5 @@
-//! Small pieces the window is built of, styled as the browser viewer's
-//! (`web/src/app.css`): buttons, labels, dots, the logo and the spinner.
+//! Small pieces the window is built of: buttons, labels, dots, the logo
+//! and the spinner.
 //! Chrome labels are small, monospaced and upper case; GPUI has no
 //! text-transform, so the strings are upper-cased where they are built.
 

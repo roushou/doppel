@@ -274,7 +274,7 @@ impl View {
     /// the daemon listening on `socket`, which `client` is connected to.
     pub(crate) fn run(self, client: Client<SystemClock>, socket: &Path) -> Result<()> {
         let daemon = port::DaemonPort::new(socket.to_path_buf(), self.frames, self.videos, client);
-        Viewer::new(daemon, port::ViewerClock)
+        Viewer::new(daemon, port::ViewerClock::new())
             .keeping(self.settings)
             .showing(self.names)
             .run();

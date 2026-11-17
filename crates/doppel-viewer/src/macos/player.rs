@@ -11,7 +11,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use core_foundation::base::TCFType;
 use core_video::pixel_buffer::{CVPixelBuffer, CVPixelBufferRef};
@@ -41,7 +41,8 @@ enum Command {
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct Head {
     media: f64,
-    since: Instant,
+    /// On the clock, in ms.
+    since: f64,
     playing: bool,
 }
 
@@ -93,7 +94,7 @@ impl Player {
         let shared = Arc::new(Mutex::new(Shared {
             head: Head {
                 media: seconds,
-                since: clock.now(),
+                since: clock.millis(),
                 playing: false,
             },
             duration: None,
@@ -147,12 +148,7 @@ impl Player {
         let shared = self.shared();
         let head = shared.head;
         let at = if head.playing {
-            head.media
-                + self
-                    .clock
-                    .now()
-                    .saturating_duration_since(head.since)
-                    .as_secs_f64()
+            head.media + seconds_since(head.since, self.clock.millis())
         } else {
             head.media
         };
@@ -179,6 +175,9 @@ impl Player {
     pub(crate) fn failed(&self) -> Option<String> {
         self.shared().failed.clone()
     }
+
+    /// Nothing to free: a replaced buffer goes back to CoreVideo on drop.
+    pub(crate) fn release_stale(&self, _cx: &mut gpui::App) {}
 }
 
 /// The player's thread: the asset, and a reader while frames are wanted.
@@ -198,7 +197,8 @@ struct Reading {
     output: Retained<AVAssetReaderTrackOutput>,
     /// The frame read and not yet due.
     next: Option<(f64, Buffer)>,
-    anchor: (f64, Instant),
+    /// Media seconds, and when they were on the clock, in ms.
+    anchor: (f64, f64),
 }
 
 impl Playback {
@@ -281,9 +281,7 @@ impl Playback {
                 Command::Pause => {
                     if let Some(reading) = &reading {
                         let (media, at) = reading.anchor;
-                        position = (media
-                            + self.clock.now().saturating_duration_since(at).as_secs_f64())
-                        .min(duration);
+                        position = (media + seconds_since(at, self.clock.millis())).min(duration);
                     }
                     playing = false;
                     reading = None;
@@ -381,7 +379,7 @@ impl Playback {
                 _reader: reader,
                 output,
                 next: None,
-                anchor: (seconds, clock.now()),
+                anchor: (seconds, clock.millis()),
             })
         }
     }
@@ -421,12 +419,12 @@ impl Playback {
             },
         };
         let (media, at) = reading.anchor;
-        let due = at + Duration::from_secs_f64((next.0 - media).max(0.0));
-        let now = clock.now();
+        let due = at + (next.0 - media).max(0.0) * 1000.0;
+        let now = clock.millis();
         if due <= now {
             Step::Show(next.0, next.1)
         } else {
-            let left = due.saturating_duration_since(now);
+            let left = Duration::from_secs_f64((due - now) / 1000.0);
             reading.next = Some(next);
             Step::Wait(left)
         }
@@ -455,4 +453,9 @@ enum Step {
     Show(f64, Buffer),
     Wait(Duration),
     Done,
+}
+
+/// Seconds from `since` to `now`, both on the clock in ms; never negative.
+fn seconds_since(since: f64, now: f64) -> f64 {
+    ((now - since) / 1000.0).max(0.0)
 }

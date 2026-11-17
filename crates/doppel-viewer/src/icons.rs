@@ -1,5 +1,5 @@
-//! The icons the window draws: Lucide's (ISC, `assets/icons/LICENSE`), the
-//! same the browser viewer uses, built into the binary.
+//! The icons the window draws: Lucide's (ISC, `assets/icons/LICENSE`),
+//! built into the binary.
 
 use std::borrow::Cow;
 
@@ -48,6 +48,7 @@ macro_rules! icons {
 
 icons! {
     ArrowDownUp => "arrow-down-up",
+    ArrowLeft => "arrow-left",
     Bookmark => "bookmark",
     Check => "check",
     ChevronRight => "chevron-right",
@@ -108,6 +109,7 @@ mod tests {
     fn every_icon_is_built_in() {
         for icon in [
             Icon::Pointer,
+            Icon::ArrowLeft,
             Icon::X,
             Icon::TrashTwo,
             Icon::TriangleAlert,
@@ -125,6 +127,6 @@ mod tests {
             assert!(matches!(Assets.load(icon.path()), Ok(Some(_))), "{icon:?}");
         }
         assert!(matches!(Assets.load("icons/none.svg"), Ok(None)));
-        assert_eq!(Assets.list("icons/").map(|all| all.len()).ok(), Some(38));
+        assert_eq!(Assets.list("icons/").map(|all| all.len()).ok(), Some(39));
     }
 }

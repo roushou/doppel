@@ -252,7 +252,14 @@ impl ScreenView {
             update,
             std::mem::replace(&mut self.state, ViewState::Waiting),
         ) {
-            (Update::Frame(frame), _) => ViewState::Showing(frame),
+            (Update::Frame(frame), ViewState::Showing(old) | ViewState::Ended(Some(old))) => {
+                old.release(cx);
+                ViewState::Showing(frame)
+            }
+            (
+                Update::Frame(frame),
+                ViewState::Waiting | ViewState::Ended(None) | ViewState::Failed(_),
+            ) => ViewState::Showing(frame),
             (Update::Ended, ViewState::Showing(last)) => {
                 self.steer(SteerEvent::Ended, cx);
                 cx.emit(ScreenEvent::Ended);

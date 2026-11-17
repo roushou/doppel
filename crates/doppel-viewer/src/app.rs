@@ -9,7 +9,7 @@
 
 use std::borrow::Cow;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use doppel_machine::machine::MachineName;
 use futures::StreamExt;
@@ -24,7 +24,7 @@ use gpui::{
 
 use crate::ask::{Ask, AskEvent, Choice, Question};
 use crate::elements::Named;
-use crate::icons::{Assets, Icon};
+use crate::icons::Icon;
 use crate::inspect::{self, Act, Empty, Inspect, Looking, Pointing};
 use crate::model::{
     Action, Bay, Group, Hold, Machine, MachineState, Order, Provenance, Run, Session,
@@ -74,46 +74,40 @@ const SEGMENT: &str = "doppel-segment";
 pub(crate) struct Window;
 
 impl Window {
-    pub(crate) fn run(
+    /// Opens the window in `cx`, once the platform has launched
+    /// (`platform::launch`). False when it can't be opened.
+    pub(crate) fn open(
         daemon: Arc<dyn Daemon>,
         clock: Arc<dyn LocalClock>,
         settings: Arc<dyn Settings>,
         shown: Vec<MachineName>,
-    ) {
-        gpui_platform::application()
-            .with_assets(Assets)
-            .run(move |cx: &mut App| {
-                // Without them the window falls back to the system's fonts.
-                let _ = cx
-                    .text_system()
-                    .add_fonts(FONTS.iter().map(|font| Cow::Borrowed(*font)).collect());
-                cx.set_global(Theme::dark());
-                // Opens zoomed to fill the screen: the machine's picture is
-                // the point. Un-zoomed, it takes this centred size.
-                let bounds = Bounds::centered(None, size(px(1280.), px(820.)), cx);
-                let opened = cx.open_window(
-                    WindowOptions {
-                        window_bounds: Some(WindowBounds::Maximized(bounds)),
-                        titlebar: Some(TitlebarOptions {
-                            title: Some("doppel".into()),
-                            ..TitlebarOptions::default()
-                        }),
-                        window_min_size: Some(size(px(480.), px(360.))),
-                        ..WindowOptions::default()
-                    },
-                    |window, cx| {
-                        crate::platform::tag_window(window);
-                        cx.set_global(Theme::chosen(settings.theme(), window.appearance()));
-                        cx.new(|cx| Root::new(daemon, clock, settings, shown, window, cx))
-                    },
-                );
-                if opened.is_err() {
-                    cx.quit();
-                    return;
-                }
-                cx.on_window_closed(|cx, _| cx.quit()).detach();
-                cx.activate(true);
-            });
+        cx: &mut App,
+    ) -> bool {
+        // Without them the window falls back to the system's fonts.
+        let _ = cx
+            .text_system()
+            .add_fonts(FONTS.iter().map(|font| Cow::Borrowed(*font)).collect());
+        cx.set_global(Theme::dark());
+        // Opens zoomed to fill the screen: the machine's picture is the
+        // point. Un-zoomed, it takes this centred size.
+        let bounds = Bounds::centered(None, size(px(1280.), px(820.)), cx);
+        cx.open_window(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Maximized(bounds)),
+                titlebar: Some(TitlebarOptions {
+                    title: Some("doppel".into()),
+                    ..TitlebarOptions::default()
+                }),
+                window_min_size: Some(size(px(480.), px(360.))),
+                ..WindowOptions::default()
+            },
+            |window, cx| {
+                crate::platform::tag_window(window);
+                cx.set_global(Theme::chosen(settings.theme(), window.appearance()));
+                cx.new(|cx| Root::new(daemon, clock, settings, shown, window, cx))
+            },
+        )
+        .is_ok()
     }
 }
 
@@ -237,7 +231,8 @@ struct Root {
     daemon: Arc<dyn Daemon>,
     clock: Arc<dyn LocalClock>,
     /// The timelines' zero.
-    origin: Instant,
+    /// When the window opened, on the clock in ms.
+    origin: f64,
     page: Page,
     view: View,
     /// How the bays and their machines are laid out.
@@ -298,7 +293,7 @@ impl Root {
             window.refresh();
         });
         Self {
-            origin: clock.now(),
+            origin: clock.millis(),
             daemon,
             clock,
             page: Page::Connecting,
@@ -408,11 +403,7 @@ impl Root {
     }
 
     fn now(&self) -> f64 {
-        self.clock
-            .now()
-            .saturating_duration_since(self.origin)
-            .as_secs_f64()
-            * 1000.0
+        self.clock.millis() - self.origin
     }
 
     /// Watches what agents do, opening the stream again a little after it

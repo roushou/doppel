@@ -1,6 +1,5 @@
-//! The window's colours, fonts and sizes: the browser viewer's design
-//! tokens (`web/src/app.css`), dark and light, picked by the system's
-//! appearance.
+//! The window's colours, fonts and sizes, dark and light, picked by the
+//! system's appearance.
 //!
 //! Blueprint slate, dark and light: square and
 //! hairline, Geist for people's words and Geist Mono for the machine's. The

@@ -1507,6 +1507,8 @@ dependencies = [
  "futures",
  "gpui-pre",
  "gpui-pre-platform",
+ "image",
+ "js-sys",
  "objc2 0.6.5",
  "objc2-av-foundation",
  "objc2-core-foundation",
@@ -1514,8 +1516,12 @@ dependencies = [
  "objc2-core-video",
  "objc2-foundation 0.3.2",
  "objc2-video-toolbox",
+ "prost",
  "raw-window-handle",
  "thiserror 2.0.21",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]

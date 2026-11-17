@@ -454,16 +454,29 @@ fn watching(mut stream: ActivityStream<SystemClock>) -> Activity {
     Box::pin(arrived)
 }
 
-/// The time, for the viewer: monotonic, and local to name checkpoints by.
-pub(crate) struct ViewerClock;
+/// The time, for the viewer: monotonic, from when it was made, and local
+/// to name checkpoints by.
+pub(crate) struct ViewerClock {
+    origin: Instant,
+}
 
-impl Clock for ViewerClock {
-    fn now(&self) -> Instant {
-        SystemClock.now()
+impl ViewerClock {
+    pub(crate) fn new() -> Self {
+        Self {
+            origin: SystemClock.now(),
+        }
     }
 }
 
 impl doppel_viewer::LocalClock for ViewerClock {
+    fn millis(&self) -> f64 {
+        SystemClock
+            .now()
+            .saturating_duration_since(self.origin)
+            .as_secs_f64()
+            * 1000.0
+    }
+
     fn local(&self) -> LocalTime {
         local(SystemClock.wall())
     }

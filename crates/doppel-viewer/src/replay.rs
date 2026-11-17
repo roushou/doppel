@@ -8,7 +8,6 @@ use std::cell::Cell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::time::Instant;
 
 use doppel_machine::ax::tree::AxSnapshot;
 
@@ -343,8 +342,8 @@ impl Render for Recordings {
                                     "recordings-back",
                                     &theme,
                                     Look::Ghost,
-                                    None,
-                                    Some("← Recordings".into()),
+                                    Some(Icon::ArrowLeft),
+                                    Some("Recordings".into()),
                                 )
                                 .on_press(cx.listener(|page, _, _, cx| page.load(cx))),
                             )
@@ -460,7 +459,8 @@ pub(crate) struct Replay {
     /// seeks to its end though the video stops at the screen's last change.
     transport: Transport,
     /// The wall clock's zero, for the transport's milliseconds.
-    epoch: Instant,
+    /// When the replay opened, on the clock in ms.
+    epoch: f64,
     /// Whose screen is shown, when the session had several machines.
     machine: Option<MachineName>,
     /// The session's time is before the shown machine's first video.
@@ -482,7 +482,7 @@ impl Replay {
         recording: Recording,
         cx: &mut Context<Self>,
     ) -> Self {
-        let epoch = clock.now();
+        let epoch = clock.millis();
         let mut replay = Self {
             daemon,
             clock,
@@ -561,6 +561,7 @@ impl Replay {
     fn woken(&mut self, cx: &mut Context<Self>) {
         if let Some(playing) = &self.playing {
             let _ = playing.player.take_ended();
+            playing.player.release_stale(cx);
         }
         cx.notify();
     }
@@ -571,11 +572,7 @@ impl Replay {
 
     /// The wall clock, in the transport's milliseconds.
     fn wall(&self) -> f64 {
-        self.clock
-            .now()
-            .saturating_duration_since(self.epoch)
-            .as_secs_f64()
-            * 1000.0
+        self.clock.millis() - self.epoch
     }
 
     /// The session's length as traced, at least a second.

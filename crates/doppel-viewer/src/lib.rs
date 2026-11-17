@@ -1,5 +1,5 @@
-//! The desktop window for running machines: the browser viewer's design
-//! and features (`web/`), drawn with GPUI.
+//! The window for running machines, drawn with GPUI: on the desktop, and
+//! in a browser as WebAssembly.
 //!
 //! A sidebar lists the machines, running and stopped, and the agents
 //! driving them; the stage shows one machine, two side by side, or every
@@ -10,11 +10,11 @@
 //! person's clicks, drags, scrolls and keys to it until they hand it back.
 //!
 //! Everything the window knows and does goes through the [`Daemon`] port,
-//! which the shell implements. Each screen brings a [`FrameSource`]:
-//! whatever produces its frames, or an [`EncodedSource`] of H.264 frames,
-//! which the viewer decodes. The viewer reads each source on a thread of
-//! its own, keeps only its latest frame, and draws it with GPUI's surface
-//! element, which takes NV12 directly.
+//! which the shell implements on the desktop, and the viewer itself in a
+//! browser. On the desktop each screen brings a source of its frames, raw
+//! or H.264, which the viewer reads on a thread of its own, decodes, and
+//! draws with GPUI's surface element, which takes NV12 directly. In a
+//! browser the daemon's H.264 frames are decoded by the browser.
 
 pub mod answers;
 mod app;
@@ -44,12 +44,17 @@ pub use macos::ports::{
     EncodedSource, FrameError, FrameRef, FrameSource, InputSink, Next, NextEncoded, Screen,
     Takeover,
 };
+#[cfg(target_family = "wasm")]
+mod web;
+#[cfg(target_family = "wasm")]
+use web as platform;
+#[cfg(target_family = "wasm")]
+pub use web::Screen;
 
 pub use doppel_machine::agent::AgentReport;
 pub use doppel_machine::agent::AgentStatus;
 pub use doppel_machine::ax::tree::AxSnapshot;
 pub use doppel_machine::bundle::CheckpointLabel;
-pub use doppel_machine::deadline::Clock;
 pub use doppel_machine::geometry::Size;
 pub use doppel_machine::machine::MachineName;
 pub use doppel_machine::vm::MachineReport;
@@ -73,7 +78,6 @@ pub use timeline::{
 
 use std::error::Error;
 use std::future::Future;
-use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -93,12 +97,15 @@ impl SourceError {
 /// Where a recording's video plays from: a file on this Mac, for the
 /// desktop's player; its address on the gateway, for the browser's.
 #[cfg(target_os = "macos")]
-pub type VideoAt = PathBuf;
+pub type VideoAt = std::path::PathBuf;
+#[cfg(target_family = "wasm")]
+pub type VideoAt = String;
 
-/// The time: monotonic, from the one [`Clock`] port, for the timelines and
-/// the overlay's motion; and the local date a checkpoint's suggested label
-/// carries.
-pub trait LocalClock: Clock + Send + Sync + 'static {
+/// The time: milliseconds on a monotonic clock, from an origin of its
+/// own, for the timelines, the overlay's motion and replay; and the local
+/// date a checkpoint's suggested label carries.
+pub trait LocalClock: Send + Sync + 'static {
+    fn millis(&self) -> f64;
     fn local(&self) -> LocalTime;
 }
 
@@ -217,8 +224,7 @@ pub trait Daemon: 'static {
 }
 
 /// Which theme the window shows: the system's appearance, or light or
-/// dark whatever the system says. The browser viewer has the same
-/// (`web/src/lib/theme.ts`).
+/// dark whatever the system says.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ThemeChoice {
     #[default]
@@ -346,10 +352,17 @@ impl Viewer {
         self
     }
 
-    /// Opens the window and runs until it's closed. Takes over the main
-    /// thread, as macOS requires of a GUI.
+    /// Opens the window. On the desktop it runs until it's closed, and
+    /// takes over the main thread, as macOS requires of a GUI; in the
+    /// browser it returns once the page draws it.
     pub fn run(self) {
-        app::Window::run(self.daemon, self.clock, self.settings, self.shown);
+        let Self {
+            daemon,
+            clock,
+            settings,
+            shown,
+        } = self;
+        platform::launch(move |cx| app::Window::open(daemon, clock, settings, shown, cx));
     }
 }
 

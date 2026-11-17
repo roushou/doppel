@@ -13,3 +13,22 @@ mod srgb;
 pub(crate) use pixels::Buffer as Frame;
 pub(crate) use player::Player;
 pub(crate) use srgb::tag as tag_window;
+
+use gpui::App;
+
+use crate::icons::Assets;
+
+/// Launches the app, and opens the window with `open`: the app quits when
+/// it's closed, or when it can't be opened.
+pub(crate) fn launch(open: impl FnOnce(&mut App) -> bool + 'static) {
+    gpui_platform::application()
+        .with_assets(Assets)
+        .run(move |cx: &mut App| {
+            if !open(cx) {
+                cx.quit();
+                return;
+            }
+            cx.on_window_closed(|cx, _| cx.quit()).detach();
+            cx.activate(true);
+        });
+}
