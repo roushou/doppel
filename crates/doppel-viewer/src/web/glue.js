@@ -223,3 +223,26 @@ export function keepTheme(theme) {
     return false;
   }
 }
+
+/** The page's path: where the window is. */
+export function address() {
+  return location.pathname;
+}
+
+/** Shows `path` in the address bar: a new entry Back returns from, or in place of the current one. */
+export function showAddress(path, replace) {
+  if (location.pathname === path) return;
+  if (replace) history.replaceState(null, "", path);
+  else history.pushState(null, "", path);
+}
+
+/** Calls `onChange` with the path each time Back or Forward moves; returns what `unwatchAddress` takes. */
+export function watchAddress(onChange) {
+  const listener = () => onChange(location.pathname);
+  addEventListener("popstate", listener);
+  return listener;
+}
+
+export function unwatchAddress(listener) {
+  removeEventListener("popstate", listener);
+}

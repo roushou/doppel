@@ -113,9 +113,18 @@ impl Assets {
         }
     }
 
-    /// The file at `path`; `/` is the page.
+    /// The file at `path`. The page answers `/` and every place in it
+    /// (`/machines/…`, `/replay/…`), which it reads from its address.
     pub(crate) fn get(&self, path: &str) -> Option<&Asset> {
-        let path = if path == "/" { "/index.html" } else { path };
+        let place = |prefix: &str| {
+            path.strip_prefix(prefix)
+                .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+        };
+        let path = if path == "/" || place("/machines") || place("/replay") {
+            "/index.html"
+        } else {
+            path
+        };
         self.0.iter().find(|asset| asset.path == path)
     }
 }

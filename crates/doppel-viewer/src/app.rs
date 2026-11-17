@@ -22,6 +22,7 @@ use gpui::{
     prelude::FluentBuilder, px, relative, rgb, size,
 };
 
+use crate::address::Entry;
 use crate::ask::{Ask, AskEvent, Choice, Question};
 use crate::elements::Named;
 use crate::icons::Icon;
@@ -35,6 +36,7 @@ use crate::panel::{Overlay, Panels};
 use crate::reading;
 use crate::replay::Recordings;
 use crate::report::{self, Guest, Login, Report};
+use crate::route::Route;
 use crate::screen::{self, ScreenEvent, ScreenView};
 use crate::stage::{Split, Stage};
 use crate::steering::Steering;
@@ -258,6 +260,10 @@ struct Root {
     settings: Arc<dyn Settings>,
     /// The theme chosen: the system's, light or dark.
     theme: ThemeChoice,
+    /// The place last shown in the address bar; `None` before the first.
+    route: Option<Route>,
+    /// Follows Back and Forward.
+    _address: Task<()>,
 }
 
 impl Root {
@@ -269,6 +275,26 @@ impl Root {
         window: &mut GpuiWindow,
         cx: &mut Context<Self>,
     ) -> Self {
+        // Opened at a place: a link to a machine, or to a replay.
+        let start = crate::platform::address::current().and_then(|path| Route::parse(&path));
+        let shown = match (&start, shown.is_empty()) {
+            (Some(Route::Machine(name)), true) => vec![name.clone()],
+            (Some(_) | None, _) => shown,
+        };
+        let address = cx.spawn(async move |root, cx| {
+            let mut changes = crate::platform::address::changes();
+            while let Some(path) = changes.next().await {
+                let moved = root.update(cx, |root, cx| {
+                    let route = Route::parse(&path).unwrap_or(Route::Machines);
+                    // Already where the address bar says: nothing to show.
+                    root.route = Some(route.clone());
+                    root.go(&route, cx);
+                });
+                if moved.is_err() {
+                    return;
+                }
+            }
+        });
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
         let poll = cx.spawn(async move |root, cx| {
@@ -292,7 +318,7 @@ impl Root {
             cx.set_global(Theme::chosen(root.theme, window.appearance()));
             window.refresh();
         });
-        Self {
+        let mut root = Self {
             origin: clock.millis(),
             daemon,
             clock,
@@ -315,7 +341,80 @@ impl Root {
             _appearance: appearance,
             theme: settings.theme(),
             settings,
+            route: None,
+            _address: address,
+        };
+        if let Some(start) = start {
+            root.go(&start, cx);
         }
+        root
+    }
+
+    /// Shows `route`'s place. A machine that isn't in a bay leaves the
+    /// stage as it is.
+    fn go(&mut self, route: &Route, cx: &mut Context<Self>) {
+        match route {
+            Route::Machines => self.machines_view(cx),
+            Route::Machine(name) => match self.stage.slot_of(name, &self.machines) {
+                Some(slot) => self.show_slot(slot, cx),
+                None => self.machines_view(cx),
+            },
+            Route::Recordings | Route::Replay(_) => {
+                self.recordings_view(None, cx);
+                if let View::Recordings(page) = &self.view {
+                    let id = match route {
+                        Route::Replay(id) => Some(id.clone()),
+                        Route::Machines | Route::Machine(_) | Route::Recordings => None,
+                    };
+                    page.update(cx, |page, cx| {
+                        if page.replaying(cx) != id {
+                            match id {
+                                Some(id) => page.open(id, cx),
+                                None => page.load(cx),
+                            }
+                        }
+                    });
+                }
+            }
+        }
+    }
+
+    /// Where the window is, as a place; `None` until it knows the machines.
+    fn here(&self, cx: &App) -> Option<Route> {
+        match (&self.view, &self.page) {
+            (View::Recordings(page), _) => Some(
+                page.read(cx)
+                    .replaying(cx)
+                    .map_or(Route::Recordings, Route::Replay),
+            ),
+            (View::Machines, Page::Connected) => Some(
+                self.stage
+                    .shows(&self.machines)
+                    .first()
+                    .map_or(Route::Machines, |machine| {
+                        Route::Machine(machine.name.clone())
+                    }),
+            ),
+            (View::Machines, Page::Connecting | Page::Closed(_)) => None,
+        }
+    }
+
+    /// Shows where the window is in the address bar, once it has moved:
+    /// the first place in place of the one the page opened at, each next
+    /// one as an entry Back returns from.
+    fn show_address(&mut self, cx: &App) {
+        let Some(here) = self.here(cx) else {
+            return;
+        };
+        if self.route.as_ref() == Some(&here) {
+            return;
+        }
+        let entry = match self.route {
+            Some(_) => Entry::Push,
+            None => Entry::Replace,
+        };
+        crate::platform::address::show(&here.path(), entry);
+        self.route = Some(here);
     }
 
     /// Moves to the next theme round (system, light, dark) and keeps it.
@@ -2721,6 +2820,7 @@ impl Root {
 
 impl Render for Root {
     fn render(&mut self, window: &mut GpuiWindow, cx: &mut Context<Self>) -> impl IntoElement {
+        self.show_address(cx);
         let theme = *cx.global::<Theme>();
         let root = div()
             .id("root")

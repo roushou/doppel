@@ -3,6 +3,7 @@
 //! recording's video read with AVFoundation, the screen's ports and the
 //! threads that read and feed them, and the window tagged sRGB.
 
+pub(crate) mod address;
 mod decode;
 pub(crate) mod feed;
 mod pixels;

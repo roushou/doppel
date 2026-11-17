@@ -16,6 +16,7 @@
 //! draws with GPUI's surface element, which takes NV12 directly. In a
 //! browser the daemon's H.264 frames are decoded by the browser.
 
+mod address;
 pub mod answers;
 mod app;
 mod ask;
@@ -26,6 +27,7 @@ mod inspect;
 mod overlay;
 mod reading;
 mod replay;
+mod route;
 mod screen;
 mod shapes;
 mod theme;

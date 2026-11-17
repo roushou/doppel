@@ -4,6 +4,7 @@
 //! handed to GPUI as an image; the time and the kept theme from the page.
 //! `run` is what the page calls.
 
+pub(crate) mod address;
 mod connection;
 mod daemon;
 pub(crate) mod feed;

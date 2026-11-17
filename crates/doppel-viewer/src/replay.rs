@@ -88,7 +88,18 @@ impl Recordings {
         self.only.as_ref()
     }
 
-    fn load(&mut self, cx: &mut Context<Self>) {
+    /// The recording it shows, opening or replaying; `None` while it lists
+    /// them.
+    pub(crate) fn replaying(&self, cx: &gpui::App) -> Option<RecordingId> {
+        match &self.showing {
+            Showing::Opening(id) => Some(id.clone()),
+            Showing::Replaying(replay) => Some(replay.read(cx).recording.id.clone()),
+            Showing::Loading | Showing::Listed(_) | Showing::Failed(_) => None,
+        }
+    }
+
+    /// Lists the recordings again.
+    pub(crate) fn load(&mut self, cx: &mut Context<Self>) {
         self.showing = Showing::Loading;
         let listed = self.daemon.recordings();
         self._load = Some(cx.spawn(async move |page, cx| {
@@ -104,7 +115,8 @@ impl Recordings {
         cx.notify();
     }
 
-    fn open(&mut self, id: RecordingId, cx: &mut Context<Self>) {
+    /// Opens recording `id` to replay.
+    pub(crate) fn open(&mut self, id: RecordingId, cx: &mut Context<Self>) {
         self.showing = Showing::Opening(id.clone());
         let opened = self.daemon.open_recording(&id);
         self._load = Some(cx.spawn(async move |page, cx| {

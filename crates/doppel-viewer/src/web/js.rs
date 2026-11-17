@@ -74,4 +74,15 @@ extern "C" {
 
     #[wasm_bindgen(js_name = keepTheme)]
     pub(crate) fn keep_theme(theme: &str) -> bool;
+
+    pub(crate) fn address() -> String;
+
+    #[wasm_bindgen(js_name = showAddress)]
+    pub(crate) fn show_address(path: &str, replace: bool);
+
+    #[wasm_bindgen(js_name = watchAddress)]
+    pub(crate) fn watch_address(on_change: &Closure<dyn FnMut(String)>) -> JsValue;
+
+    #[wasm_bindgen(js_name = unwatchAddress)]
+    pub(crate) fn unwatch_address(listener: &JsValue);
 }

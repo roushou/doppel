@@ -91,6 +91,11 @@ it:
   picked, side by side, and the open launcher.
 - **The daemon's answers** (`doppel_viewer::answers`) become the window's
   words the same way on both targets.
+- **The window's place** (`doppel_viewer::route`) is `/`,
+  `/machines/<name>`, `/replay` or `/replay/<id>`, parsed once from the
+  address. In a browser the address bar shows it, Back and Forward move
+  it, and the gateway serves the page at each of them; a desktop window
+  has none.
 
 ## The command line
 

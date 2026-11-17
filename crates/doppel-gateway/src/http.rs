@@ -716,6 +716,24 @@ mod tests {
     }
 
     #[test]
+    fn the_page_answers_its_places() {
+        for path in [
+            "/",
+            "/machines",
+            "/machines/live",
+            "/replay",
+            "/replay/2026-11-17T01-55-02Z-s1",
+        ] {
+            let head = format!("GET {path} HTTP/1.1\r\n\r\n");
+            assert_eq!(request(&head).route(&ASSETS), PLAIN, "{path}");
+        }
+        for path in ["/machinesx", "/replays", "/recordings"] {
+            let head = format!("GET {path} HTTP/1.1\r\n\r\n");
+            assert_eq!(request(&head).route(&ASSETS), Route::NotFound, "{path}");
+        }
+    }
+
+    #[test]
     fn a_file_comes_compressed_when_asked_and_not_again_once_held() {
         let get = |extra: &str| request(&format!("GET / HTTP/1.1\r\n{extra}\r\n")).route(&ASSETS);
         let sent = |encoding| Route::File {
