@@ -154,7 +154,7 @@ scripts/check.sh
 ```
 
 Every change passes it: formatting, `buf lint`, clippy with warnings denied,
-and the Rust, Swift and web tests. Golden fixtures in `fixtures/` pin what
+and the Rust and Swift tests. Golden fixtures in `fixtures/` pin what
 other programs read; regenerate them with `DOPPEL_UPDATE_GOLDEN=1` after an
 intended change.
 

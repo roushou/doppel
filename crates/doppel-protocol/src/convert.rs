@@ -3426,9 +3426,8 @@ mod activity_convert {
 // --- Films (doppel-scene) -----------------------------------------------------------
 
 mod film_convert {
-    use doppel_scene::film::{Caption, Corner, Glyph, Line, Picture, Shape, Spot};
+    use doppel_scene::film::{Corner, Glyph, Line, Picture, Shape, Spot};
 
-    use crate::pb::film::v1 as film;
     use crate::pb::vmm::v1 as vmm;
 
     impl From<Spot> for vmm::Spot {
@@ -3602,17 +3601,6 @@ mod film_convert {
             Self {
                 shapes: picture.shapes.iter().map(Into::into).collect(),
                 at_ms: picture.at,
-            }
-        }
-    }
-
-    impl From<&Caption> for film::Caption {
-        fn from(caption: &Caption) -> Self {
-            Self {
-                session: caption.session,
-                client: caption.client.clone(),
-                why: caption.why.clone(),
-                tip: Some(caption.tip.into()),
             }
         }
     }

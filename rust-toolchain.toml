@@ -1,5 +1,5 @@
 [toolchain]
 channel = "1.99.0"
 components = ["clippy", "rustfmt"]
-# The browser viewer's film is Rust, built for WebAssembly.
+# The viewer also runs in a browser, built for WebAssembly.
 targets = ["wasm32-unknown-unknown"]

@@ -1352,17 +1352,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "doppel-browser-film"
-version = "0.1.0"
-dependencies = [
- "doppel-machine",
- "doppel-protocol",
- "doppel-scene",
- "prost",
- "thiserror 2.0.21",
-]
-
-[[package]]
 name = "doppel-cli"
 version = "0.1.0"
 dependencies = [

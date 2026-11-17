@@ -59,11 +59,6 @@ pub mod pb {
             include!(concat!(env!("OUT_DIR"), "/doppel.daemon.v1.rs"));
         }
     }
-    pub mod film {
-        pub mod v1 {
-            include!(concat!(env!("OUT_DIR"), "/doppel.film.v1.rs"));
-        }
-    }
 }
 
 /// Wire protocol version carried in `Hello.protocol_version`.

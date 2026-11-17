@@ -2,8 +2,7 @@
 //! session's length. It runs on its own, not on a video's: a recording's
 //! video ends at the screen's last change, which may be long before the
 //! trace does, and the trace must still play and seek to its end. The
-//! video follows the clock. Pure: the wall clock is passed in, in ms. The
-//! browser viewer has the same (`web/src/lib/transport.ts`).
+//! video follows the clock. Pure: the wall clock is passed in, in ms.
 
 /// Where the clock stands. Times are in ms; `at` is the session's time.
 #[derive(Debug, Clone, Copy, PartialEq)]

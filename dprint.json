@@ -8,12 +8,7 @@
   "yaml": {
   },
   "excludes": [
-    "**/*-lock.json",
-    "web/pnpm-lock.yaml",
-    "web/node_modules",
-    "web/dist",
-    "web/src/gen",
-    "fixtures/scene"
+    "**/*-lock.json"
   ],
   "plugins": [
     "npm:@dprint/json@0.26.0",

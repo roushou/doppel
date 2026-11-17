@@ -26,10 +26,10 @@ files. People watch and take over from a desktop or browser viewer.
 - **doppeld** ([doppeld.md](doppeld.md)): one daemon per user owns the
   machines; sessions, per-machine call queues, takeover and hand back,
   recordings with traces.
-- **Viewers:** a desktop viewer (GPUI) and a browser viewer, both showing
-  what agents do over the screen, an elements tree, read text, and replay.
-  Both draw the film's shapes (what exports burn in), including the
-  elements an agent reads; the browser runs the film as WebAssembly.
+- **Viewer:** one window (GPUI), on the desktop and in a browser
+  (WebAssembly), showing what agents do over the screen, an elements tree,
+  read text, and replay. It draws the film's shapes (what exports burn
+  in), including the elements an agent reads.
 - **Exports:** `doppel record export` writes a recorded session's video
   with its overlay burned in.
 - **Remote:** another Mac's daemon over `ssh -L` and `--host`; the browser
@@ -110,8 +110,8 @@ used as one pool: placing runs, and a viewer across hosts. Not designed yet.
 
 ## How work is done here
 
-- Every change passes `scripts/check.sh` (web, rustfmt, dprint, buf lint,
-  clippy, cargo test, swift test).
+- Every change passes `scripts/check.sh` (rustfmt, dprint, buf lint,
+  clippy for the desktop and the browser, cargo test, swift test).
 - What can be checked on a live machine is: rebuild with `scripts/build.sh`,
   restart the daemon (`launchctl kickstart -k gui/$(id -u)/dev.doppel.doppeld`),
   and drive a machine.

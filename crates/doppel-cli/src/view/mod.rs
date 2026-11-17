@@ -24,8 +24,6 @@ use doppel_host::capabilities::SystemClock;
 
 use crate::daemon_at::within;
 
-#[cfg(test)]
-mod fixtures;
 mod port;
 mod recordings;
 
