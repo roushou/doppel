@@ -910,8 +910,7 @@ impl Replay {
             && !self.moments.is_empty()
         {
             let moments = self.with_seen();
-            let scene = timeline::scene_at(&moments, now);
-            frame = frame.child(overlay::layer(&moments, &scene, picture, now));
+            frame = frame.child(overlay::layer(&moments, picture, now));
         }
         if let Some(problem) = problem {
             frame = frame.child(

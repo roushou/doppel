@@ -1741,6 +1741,7 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "doppel-machine",
+ "doppel-scene",
  "insta",
  "nix 0.31.3",
  "proptest",

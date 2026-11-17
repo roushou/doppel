@@ -1942,7 +1942,7 @@ impl Root {
                     ));
                 }
                 if let (true, Some(picture)) = (overlay_on && !moments.is_empty(), picture) {
-                    frame = frame.child(overlay::layer(&moments, &scene, picture, now));
+                    frame = frame.child(overlay::layer(&moments, picture, now));
                 }
                 if paused {
                     let resumed = name.clone();

@@ -471,6 +471,47 @@ pub fn pointer_at(moments: &[Moment], session: u64, at: f64) -> Option<Spot> {
     Some(between(before, last.1, ease((at - last.0) / GLIDE_MS)))
 }
 
+/// Words a viewer writes beside an agent's pointer, which a film doesn't
+/// burn in: why it makes its call, and who it is when several act.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Caption {
+    pub session: u64,
+    /// Its client's name, when several agents act and it has one.
+    pub client: Option<String>,
+    /// Why it makes its call under way, when it said.
+    pub why: Option<String>,
+    /// Where its pointer's tip is.
+    pub tip: Spot,
+}
+
+impl Caption {
+    /// Each agent's caption at `at`: one with a call under way that says
+    /// why, or, when several act, that names who makes it; and a pointer
+    /// to go beside.
+    #[must_use]
+    pub fn at(moments: &[Moment], at: f64) -> Vec<Self> {
+        let scene = scene_at(moments, at);
+        let named = scene.agents.len() > 1;
+        scene
+            .agents
+            .iter()
+            .filter_map(|agent| {
+                let current = agent.current.as_ref().map(|(call, _)| call)?;
+                let client = (named && !agent.client.is_empty()).then(|| agent.client.clone());
+                if current.why.is_none() && client.is_none() {
+                    return None;
+                }
+                Some(Self {
+                    session: agent.session,
+                    client,
+                    why: current.why.clone(),
+                    tip: pointer_at(moments, agent.session, at)?,
+                })
+            })
+            .collect()
+    }
+}
+
 /// How much of something shown from `since` until `until` shows at `at`,
 /// fading over `fade` at each end.
 fn faded(at: f64, since: f64, until: f64, fade: f64) -> f64 {
@@ -871,6 +912,38 @@ mod tests {
                 }
             })
             .collect()
+    }
+
+    #[test]
+    fn a_caption_says_why_beside_the_pointer_while_the_call_is_under_way() {
+        let mut said = click(1, 0.0, 100.0, 100.0);
+        said.end_ms = Some(2000.0);
+        said.call.why = Some("open the menu".into());
+        let [caption] = Caption::at(&[said.clone()], 1000.0).try_into().unwrap();
+        assert_eq!(caption.why.as_deref(), Some("open the menu"));
+        assert_eq!(caption.client, None, "one agent goes unnamed");
+        assert_eq!(caption.tip, Spot { x: 100.0, y: 100.0 });
+        assert!(
+            Caption::at(&[said.clone()], 3000.0).is_empty(),
+            "over once it ends"
+        );
+        let mut quiet = said.clone();
+        quiet.call.why = None;
+        assert!(Caption::at(&[quiet], 1000.0).is_empty(), "nothing to say");
+        let mut other = click(1, 0.0, 300.0, 300.0);
+        other.end_ms = Some(2000.0);
+        other.call.key.session = 2;
+        other.call.client = "codex".into();
+        let both = Caption::at(&[said, other], 1000.0);
+        assert_eq!(
+            both.iter()
+                .map(|caption| (caption.client.as_deref(), caption.why.as_deref()))
+                .collect::<Vec<_>>(),
+            [
+                (Some("claude"), Some("open the menu")),
+                (Some("codex"), None)
+            ]
+        );
     }
 
     #[test]
