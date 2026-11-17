@@ -1,11 +1,10 @@
-//! The window: a header with the machine switcher, the pages and the
-//! layouts, the page shown, a status bar of facts about the current
-//! machine, and dialogs and toasts over them. Each page is a module:
-//! `machines` (the stage of machine panels, each with its screen, a rail of
-//! the agents driving it and the tape of their calls), `recordings` and
-//! `replay`. It reads the daemon's lists every two seconds (the daemon has
-//! no machine events yet) and the current machine's report every five, and
-//! watches what agents do for the overlays and tapes.
+//! The window: a header with the pages and the machine slots, the page
+//! shown, and dialogs and toasts over them. Each page is a component of
+//! its own, in its own module: `machines` (the stage of machine panels,
+//! each with its screen, a rail of the agents driving it and the tape of
+//! their calls), `recordings` and `replay`. The window reads the daemon's
+//! lists every two seconds (the daemon has no machine events yet) and
+//! hands them to the machines page.
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -13,7 +12,6 @@ use std::time::Duration;
 
 use doppel_machine::machine::MachineName;
 use futures::StreamExt;
-use futures::channel::oneshot;
 use gpui::{
     App, AppContext, Bounds, Context, Div, ElementId, Entity, FocusHandle, FontWeight, Hsla,
     InteractiveElement, IntoElement, KeyDownEvent, MouseButton, ParentElement, Render,
@@ -29,31 +27,19 @@ mod replay;
 use crate::address::Entry;
 use crate::ask::{Ask, AskEvent, Question};
 use crate::icons::Icon;
-use crate::inspect::{Inspect, Pointing};
-use crate::model::{Action, Bay, Hold, Machine, Order, Session, Tone, Verdict};
-use crate::panel::Panels;
-use crate::report::Report;
+use crate::model::{Machine, Session, Tone};
 use crate::route::Route;
-use crate::screen::{self, ScreenEvent, ScreenView};
-use crate::stage::{Split, Stage};
 use crate::theme::{FONTS, MONO, SANS, Theme};
-use crate::timeline;
 use crate::ui::{self, Button, Look};
 use crate::{Daemon, DaemonError, LocalClock, Settings, ThemeChoice};
-use machines::ElementsShown;
+use machines::{MachinesEvent, MachinesPage};
 use recordings::{Recordings, RecordingsEvent};
 use replay::{ReplayEvent, ReplayPage};
 
-/// How far back a live timeline shows.
-const WINDOW_MS: f64 = 60_000.0;
 /// How often the lists are read again.
 const REFRESH: Duration = Duration::from_secs(2);
-/// How long to wait before watching activity again after the stream ends.
-const REWATCH: Duration = Duration::from_secs(3);
 /// How long a done toast stays.
 const TOAST_FOR: Duration = Duration::from_millis(4500);
-/// How often the staged machines' reports are read again.
-const REPORT_EVERY: Duration = Duration::from_secs(5);
 /// Narrower than this, the header and a panel's footer keep what fits,
 /// and a panel puts its rail under its screen.
 const NARROW: f32 = 860.0;
@@ -137,7 +123,7 @@ struct Toast {
 
 /// The page the main area shows: one for each kind of [`Route`].
 enum Page {
-    /// The stage, showing what [`Stage`] picked.
+    /// The machines page, which the window keeps.
     Machines,
     Recordings(Entity<Recordings>),
     Replay(Entity<ReplayPage>),
@@ -155,61 +141,6 @@ enum Arrival {
     Followed,
 }
 
-/// An entry in a panel's menu.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum MenuItem {
-    Recordings,
-    Act(Action),
-}
-
-/// What a panel's screen is looked at through: the screen alone; the
-/// elements the agent last saw (their boxes over it, their tree in the
-/// rail), with what is pointed at and picked; or the text read off it.
-enum Lens {
-    Screen,
-    Elements(Inspect),
-    Text,
-}
-
-/// A lens, as its radio offers it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LensKind {
-    Screen,
-    Elements,
-    Text,
-}
-
-impl LensKind {
-    const ALL: [Self; 3] = [Self::Screen, Self::Elements, Self::Text];
-
-    const fn label(self) -> &'static str {
-        match self {
-            Self::Screen => "screen",
-            Self::Elements => "elements",
-            Self::Text => "text",
-        }
-    }
-
-    fn lens(self) -> Lens {
-        match self {
-            Self::Screen => Lens::Screen,
-            Self::Elements => Lens::Elements(Inspect::new()),
-            Self::Text => Lens::Text,
-        }
-    }
-}
-
-impl Lens {
-    const fn kind(&self) -> LensKind {
-        match self {
-            Self::Screen => LensKind::Screen,
-            Self::Elements(_) => LensKind::Elements,
-            Self::Text => LensKind::Text,
-        }
-    }
-}
-
-/// Whether the machine switcher's list is open.
 /// How a segment of a hairline row looks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Segment {
@@ -224,51 +155,19 @@ enum Segment {
     SignalLine,
 }
 
-/// A machine's open screen, and the window's subscription to it.
-struct Shown {
-    view: Entity<ScreenView>,
-    _events: Subscription,
-}
-
-/// What the window holds for a machine's panel besides its screen: its
-/// lens (with the elements' scroll and layer).
-struct Handles {
-    lens: Lens,
-}
-
-impl Default for Handles {
-    fn default() -> Self {
-        Self { lens: Lens::Screen }
-    }
-}
-
 struct Root {
     daemon: Arc<dyn Daemon>,
     clock: Arc<dyn LocalClock>,
-    /// The timelines' zero.
-    /// When the window opened, on the clock in ms.
-    origin: f64,
     link: Link,
     page: Page,
-    /// How the bays and their machines are laid out.
-    stage: Stage,
-    machines: Vec<Machine>,
-    sessions: Vec<Session>,
-    /// What the window keeps about each machine.
-    panels: Panels<Shown, Handles>,
-    /// The panel whose menu is open.
-    menu: Option<MachineName>,
-    /// The menu a press outside last closed, and when.
-    menu_closed: Option<(MachineName, f64)>,
+    /// The machines page, kept while other pages show.
+    machines: Entity<MachinesPage>,
     ask: Option<(Entity<Ask>, Subscription)>,
     toasts: Vec<Toast>,
     next_toast: u64,
     focus: FocusHandle,
-    /// Redraws a little later, while a timeline shows calls but nothing moves.
-    later: Option<Task<()>>,
     _poll: Task<()>,
-    _reporting: Task<()>,
-    _watch: Task<()>,
+    _machines_events: [Subscription; 2],
     _appearance: Subscription,
     settings: Arc<dyn Settings>,
     /// The theme chosen: the system's, light or dark.
@@ -281,7 +180,7 @@ struct Root {
     waiting: Option<MachineName>,
     /// The machine the next recordings page lists first.
     recordings_for: Option<MachineName>,
-    /// What the page shown tells the window.
+    /// What the recordings or replay page tells the window.
     _page_events: Option<Subscription>,
     /// Follows Back and Forward.
     _address: Task<()>,
@@ -321,39 +220,30 @@ impl Root {
                 cx.background_executor().timer(REFRESH).await;
             }
         });
-        let reporting = cx.spawn(async move |root, cx| {
-            loop {
-                cx.background_executor().timer(REPORT_EVERY).await;
-                if root.update(cx, |root, cx| root.read_reports(cx)).is_err() {
-                    return;
-                }
-            }
-        });
-        let watch = Self::watch(daemon.clone(), cx);
+        let machines = cx.new(|cx| MachinesPage::new(daemon.clone(), clock.clone(), shown, cx));
+        let machines_events = [
+            // Its header slots are drawn here.
+            cx.observe(&machines, |_, _, cx| cx.notify()),
+            cx.subscribe_in(&machines, window, |root, _, event, window, cx| {
+                root.machines_event(event, window, cx);
+            }),
+        ];
         let appearance = cx.observe_window_appearance(window, |root: &mut Self, window, cx| {
             cx.set_global(Theme::chosen(root.theme, window.appearance()));
             window.refresh();
         });
         let mut root = Self {
-            origin: clock.millis(),
             daemon,
             clock,
             link: Link::Connecting,
             page: Page::Machines,
-            stage: Stage::of(shown),
-            machines: Vec::new(),
-            sessions: Vec::new(),
-            panels: Panels::default(),
-            menu: None,
-            menu_closed: None,
+            machines,
             ask: None,
             toasts: Vec::new(),
             next_toast: 0,
             focus,
-            later: None,
             _poll: poll,
-            _reporting: reporting,
-            _watch: watch,
+            _machines_events: machines_events,
             _appearance: appearance,
             theme: settings.theme(),
             settings,
@@ -383,7 +273,6 @@ impl Root {
 
     /// Shows `route`'s page, and says which place it shows.
     fn show(&mut self, route: Route, cx: &mut Context<Self>) -> Route {
-        self.menu = None;
         match route {
             Route::Machines => {
                 self.enter_machines(cx);
@@ -400,11 +289,8 @@ impl Root {
                         return Route::Machine(name);
                     }
                 }
-                match self.stage.bring(&name, &self.machines) {
-                    Ok(()) => {
-                        self.sync_screens(cx);
-                        Route::Machine(name)
-                    }
+                match self.machines.update(cx, |page, cx| page.bring(&name, cx)) {
+                    Ok(()) => Route::Machine(name),
                     Err(why) => {
                         self.toast(ToastTone::Refused, format!("Can't show {name}: {why}."), cx);
                         Route::Machines
@@ -429,7 +315,7 @@ impl Root {
                         }));
                     self.page = Page::Recordings(page);
                 }
-                self.leave_machines(cx);
+                self.machines.update(cx, |page, cx| page.hide(cx));
                 Route::Recordings
             }
             Route::Replay(id) => {
@@ -449,7 +335,7 @@ impl Root {
                         }));
                     self.page = Page::Replay(page);
                 }
-                self.leave_machines(cx);
+                self.machines.update(cx, |page, cx| page.hide(cx));
                 Route::Replay(id)
             }
         }
@@ -475,102 +361,6 @@ impl Root {
         window.refresh();
     }
 
-    /// Milliseconds on the timelines' clock.
-    /// Takes in what a person did in `name`'s elements panel.
-    fn inspected(&mut self, name: &MachineName, pointing: Pointing, cx: &mut Context<Self>) {
-        let now = self.now();
-        if pointing == Pointing::Look {
-            self.look(name, now, cx);
-            return;
-        }
-        let panel = self.panels.of(name);
-        let seen = ElementsShown::of(panel.timeline(), panel.look(), now)
-            .snapshot
-            .ok();
-        let Lens::Elements(inspect) = &mut panel.handles_mut().lens else {
-            return;
-        };
-        let before = (inspect.pointed, inspect.picked);
-        let changes = !matches!(pointing, Pointing::Hover(_) | Pointing::Leave(_));
-        if !inspect.apply(pointing, seen.as_deref()) {
-            panel.handles_mut().lens = Lens::Screen;
-        } else if !changes && before == (inspect.pointed, inspect.picked) {
-            // The pointer moved within the same element: nothing to redraw.
-            return;
-        }
-        cx.notify();
-    }
-
-    /// Takes a person's own look at `name`'s elements: the agents driving
-    /// it lose nothing (no turn, and the guest keeps none of it).
-    fn look(&mut self, name: &MachineName, now: f64, cx: &mut Context<Self>) {
-        self.panels.of(name).looking(now);
-        cx.notify();
-        let observed = self.daemon.observe(name);
-        let name = name.clone();
-        cx.spawn(async move |root, cx| {
-            let observed = observed.await;
-            let _ = root.update(cx, |root, cx| {
-                // Only the latest look's answer counts.
-                let outcome = match observed {
-                    Ok(snapshot) => timeline::Looked::Seen(Arc::new(snapshot)),
-                    Err(error) => timeline::Looked::Failed(error.to_string()),
-                };
-                if root.panels.of(&name).looked(now, outcome) {
-                    cx.notify();
-                }
-            });
-        })
-        .detach();
-    }
-
-    /// Reads `name`'s screen text for a person: the host's view of the
-    /// display, so the agents driving it lose nothing.
-    fn read_now(&mut self, name: &MachineName, cx: &mut Context<Self>) {
-        let now = self.now();
-        self.panels.of(name).reading(now);
-        cx.notify();
-        let read = self.daemon.observe_text(name);
-        let name = name.clone();
-        cx.spawn(async move |root, cx| {
-            let read = read.await;
-            let _ = root.update(cx, |root, cx| {
-                // Only the latest read's answer counts.
-                let read = read.map(Arc::new).map_err(|error| error.to_string());
-                if root.panels.of(&name).read(now, read) {
-                    cx.notify();
-                }
-            });
-        })
-        .detach();
-    }
-
-    fn now(&self) -> f64 {
-        self.clock.millis() - self.origin
-    }
-
-    /// Watches what agents do, opening the stream again a little after it
-    /// ends or fails; the events land on the timelines.
-    fn watch(daemon: Arc<dyn Daemon>, cx: &mut Context<Self>) -> Task<()> {
-        cx.spawn(async move |root, cx| {
-            loop {
-                if let Ok(mut activity) = daemon.watch().await {
-                    while let Some(Ok(event)) = activity.next().await {
-                        let recorded = root.update(cx, |root, cx| {
-                            let now = root.now();
-                            root.panels.record(event, now);
-                            cx.notify();
-                        });
-                        if recorded.is_err() {
-                            return;
-                        }
-                    }
-                }
-                cx.background_executor().timer(REWATCH).await;
-            }
-        })
-    }
-
     /// Reads the machines and the sessions again.
     fn refresh(&mut self, cx: &mut Context<Self>) {
         let machines = self.daemon.machines();
@@ -588,137 +378,49 @@ impl Root {
         sessions: Result<Vec<Session>, DaemonError>,
         cx: &mut Context<Self>,
     ) {
-        match machines {
-            Ok(machines) => {
-                self.link = Link::Connected;
-                self.machines = machines;
-                if let Some(name) = self.waiting.take() {
-                    self.navigate(Route::Machine(name), Arrival::Followed, cx);
-                }
-            }
+        let machines = match machines {
+            Ok(machines) => Some(machines),
             Err(DaemonError::Unreachable(why)) => {
                 self.link = Link::Closed(why);
-                self.panels.disconnected();
+                self.machines.update(cx, |page, cx| page.disconnected(cx));
                 cx.notify();
                 return;
             }
             // Read again in a moment.
-            Err(DaemonError::Refused(_)) => {}
-        }
-        if let Ok(sessions) = sessions {
-            self.sessions = sessions;
-        }
-        self.sync_screens(cx);
-        // A machine just on stage: its report needn't wait for the next read.
-        if !self.panels.reports_for(&self.stage()) {
-            self.read_reports(cx);
+            Err(DaemonError::Refused(_)) => None,
+        };
+        let listed = machines.is_some();
+        self.machines
+            .update(cx, |page, cx| page.listed(machines, sessions.ok(), cx));
+        if listed {
+            self.link = Link::Connected;
+            if let Some(name) = self.waiting.take() {
+                self.navigate(Route::Machine(name), Arrival::Followed, cx);
+            }
         }
         cx.notify();
     }
 
-    /// Reads the report of every machine on stage, for its panel's footer.
-    /// A failed read keeps the last one.
-    fn read_reports(&mut self, cx: &mut Context<Self>) {
-        let stage = self.stage();
-        self.panels.keep_reports_of(&stage);
-        for name in stage {
-            let read = self.daemon.report(&name);
-            cx.spawn(async move |root, cx| {
-                let Ok(read) = read.await else {
-                    return;
-                };
-                let _ = root.update(cx, |root, cx| {
-                    let stage = root.stage();
-                    if root.panels.reported(&name, Report::parse(&read), &stage) {
-                        cx.notify();
-                    }
-                });
-            })
-            .detach();
-        }
-    }
-
-    /// The machines in the bays now.
-    fn stage(&self) -> Vec<MachineName> {
-        self.stage.names(&self.machines)
-    }
-
-    /// Shows slot `index`: its machine alone, or its launcher.
-    fn show_slot(&mut self, index: usize, cx: &mut Context<Self>) {
-        let name = match self.stage.bays(&self.machines).get(index) {
-            Some(Bay::Machine(machine)) => Some(machine.name.clone()),
-            Some(Bay::Empty(_)) | None => None,
-        };
-        match name {
-            Some(name) => self.navigate(Route::Machine(name), Arrival::Moved, cx),
-            None => {
-                self.stage.show(index);
-                self.navigate(Route::Machines, Arrival::Moved, cx);
-            }
-        }
-    }
-
-    fn machine(&self, name: &MachineName) -> Option<&Machine> {
-        self.machines.iter().find(|machine| &machine.name == name)
-    }
-
-    /// Opens the screens of live machines on stage, and closes the rest:
-    /// a screen that ended is opened again.
-    fn sync_screens(&mut self, cx: &mut Context<Self>) {
-        let on_stage = match self.page {
-            Page::Machines => self.stage(),
-            Page::Recordings(_) | Page::Replay(_) => Vec::new(),
-        };
-        let wanted: Vec<MachineName> = on_stage
-            .into_iter()
-            .filter(|name| {
-                self.machine(name)
-                    .is_some_and(|machine| machine.state.is_live())
-            })
-            .collect();
-        let open = self
-            .panels
-            .sync_screens(&wanted, |shown| shown.view.read(cx).ended());
-        for name in open {
-            let opened = self.daemon.open_screen(&name);
-            cx.spawn(async move |root, cx| {
-                let opened = opened.await;
-                let _ = root.update(cx, |root, cx| {
-                    match opened {
-                        Ok(screen) => {
-                            let view = screen::open(screen, cx);
-                            let machine = name.clone();
-                            let events = cx.subscribe(&view, move |root, _, event, cx| {
-                                root.screen_event(&machine, event, cx);
-                            });
-                            root.panels.of(&name).opened(Ok(Shown {
-                                view,
-                                _events: events,
-                            }));
-                        }
-                        Err(error) => {
-                            root.panels
-                                .of(&name)
-                                .opened(Err(format!("no screen: {error}")));
-                        }
-                    }
-                    cx.notify();
-                });
-            })
-            .detach();
-        }
-    }
-
-    fn screen_event(&mut self, name: &MachineName, event: &ScreenEvent, cx: &mut Context<Self>) {
+    /// Takes in what the machines page tells the window.
+    fn machines_event(
+        &mut self,
+        event: &MachinesEvent,
+        window: &mut GpuiWindow,
+        cx: &mut Context<Self>,
+    ) {
         match event {
-            ScreenEvent::Steering => {}
-            ScreenEvent::Refused(why) => {
-                self.toast(ToastTone::Refused, format!("{name}: {why}"), cx)
-            }
-            // Opened again with the next lists, if it's still live.
-            ScreenEvent::Ended => {}
+            MachinesEvent::Toast(tone, text) => self.toast(*tone, text.clone(), cx),
+            MachinesEvent::Ask(question) => self.ask(question.clone(), window, cx),
+            MachinesEvent::Go(route) => self.navigate(route.clone(), Arrival::Moved, cx),
+            MachinesEvent::Recordings(only) => self.recordings_of(only.clone(), cx),
+            MachinesEvent::Changed => self.refresh(cx),
         }
-        cx.notify();
+    }
+
+    /// The machines page, shown.
+    fn enter_machines(&mut self, cx: &mut Context<Self>) {
+        self.page = Page::Machines;
+        self.machines.update(cx, |page, cx| page.show(cx));
     }
 
     fn toast(&mut self, tone: ToastTone, text: String, cx: &mut Context<Self>) {
@@ -746,90 +448,17 @@ impl Root {
         cx.notify();
     }
 
-    /// Whether the window has control of `name`.
-    /// The inspection shown in `name`'s panel: its elements lens, while
-    /// the machine is `live`.
-    fn inspecting(&self, name: &MachineName, live: bool) -> Option<&Inspect> {
-        match self.panels.get(name).map(|panel| &panel.handles().lens) {
-            Some(Lens::Elements(inspect)) if live => Some(inspect),
-            Some(Lens::Elements(_) | Lens::Screen | Lens::Text) | None => None,
-        }
-    }
-
-    fn driving(&self, name: &MachineName, cx: &App) -> bool {
-        self.panels
-            .get(name)
-            .and_then(|panel| panel.screen().open())
-            .is_some_and(|shown| shown.view.read(cx).driving())
-    }
-
-    /// Holds a session's calls, or lets them go on.
-    fn hold(&mut self, session: &Session, hold: Hold, cx: &mut Context<Self>) {
-        let held = self.daemon.hold(session.id, hold);
-        let who = session.who().to_owned();
-        cx.spawn(async move |root, cx| {
-            let held = held.await;
-            let _ = root.update(cx, |root, cx| {
-                if let Err(error) = held {
-                    root.toast(ToastTone::Refused, format!("{who}: {error}"), cx);
-                }
-                root.refresh(cx);
-            });
-        })
-        .detach();
-    }
-
-    /// Starts an action the person picked: one that needs more asks first.
-    fn pick(
-        &mut self,
-        name: &MachineName,
-        action: Action,
-        window: &mut GpuiWindow,
-        cx: &mut Context<Self>,
-    ) {
-        self.menu = None;
-        let Some(machine) = self.machine(name).cloned() else {
-            return;
-        };
-        match Question::before(action, &machine) {
-            Some(question) => self.ask(question, window, cx),
-            None => {
-                let order = match action {
-                    Action::Start => Order::Start,
-                    Action::Stop => Order::Stop,
-                    Action::Pause => Order::Pause,
-                    Action::Resume => Order::Resume,
-                    // Asked about first; a golden image no longer golden
-                    // by now is started as asked.
-                    Action::StartGolden => Order::Start,
-                    // Asked about first.
-                    Action::FromTemplate
-                    | Action::ForceStop
-                    | Action::Checkpoint
-                    | Action::RollBack
-                    | Action::Restore
-                    | Action::Fork
-                    | Action::NewCopy
-                    | Action::Delete => return,
-                };
-                self.run(name.clone(), order, cx);
-            }
-        }
-    }
-
     fn ask(&mut self, question: Question, window: &mut GpuiWindow, cx: &mut Context<Self>) {
-        let names = self
-            .machines
-            .iter()
-            .map(|machine| machine.name.clone())
-            .collect();
+        let names = self.machines.read(cx).names();
         let daemon = self.daemon.clone();
         let now = self.clock.local();
         let ask = cx.new(|cx| Ask::new(question, daemon, names, now, window, cx));
         let events = cx.subscribe_in(&ask, window, |root, _, event, window, cx| match event {
             AskEvent::Submit(name, order) => {
                 root.close_ask(window, cx);
-                root.run(name.clone(), order.clone(), cx);
+                let (name, order) = (name.clone(), order.clone());
+                root.machines
+                    .update(cx, |page, cx| page.run(name, order, cx));
             }
             AskEvent::Close => {
                 root.close_ask(window, cx);
@@ -845,144 +474,17 @@ impl Root {
         window.focus(&self.focus, cx);
     }
 
-    /// Carries out an order, handing control back first when it ends what
-    /// the person is doing, and says how it went.
-    fn run(&mut self, name: MachineName, order: Order, cx: &mut Context<Self>) {
-        let action = order.action();
-        if !self.panels.of(&name).begin(action) {
-            return;
-        }
-        let handed_back = if action.ends_control() {
-            self.panels
-                .get(&name)
-                .and_then(|panel| panel.screen().open())
-                .map(|shown| shown.view.clone())
-                .and_then(|view| view.update(cx, |view, cx| view.hand_back(cx)))
-        } else {
-            None
-        };
-        let daemon = self.daemon.clone();
-        cx.spawn(async move |root, cx| {
-            if let Some(handed_back) = handed_back {
-                let _ = handed_back.await;
-            }
-            let verdict = daemon.run(&name, &order).await;
-            let _ = root.update(cx, |root, cx| {
-                root.panels.of(&name).finish();
-                match verdict {
-                    Verdict::Done { note, made } => {
-                        let said = note.unwrap_or_else(|| order.done());
-                        root.toast(ToastTone::Done, format!("{name}: {said}"), cx);
-                        // A machine made running takes an empty bay by itself.
-                        let _ = made;
-                    }
-                    Verdict::Refused(why) => {
-                        root.toast(ToastTone::Refused, format!("{name}: {why}"), cx);
-                    }
-                    Verdict::Unknown(why) => root.toast(
-                        ToastTone::Unknown,
-                        format!("{name}: it may or may not have happened. {why}"),
-                        cx,
-                    ),
-                }
-                root.refresh(cx);
-            });
-        })
-        .detach();
-        cx.notify();
-    }
-
-    /// The machines page, with the stage's screens open.
-    fn enter_machines(&mut self, cx: &mut Context<Self>) {
-        self.page = Page::Machines;
-        self.sync_screens(cx);
-    }
-
-    /// Leaving the machines hands back the screens the person controls, so
-    /// no agent waits on a screen no one watches, and closes them.
-    fn leave_machines(&mut self, cx: &mut Context<Self>) {
-        let screens: Vec<Entity<ScreenView>> = self
-            .panels
-            .screens()
-            .map(|shown| shown.view.clone())
-            .collect();
-        let handed: Vec<oneshot::Receiver<()>> = screens
-            .into_iter()
-            .filter_map(|view| view.update(cx, |view, cx| view.hand_back(cx)))
-            .collect();
-        if handed.is_empty() {
-            self.sync_screens(cx);
-        } else {
-            cx.spawn(async move |root, cx| {
-                for handed in handed {
-                    let _ = handed.await;
-                }
-                let _ = root.update(cx, |root, cx| root.sync_screens(cx));
-            })
-            .detach();
-        }
-        cx.notify();
-    }
-
-    /// Starts `name` from bay `index`: it lands there once it's live.
-    fn start_in(
-        &mut self,
-        index: usize,
-        name: &MachineName,
-        window: &mut GpuiWindow,
-        cx: &mut Context<Self>,
-    ) {
-        self.stage.start_in(index, name.clone());
-        self.pick(name, Action::Start, window, cx);
-    }
-
     fn shortcut(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
         if event.keystroke.key != "escape" {
             return;
         }
-        if self.stage.close_launcher() {
-            cx.notify();
+        if self.machines.update(cx, |page, cx| page.close_launcher(cx)) {
             return;
         }
-        // Escape leaves the split, unless it's meant for a screen someone
-        // drives or a dialog.
-        let driving = self
-            .panels
-            .screens()
-            .any(|shown| shown.view.read(cx).driving());
-        if let (Page::Machines, None, false) = (&self.page, &self.ask, driving)
-            && self.stage.unsplit()
-        {
-            cx.notify();
-        }
-    }
-
-    /// Keeps the clock moving: every frame while something moves, a few
-    /// times a second while a timeline still shows a call, and not at all
-    /// once every timeline is empty.
-    fn tick(&mut self, now: f64, window: &mut GpuiWindow, cx: &mut Context<Self>) {
-        let moving = self
-            .panels
-            .iter()
-            .any(|(_, panel)| timeline::moving(panel.timeline(), now));
-        if moving {
-            window.request_animation_frame();
-            return;
-        }
-        let showing = self
-            .panels
-            .iter()
-            .any(|(_, panel)| now - timeline::latest(panel.timeline(), now) < WINDOW_MS);
-        if showing && self.later.is_none() {
-            self.later = Some(cx.spawn(async move |root, cx| {
-                cx.background_executor()
-                    .timer(Duration::from_millis(250))
-                    .await;
-                let _ = root.update(cx, |root, cx| {
-                    root.later = None;
-                    cx.notify();
-                });
-            }));
+        // Escape leaves the split, unless it's meant for a dialog (or a
+        // screen someone drives, which the page sees to).
+        if let (Page::Machines, None) = (&self.page, &self.ask) {
+            self.machines.update(cx, |page, cx| page.unsplit(cx));
         }
     }
 }
@@ -1042,13 +544,6 @@ impl Root {
                 .child(ui::logo(theme, HEADER))
                 .children(body),
         )
-    }
-
-    /// The sessions whose requests named a machine.
-    fn drivers<'a>(&'a self, name: &'a MachineName) -> impl Iterator<Item = &'a Session> {
-        self.sessions
-            .iter()
-            .filter(move |session| session.machines.contains(name))
     }
 
     /// The header: the logo and the views on the left; on the right, what
@@ -1139,148 +634,15 @@ impl Root {
             .bg(theme.raised)
             .child(ui::logo(theme, HEADER - 1.))
             .child(views)
-            .children((!self.machines.is_empty()).then(|| self.slots(theme, cx)))
+            .children(
+                (!self.machines.read(cx).is_empty())
+                    .then(|| self.machines.update(cx, |page, cx| page.slots(theme, cx))),
+            )
             .child(div().flex_1())
             .child(indicators)
     }
 
-    /// The two slots (Apple's cap of two running macOS machines): a tab per
-    /// running machine, a + for a free slot that opens what can start
-    /// there, and with both running, a button to show them side by side.
-    fn slots(&self, theme: &Theme, cx: &mut Context<Self>) -> Div {
-        let machines_on = matches!(self.page, Page::Machines);
-        let shown = self.stage.bays(&self.machines);
-        let stage: Vec<MachineName> = self
-            .stage
-            .shows(&self.machines)
-            .into_iter()
-            .map(|machine| machine.name.clone())
-            .collect();
-        let full = shown.iter().all(|bay| matches!(bay, Bay::Machine(_)));
-        let mut row = div().flex().flex_none().h_full();
-        for (index, bay) in shown.iter().enumerate() {
-            match bay {
-                Bay::Machine(machine) => {
-                    let on = machines_on && stage.contains(&machine.name);
-                    let dot = if self
-                        .panels
-                        .get(&machine.name)
-                        .and_then(|panel| panel.screen().open())
-                        .is_some_and(|shown| shown.view.read(cx).driving())
-                    {
-                        ui::dot(7., theme.signal)
-                    } else {
-                        dot(machine.state.look().1, theme)
-                    };
-                    row = row.child(
-                        div()
-                            .id(id("slot", &machine.name))
-                            .flex()
-                            .items_center()
-                            .gap(px(8.))
-                            .h_full()
-                            .px(px(14.))
-                            .border_r_1()
-                            .border_color(theme.line)
-                            .font_family(MONO)
-                            .text_size(px(12.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(if on { theme.strong } else { theme.muted })
-                            .relative()
-                            .when(on, |slot| {
-                                slot.bg(theme.bg).child(
-                                    div()
-                                        .absolute()
-                                        .left_0()
-                                        .right_0()
-                                        .bottom_0()
-                                        .h(px(2.))
-                                        .bg(theme.live),
-                                )
-                            })
-                            .cursor_pointer()
-                            .hover(|slot| slot.bg(theme.hover))
-                            .child(dot)
-                            .child(machine.name.to_string())
-                            .on_click(cx.listener(move |root, _, _, cx| root.show_slot(index, cx))),
-                    );
-                }
-                Bay::Empty(_) => {
-                    let open = self.stage.launching() == Some(index);
-                    let mut free = div().relative().flex().h_full().child(
-                        segment(
-                            ElementId::NamedInteger("slot-free".into(), index as u64),
-                            Some(Icon::Plus),
-                            None,
-                            if open { Segment::On } else { Segment::Plain },
-                            theme,
-                        )
-                        .w(px(44.))
-                        .border_r_1()
-                        .border_color(theme.line)
-                        .on_click(cx.listener(move |root, _, _, cx| {
-                            root.stage.toggle_launcher(index);
-                            cx.notify();
-                        })),
-                    );
-                    if open {
-                        free = free.child(
-                            deferred(
-                                div()
-                                    .id("launcher")
-                                    .occlude()
-                                    .absolute()
-                                    .top(px(HEADER - 1.))
-                                    .left_0()
-                                    .w(px(380.))
-                                    .max_h(px(560.))
-                                    .overflow_y_scroll()
-                                    .p(px(14.))
-                                    .border_1()
-                                    .border_color(theme.line_strong)
-                                    .bg(theme.overlay)
-                                    .on_mouse_down_out(cx.listener(|root, _, _, cx| {
-                                        // The menus inside it close it as they open; a click
-                                        // elsewhere does too.
-                                        if root.menu.is_none() && root.stage.close_launcher() {
-                                            cx.notify();
-                                        }
-                                    }))
-                                    .child(self.launcher(index, theme, cx)),
-                            )
-                            .with_priority(2),
-                        );
-                    }
-                    row = row.child(free);
-                }
-            }
-        }
-        if full && machines_on {
-            row = row.child(
-                segment(
-                    "split",
-                    Some(Icon::Columns2),
-                    None,
-                    match self.stage.split() {
-                        Split::On => Segment::On,
-                        Split::Off => Segment::Plain,
-                    },
-                    theme,
-                )
-                .w(px(44.))
-                .border_r_1()
-                .border_color(theme.line)
-                .on_click(cx.listener(|root, _, _, cx| {
-                    root.stage.toggle_split();
-                    cx.notify();
-                })),
-            );
-        }
-        row
-    }
-
-    /// A panel's footer: passive facts about its machine, glanced at, never
-    /// acted on.
+    /// The toasts, newest last, each with its dismiss button.
     fn toasts(&self, theme: &Theme, cx: &mut Context<Self>) -> Div {
         div()
             .absolute()
@@ -1336,7 +698,7 @@ impl Root {
 }
 
 impl Render for Root {
-    fn render(&mut self, window: &mut GpuiWindow, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut GpuiWindow, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = *cx.global::<Theme>();
         let root = div()
             .id("root")
@@ -1353,12 +715,8 @@ impl Render for Root {
         if self.link != Link::Connected {
             return root.child(self.gate(&theme, cx));
         }
-        let now = self.now();
-        self.tick(now, window, cx);
-        let width = f32::from(window.viewport_size().width);
-        let narrow = width < NARROW;
         let main = match &self.page {
-            Page::Machines => self.stage_view(width, narrow, now, &theme, cx),
+            Page::Machines => self.machines.clone().into_any_element(),
             Page::Recordings(page) => page.clone().into_any_element(),
             Page::Replay(page) => page.clone().into_any_element(),
         };
