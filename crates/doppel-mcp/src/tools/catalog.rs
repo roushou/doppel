@@ -628,7 +628,7 @@ struct WaitArgs {
 
 impl Tool for WaitFor {
     const NAME: &'static str = "wait_for";
-    const DESCRIPTION: &'static str = "Poll until a condition holds. appears/disappears: some accessibility element's title, description, identifier or text value contains text (case-sensitive); returns a fresh snapshot (with new refs; show=changes lists only what changed). frontmost: the frontmost app's name or bundle id equals text. text_appears/text_disappears: text recognized on screen, as find_text reads it (case-insensitive); returns where it appeared, with points to click, and works without the agent. On timeout, returns an error with what was last seen.";
+    const DESCRIPTION: &'static str = "Poll until a condition holds. appears/disappears: some accessibility element's title, description, identifier or text value contains text (case-sensitive); returns a fresh snapshot (with new refs; show=changes lists only what changed). frontmost: the frontmost app's name or bundle id equals text. text_appears/text_disappears: text recognized on screen, as find_text reads it (case-insensitive); returns where it appeared, with points to click, and works without the agent. It sees only what is drawn: text scrolled out of view never appears, so for text an app exposes (most do), wait with appears. On timeout, returns an error with what was last seen.";
     type Args = WaitArgs;
 
     fn call(args: WaitArgs, at: &Parsing<'_>) -> Result<ToolCall, ArgumentError> {
