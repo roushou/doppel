@@ -1,8 +1,6 @@
-//! The Recordings view: the browser viewer's `Recordings.svelte` and
-//! `Replay.svelte`. A list of the recorded sessions, filtered by machine;
-//! opening one plays its videos with what the agent did drawn over them, a
-//! seekable strip of its calls, and the trace beside, following the
-//! playhead. Every daemon call is made from a thread of its own.
+//! The replay page: one recording's videos with what the agent did drawn
+//! over them, a seekable strip of its calls, and the trace beside,
+//! following the playhead.
 
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -15,10 +13,9 @@ use doppel_machine::machine::MachineName;
 use futures::StreamExt;
 use futures::channel::mpsc;
 use gpui::{
-    AnyElement, AppContext, Bounds, Context, Div, ElementId, Entity, FontWeight,
-    InteractiveElement, IntoElement, MouseButton, MouseDownEvent, ParentElement, Pixels, Render,
-    ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Task, Window, canvas, div,
-    prelude::FluentBuilder, px, relative,
+    AnyElement, Bounds, Context, Div, ElementId, FontWeight, InteractiveElement, IntoElement,
+    MouseButton, MouseDownEvent, ParentElement, Pixels, Render, ScrollHandle, SharedString,
+    StatefulInteractiveElement, Styled, Task, Window, canvas, div, prelude::FluentBuilder, px,
 };
 
 use crate::elements::Named;
@@ -28,11 +25,9 @@ use crate::inspect::{self, Act, Empty, Inspect, Pointing};
 use crate::overlay;
 use crate::platform::{Frame, Player};
 use crate::reading;
-use crate::recordings::{
-    self, Actor, Recording, RecordingId, RecordingSummary, Seek, TraceCall, TraceLine,
-};
+use crate::recordings::{self, Actor, Recording, RecordingId, Seek, TraceCall, TraceLine};
 use crate::screen::Picture;
-use crate::theme::{Hue, MONO, Theme};
+use crate::theme::{MONO, Theme};
 use crate::timeline::{self, Moment};
 use crate::transport::{Follow, Transport};
 use crate::ui::{Button, Look};
@@ -45,394 +40,7 @@ const TRACE_MIN: f32 = 280.0;
 /// A queue shorter than this isn't worth a line.
 const QUEUED_SHOWN_MS: u64 = 100;
 
-/// Where the Recordings view is.
-enum Showing {
-    Loading,
-    Listed(Vec<RecordingSummary>),
-    Opening(RecordingId),
-    Replaying(Entity<Replay>),
-    Failed(String),
-}
-
-/// The Recordings view.
-pub(crate) struct Recordings {
-    daemon: Arc<dyn Daemon>,
-    clock: Arc<dyn LocalClock>,
-    /// The machine whose recordings are listed; `None` for all.
-    only: Option<MachineName>,
-    showing: Showing,
-    _load: Option<Task<()>>,
-}
-
-impl Recordings {
-    /// Lists the recordings, of `only` first when it names a machine.
-    pub(crate) fn new(
-        daemon: Arc<dyn Daemon>,
-        clock: Arc<dyn LocalClock>,
-        only: Option<MachineName>,
-        cx: &mut Context<Self>,
-    ) -> Self {
-        let mut recordings = Self {
-            daemon,
-            clock,
-            only,
-            showing: Showing::Loading,
-            _load: None,
-        };
-        recordings.load(cx);
-        recordings
-    }
-
-    /// The machine it was opened for.
-    pub(crate) fn opened_for(&self) -> Option<&MachineName> {
-        self.only.as_ref()
-    }
-
-    /// The recording it shows, opening or replaying; `None` while it lists
-    /// them.
-    pub(crate) fn replaying(&self, cx: &gpui::App) -> Option<RecordingId> {
-        match &self.showing {
-            Showing::Opening(id) => Some(id.clone()),
-            Showing::Replaying(replay) => Some(replay.read(cx).recording.id.clone()),
-            Showing::Loading | Showing::Listed(_) | Showing::Failed(_) => None,
-        }
-    }
-
-    /// Lists the recordings again.
-    pub(crate) fn load(&mut self, cx: &mut Context<Self>) {
-        self.showing = Showing::Loading;
-        let listed = self.daemon.recordings();
-        self._load = Some(cx.spawn(async move |page, cx| {
-            let listed = listed.await;
-            let _ = page.update(cx, |page, cx| {
-                page.showing = match listed {
-                    Ok(listed) => Showing::Listed(listed),
-                    Err(error) => Showing::Failed(error.to_string()),
-                };
-                cx.notify();
-            });
-        }));
-        cx.notify();
-    }
-
-    /// Opens recording `id` to replay.
-    pub(crate) fn open(&mut self, id: RecordingId, cx: &mut Context<Self>) {
-        self.showing = Showing::Opening(id.clone());
-        let opened = self.daemon.open_recording(&id);
-        self._load = Some(cx.spawn(async move |page, cx| {
-            let opened = opened.await;
-            let _ = page.update(cx, |page, cx| {
-                page.showing = match opened {
-                    Ok(recording) => {
-                        let daemon = page.daemon.clone();
-                        let clock = page.clock.clone();
-                        Showing::Replaying(
-                            cx.new(|cx| Replay::new(daemon, clock, recording.in_start_order(), cx)),
-                        )
-                    }
-                    Err(error) => Showing::Failed(error.to_string()),
-                };
-                cx.notify();
-            });
-        }));
-        cx.notify();
-    }
-
-    fn list(&self, listed: &[RecordingSummary], theme: &Theme, cx: &mut Context<Self>) -> Div {
-        if listed.is_empty() {
-            return div()
-                .flex()
-                .flex_wrap()
-                .gap(px(4.))
-                .text_color(theme.muted)
-                .child("No recordings. An agent's session is recorded with")
-                .child(code(theme, "doppel mcp --record"));
-        }
-        let machines = RecordingSummary::machines_of(listed);
-        let shown: Vec<&RecordingSummary> = listed
-            .iter()
-            .filter(|summary| summary.shows(self.only.as_ref()))
-            .collect();
-        let filter = (machines.len() > 1).then(|| {
-            let all = chip("filter-all", "All".into(), self.only.is_none(), theme).on_click(
-                cx.listener(|page, _, _, cx| {
-                    page.only = None;
-                    cx.notify();
-                }),
-            );
-            div()
-                .flex()
-                .flex_wrap()
-                .gap(px(4.))
-                .mb(px(12.))
-                .child(all)
-                .children(machines.into_iter().map(|machine| {
-                    let on = self.only.as_ref() == Some(&machine);
-                    let label = SharedString::from(machine.as_str().to_owned());
-                    chip(
-                        ElementId::Name(format!("filter-{machine}").into()),
-                        label,
-                        on,
-                        theme,
-                    )
-                    .on_click(cx.listener(move |page, _, _, cx| {
-                        page.only = Some(machine.clone());
-                        cx.notify();
-                    }))
-                }))
-        });
-        let longest = shown
-            .iter()
-            .map(|summary| summary.traced_ms)
-            .max()
-            .unwrap_or(1)
-            .max(1) as f32;
-        let mono = |text: String, color| {
-            div()
-                .flex_none()
-                .font_family(MONO)
-                .text_size(px(12.))
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(color)
-                .child(text)
-        };
-        let rows: Vec<AnyElement> = if shown.is_empty() {
-            vec![
-                div()
-                    .text_color(theme.muted)
-                    .child(format!(
-                        "No recordings of {}.",
-                        self.only.as_ref().map_or("", MachineName::as_str)
-                    ))
-                    .into_any_element(),
-            ]
-        } else {
-            recordings::by_day(shown, self.clock.local())
-                .into_iter()
-                .map(|group| {
-                    let heading = div()
-                        .flex()
-                        .gap(px(8.))
-                        .mt(px(14.))
-                        .mb(px(6.))
-                        .font_family(MONO)
-                        .text_size(px(10.5))
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(theme.muted)
-                        .child(group.day.name().to_uppercase())
-                        .child(
-                            div()
-                                .text_color(theme.faint)
-                                .child(group.recordings.len().to_string()),
-                        );
-                    let rows = group.recordings.into_iter().map(|summary| {
-                        let id = summary.id.clone();
-                        let share = summary.traced_ms as f32 / longest;
-                        div()
-                            .id(ElementId::Name(format!("recording-{}", summary.id).into()))
-                            .flex()
-                            .items_center()
-                            .gap(px(12.))
-                            .h(px(36.))
-                            .px(px(12.))
-                            .border_b_1()
-                            .border_color(theme.line)
-                            .text_size(px(13.))
-                            .cursor_pointer()
-                            .hover(|row| row.bg(theme.raised))
-                            .child(mono(summary.started.time_of_day(), theme.strong).w(px(44.)))
-                            .child(
-                                div()
-                                    .flex_none()
-                                    .size(px(10.))
-                                    .bg(Hue::of(summary.session).fill),
-                            )
-                            .child(
-                                div()
-                                    .w(px(160.))
-                                    .flex_none()
-                                    .truncate()
-                                    .text_color(theme.text)
-                                    .child(if summary.machines.is_empty() {
-                                        "—".to_owned()
-                                    } else {
-                                        summary
-                                            .machines
-                                            .iter()
-                                            .map(MachineName::as_str)
-                                            .collect::<Vec<_>>()
-                                            .join(", ")
-                                    }),
-                            )
-                            .child(
-                                div().flex_1().h(px(4.)).bg(theme.line).child(
-                                    div()
-                                        .h_full()
-                                        .min_w(px(2.))
-                                        .w(relative(share.clamp(0.0, 1.0)))
-                                        .bg(theme.muted),
-                                ),
-                            )
-                            .child(
-                                mono(recordings::length(summary.traced_ms), theme.muted)
-                                    .w(px(64.))
-                                    .flex()
-                                    .justify_end(),
-                            )
-                            .child(
-                                mono(summary.calls.to_string(), theme.muted)
-                                    .w(px(64.))
-                                    .flex()
-                                    .justify_end()
-                                    .gap(px(4.))
-                                    .child(
-                                        div().text_color(theme.faint).child(
-                                            if summary.calls == 1 { "call" } else { "calls" },
-                                        ),
-                                    ),
-                            )
-                            .child(Icon::Film.svg(
-                                14.,
-                                if summary.videos == 0 {
-                                    theme.line_strong
-                                } else {
-                                    theme.muted
-                                },
-                            ))
-                            .on_click(cx.listener(move |page, _, _, cx| page.open(id.clone(), cx)))
-                    });
-                    div()
-                        .flex()
-                        .flex_col()
-                        .child(heading)
-                        .child(div().border_t_1().border_color(theme.line).children(rows))
-                        .into_any_element()
-                })
-                .collect()
-        };
-        div()
-            .children(filter)
-            .child(div().flex().flex_col().children(rows))
-    }
-}
-
-impl Render for Recordings {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = *cx.global::<Theme>();
-        let body = match &self.showing {
-            Showing::Loading => div().text_color(theme.muted).child("Loading recordings…"),
-            Showing::Opening(id) => div()
-                .text_color(theme.muted)
-                .child(format!("Opening {id}…")),
-            Showing::Failed(why) => div()
-                .flex()
-                .flex_col()
-                .items_start()
-                .gap(px(10.))
-                .child(notice(&theme).child(format!("Recordings: {why}")))
-                .child(
-                    Button::new(
-                        "recordings-again",
-                        &theme,
-                        Look::Plain,
-                        None,
-                        Some("Try again".into()),
-                    )
-                    .on_press(cx.listener(|page, _, _, cx| page.load(cx))),
-                ),
-            Showing::Replaying(replay) => {
-                let id = replay.read(cx).recording.id.to_string();
-                div()
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(12.))
-                            .mb(px(12.))
-                            .child(
-                                Button::new(
-                                    "recordings-back",
-                                    &theme,
-                                    Look::Ghost,
-                                    Some(Icon::ArrowLeft),
-                                    Some("Recordings".into()),
-                                )
-                                .on_press(cx.listener(|page, _, _, cx| page.load(cx))),
-                            )
-                            .child(
-                                div()
-                                    .min_w_0()
-                                    .text_size(px(15.))
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .text_color(theme.text)
-                                    .child(id),
-                            ),
-                    )
-                    .child(replay.clone())
-            }
-            Showing::Listed(listed) => {
-                let listed = listed.clone();
-                self.list(&listed, &theme, cx)
-            }
-        };
-        div()
-            .id("recordings-page")
-            .flex_1()
-            .min_h_0()
-            .overflow_y_scroll()
-            .p(px(16.))
-            .text_size(px(14.))
-            .text_color(theme.text)
-            .child(body)
-    }
-}
-
-/// A filter chip: a pill that's filled when on.
-fn chip(
-    id: impl Into<ElementId>,
-    label: SharedString,
-    on: bool,
-    theme: &Theme,
-) -> gpui::Stateful<Div> {
-    div()
-        .id(id)
-        .flex()
-        .items_center()
-        .h(px(26.))
-        .px(px(11.))
-        .border_1()
-        .text_size(px(12.))
-        .font_weight(FontWeight::MEDIUM)
-        .cursor_pointer()
-        .map(|chip| {
-            if on {
-                chip.bg(theme.accent_soft)
-                    .border_color(gpui::transparent_black())
-                    .text_color(theme.text)
-            } else {
-                chip.border_color(theme.line_strong)
-                    .text_color(theme.muted)
-                    .hover(|chip| chip.bg(theme.hover).text_color(theme.text))
-            }
-        })
-        .child(label)
-}
-
-fn notice(theme: &Theme) -> Div {
-    div()
-        .px(px(12.))
-        .py(px(8.))
-        .bg(theme.warning_soft)
-        .text_color(theme.text)
-}
-
-fn code(theme: &Theme, text: &'static str) -> Div {
-    div()
-        .font_family(MONO)
-        .text_size(px(12.5))
-        .text_color(theme.text)
-        .child(text)
-}
+use super::recordings::notice;
 
 /// A video open in the player, and the task that redraws as it plays.
 struct Playing {
@@ -488,7 +96,12 @@ enum Fetch {
 }
 
 impl Replay {
-    fn new(
+    /// The recording it replays.
+    pub(super) const fn id(&self) -> &RecordingId {
+        &self.recording.id
+    }
+
+    pub(super) fn new(
         daemon: Arc<dyn Daemon>,
         clock: Arc<dyn LocalClock>,
         recording: Recording,

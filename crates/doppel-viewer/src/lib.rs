@@ -26,7 +26,6 @@ mod input;
 mod inspect;
 mod overlay;
 mod reading;
-mod replay;
 mod route;
 mod screen;
 mod shapes;
