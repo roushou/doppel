@@ -19,7 +19,7 @@ and roll back.
 </div>
 
 https://github.com/user-attachments/assets/78873b78-fdf0-4ae1-a396-48e23d04dc6f
-  
+
 Doppel runs macOS VMs on your Mac and serves them to agents over MCP. One
 daemon owns every machine, so agents, viewers and recordings all see the
 same state.
