@@ -10,9 +10,12 @@ description = "The Doppel protocol: generated protobuf types, a sans-IO frame co
 [dependencies]
 bytes.workspace = true
 doppel-machine = { path = "../doppel-machine" }
-nix = { workspace = true, features = ["poll"] }
 prost.workspace = true
 thiserror.workspace = true
+
+# The transport's unix sockets; the rest of the crate builds anywhere.
+[target.'cfg(unix)'.dependencies]
+nix = { workspace = true, features = ["poll"] }
 
 [build-dependencies]
 prost-build.workspace = true
