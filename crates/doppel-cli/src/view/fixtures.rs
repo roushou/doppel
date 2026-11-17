@@ -570,7 +570,7 @@ fn the_timeline_is_pinned() {
             let mut moments = Vec::new();
             for (now, wire) in &scenario.events {
                 let bytes = wire.encode_to_vec();
-                let read = doppel_client::Activity::from_wire(
+                let read = doppel_client::Activity::try_from(
                     daemon::Activity::decode(bytes.as_slice()).unwrap(),
                 )
                 .unwrap();

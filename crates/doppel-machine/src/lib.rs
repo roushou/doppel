@@ -2,12 +2,13 @@
 //! live, the procedures that change it (starting, stopping, checkpointing,
 //! logging in) as state machines, and what is seen and done inside its
 //! guest (screen and text, accessibility tree, input, files, programs,
-//! waits).
+//! waits), as it happens and as a session's recordings keep it.
 //!
 //! Pure: no filesystem, no clock, no processes, no async runtime. It computes
 //! what should happen (paths, plans, state transitions) and the shell
 //! (`doppel-host`) performs it.
 
+pub mod activity;
 pub mod agent;
 pub mod ax;
 pub mod bundle;
@@ -23,6 +24,7 @@ pub mod login;
 pub mod machine;
 pub mod mark;
 pub mod outcome;
+pub mod recording;
 pub mod screen;
 pub mod screen_text;
 pub mod startup;
