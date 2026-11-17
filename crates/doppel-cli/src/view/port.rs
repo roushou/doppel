@@ -8,8 +8,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant, SystemTime};
 
 use doppel_client::{
-    Activity, ActivityStream, CheckpointResult, Client, ClientError, Listing, MachineFailure,
-    SessionInfo, SessionStatus, StopMode, StopOutcome, Window,
+    ActivityStream, CheckpointResult, Client, ClientError, Listing, MachineFailure, SessionInfo,
+    SessionStatus, StopMode, StopOutcome, Window,
 };
 use doppel_host::capabilities::{Clock, SystemClock, WallClock};
 use doppel_machine::checkpoint::AfterCheckpoint;
@@ -17,11 +17,10 @@ use doppel_machine::machine::MachineName;
 use doppel_machine::outcome::{Certainty, Failure};
 use doppel_machine::vm::{RunState, Status};
 use doppel_viewer::{
-    ActivityEvent, ActivitySource, AxSnapshot, Call, CallKey, Callout, CalloutLasts, CalloutOn,
-    CalloutShape, CheckpointLabel, Daemon, DaemonError, Ending, Gesture, Hold, LocalTime, Machine,
-    MachineReport, MachineState, NextActivity, Order, ReadLine, RecentEnd, Recording, RecordingId,
-    RecordingSummary, Run, Screen, Session, SessionActivity, SessionId, SourceError, Target,
-    TextRead, Verdict, VideoName,
+    ActivityEvent, ActivitySource, AxSnapshot, CheckpointLabel, Daemon, DaemonError, Hold,
+    LocalTime, Machine, MachineReport, MachineState, NextActivity, Order, Recording, RecordingId,
+    RecordingSummary, Run, Screen, Session, SessionActivity, SessionId, SourceError, TextRead,
+    Verdict, VideoName,
 };
 
 use super::Frames;
@@ -312,173 +311,6 @@ fn session(info: SessionInfo) -> Session {
     }
 }
 
-pub(super) fn activity(activity: Activity) -> ActivityEvent {
-    let key = CallKey {
-        session: activity.session,
-        request: activity.request,
-    };
-    match activity.phase {
-        doppel_client::Phase::Started(acted) => {
-            let why = acted.why.clone();
-            let (gesture, target, callout) = on_screen(acted);
-            ActivityEvent::Started(Call {
-                key,
-                machine: activity.machine,
-                client: activity.client,
-                caption: activity.caption,
-                gesture,
-                target,
-                callout,
-                why,
-            })
-        }
-        doppel_client::Phase::Ended(ended) => ActivityEvent::Ended {
-            key,
-            machine: activity.machine,
-            ending: ending_of(ended.ending),
-            seen: ended.seen.map(|seen| Arc::new(*seen)),
-            read: ended.read.map(|read| Arc::new(text_read(&read))),
-        },
-        doppel_client::Phase::Named(refs) => ActivityEvent::Named {
-            machine: activity.machine,
-            refs: Arc::new(refs),
-        },
-        doppel_client::Phase::Recent {
-            acted,
-            started_ago,
-            ended,
-        } => ActivityEvent::Recent {
-            call: {
-                let why = acted.why.clone();
-                let (gesture, target, callout) = on_screen(acted);
-                Call {
-                    key,
-                    machine: activity.machine,
-                    client: activity.client,
-                    caption: activity.caption,
-                    gesture,
-                    target,
-                    callout,
-                    why,
-                }
-            },
-            started_ms_ago: started_ago.as_secs_f64() * 1000.0,
-            ended: ended.map(|(ended, ago)| {
-                Box::new(RecentEnd {
-                    ending: ending_of(ended.ending),
-                    seen: ended.seen.map(|seen| Arc::new(*seen)),
-                    refs: ended.refs.map(Arc::new),
-                    read: ended.read.map(|read| Arc::new(text_read(&read))),
-                    ms_ago: ago.as_secs_f64() * 1000.0,
-                })
-            }),
-        },
-    }
-}
-
-/// What a call read, in the viewer's words: lines and matches in display points.
-pub(super) fn text_read(read: &doppel_client::TextRead) -> TextRead {
-    TextRead {
-        lines: read
-            .text
-            .lines()
-            .iter()
-            .map(|line| ReadLine {
-                text: line.text().to_owned(),
-                frame: line.region(),
-            })
-            .collect(),
-        query: read.query.as_ref().map(|query| query.as_str().to_owned()),
-        found: read.found.clone(),
-    }
-}
-
-fn ending_of(ending: doppel_client::Ending) -> Ending {
-    match ending {
-        // An ending this build can't read still ends the call.
-        doppel_client::Ending::Done | doppel_client::Ending::Unknown => Ending::Done,
-        doppel_client::Ending::Failed(why) | doppel_client::Ending::Refused(why) => {
-            Ending::Failed(why)
-        }
-        doppel_client::Ending::TimedOut(why) if why.is_empty() => {
-            Ending::Failed("timed out".into())
-        }
-        doppel_client::Ending::TimedOut(why) => Ending::Failed(format!("timed out: {why}")),
-    }
-}
-
-/// What a call did on the screen, in the viewer's words. A mark's place is
-/// its own, not where the agent's pointer goes: its call has no target.
-pub(super) fn on_screen(acted: doppel_client::OnScreen) -> (Gesture, Target, Option<Arc<Callout>>) {
-    let gesture = gesture_of(acted.gesture);
-    match acted.callout {
-        None => (gesture, target_of(acted.target), None),
-        Some(callout) => {
-            let on = match target_of(acted.target) {
-                Target::Point(at) => Some(CalloutOn::Point(at)),
-                Target::Element { frame, label } => Some(CalloutOn::Area { frame, label }),
-                Target::Drag { .. } | Target::Nowhere => None,
-            };
-            let callout = on.map(|on| {
-                Arc::new(Callout {
-                    on,
-                    shape: match callout.shape {
-                        doppel_client::CalloutShape::Dot => CalloutShape::Dot,
-                        doppel_client::CalloutShape::Arrow { from } => CalloutShape::Arrow { from },
-                        // A shape a newer daemon added is drawn as a box.
-                        doppel_client::CalloutShape::Box
-                        | doppel_client::CalloutShape::Unknown(_) => CalloutShape::Box,
-                    },
-                    note: callout.note,
-                    lasts: match callout.lasts {
-                        doppel_client::CalloutLasts::For(time) => {
-                            CalloutLasts::For(time.as_secs_f64() * 1000.0)
-                        }
-                        doppel_client::CalloutLasts::UntilActed(time) => {
-                            CalloutLasts::UntilActed(time.as_secs_f64() * 1000.0)
-                        }
-                    },
-                })
-            });
-            (gesture, Target::Nowhere, callout)
-        }
-    }
-}
-
-/// The viewer's word for what a call did on the screen.
-pub(super) fn gesture_of(gesture: doppel_client::Gesture) -> Gesture {
-    match gesture {
-        doppel_client::Gesture::Click => Gesture::Click,
-        doppel_client::Gesture::DoubleClick => Gesture::DoubleClick,
-        doppel_client::Gesture::SecondaryClick => Gesture::SecondaryClick,
-        doppel_client::Gesture::Move => Gesture::Move,
-        doppel_client::Gesture::Drag => Gesture::Drag,
-        doppel_client::Gesture::Scroll => Gesture::Scroll,
-        doppel_client::Gesture::Key => Gesture::Key,
-        doppel_client::Gesture::Type => Gesture::Type,
-        doppel_client::Gesture::Act => Gesture::Act,
-        doppel_client::Gesture::Look => Gesture::Look,
-        doppel_client::Gesture::Wait => Gesture::Wait,
-        doppel_client::Gesture::Run => Gesture::Run,
-        doppel_client::Gesture::Lifecycle => Gesture::Lifecycle,
-        doppel_client::Gesture::Checkpoint => Gesture::Checkpoint,
-        doppel_client::Gesture::Rollback => Gesture::Rollback,
-        doppel_client::Gesture::Mark => Gesture::Mark,
-        // A gesture a newer daemon added is drawn as any other call.
-        doppel_client::Gesture::Other | doppel_client::Gesture::Unknown(_) => Gesture::Other,
-    }
-}
-
-/// The viewer's word for where a call acted.
-pub(super) fn target_of(target: Option<doppel_client::Target>) -> Target {
-    match target {
-        Some(doppel_client::Target::Point(at)) => Target::Point(at),
-        Some(doppel_client::Target::Element { frame, label }) => Target::Element { frame, label },
-        Some(doppel_client::Target::Drag { from, to }) => Target::Drag { from, to },
-        None => Target::Nowhere,
-    }
-}
-
 impl Daemon for DaemonPort {
     fn machines(&self) -> Result<Vec<Machine>, DaemonError> {
         let listings = self.call(|client| client.machines(within(CALL)))?;
@@ -538,7 +370,7 @@ impl Daemon for DaemonPort {
                     DaemonError::Refused(error.to_string())
                 })?;
         let opened = self.call(|client| client.open_recording(&id, within(CALL)))?;
-        Ok(recordings::recording(opened))
+        Ok(Recording::of(opened))
     }
 
     fn seen_snapshot(&self, id: &RecordingId, line: u32) -> Result<AxSnapshot, DaemonError> {
@@ -553,7 +385,7 @@ impl Daemon for DaemonPort {
 
     fn observe_text(&self, name: &MachineName) -> Result<TextRead, DaemonError> {
         let text = self.call(|client| client.observe_text(name, within(CALL)))?;
-        Ok(text_read(&doppel_client::TextRead {
+        Ok(TextRead::of(&doppel_client::TextRead {
             text,
             query: None,
             found: Vec::new(),
@@ -579,7 +411,7 @@ struct Watching(ActivityStream<SystemClock>);
 impl ActivitySource for Watching {
     fn next(&mut self) -> Result<NextActivity, SourceError> {
         match self.0.next(within(QUIET)) {
-            Ok(event) => Ok(NextActivity::Event(activity(event))),
+            Ok(event) => Ok(NextActivity::Event(ActivityEvent::of(event))),
             Err(ClientError::Timeout) => Ok(NextActivity::Unchanged),
             Err(ClientError::Closed) => Ok(NextActivity::Ended),
             Err(error) => Err(SourceError::new(error)),
@@ -634,7 +466,6 @@ pub(super) fn local(at: SystemTime) -> LocalTime {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use doppel_machine::geometry::Point;
     use doppel_machine::lineage::{Lineage, RecordedLineage};
 
     #[test]
@@ -693,52 +524,6 @@ mod tests {
             }),
             Verdict::Unknown("the checkpoint ended before it finished".into())
         );
-    }
-
-    #[test]
-    fn activity_keeps_its_call_and_ending() {
-        let started = activity(Activity {
-            session: 2,
-            request: 5,
-            machine: "dev".parse().unwrap(),
-            client: "claude".into(),
-            caption: "click OK".into(),
-            phase: doppel_client::Phase::Started(doppel_client::OnScreen {
-                why: None,
-                gesture: doppel_client::Gesture::Unknown(77),
-                target: Some(doppel_client::Target::Point(Point::new(1.0, 2.0).unwrap())),
-                callout: None,
-            }),
-        });
-        let ActivityEvent::Started(call) = started else {
-            panic!("a start");
-        };
-        assert_eq!(
-            call.key,
-            CallKey {
-                session: 2,
-                request: 5
-            }
-        );
-        assert_eq!(call.gesture, Gesture::Other);
-        assert_eq!(call.target, Target::Point(Point::new(1.0, 2.0).unwrap()));
-        let ended = activity(Activity {
-            session: 2,
-            request: 5,
-            machine: "dev".parse().unwrap(),
-            client: String::new(),
-            caption: String::new(),
-            phase: doppel_client::Phase::Ended(doppel_client::Ended {
-                ending: doppel_client::Ending::TimedOut(String::new()),
-                seen: None,
-                refs: None,
-                read: None,
-            }),
-        });
-        assert!(matches!(
-            ended,
-            ActivityEvent::Ended { ending: Ending::Failed(why), .. } if why == "timed out"
-        ));
     }
 
     #[test]

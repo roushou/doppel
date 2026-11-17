@@ -42,12 +42,14 @@ What the client, daemon, MCP server and scene all speak has one owner in
 snapshot's `SnapshotSpec`, and a machine's `MachineReport` with its
 `AgentReport`. `doppel-protocol` converts the wire forms (`convert.rs`).
 
-Activity has two vocabularies. The client's `Gesture`, `Target`, `Callout`,
-`Ending` and `TextRead` are the stream as parsed: they keep what this build
-doesn't know (`Unknown(i32)`) and time in `Duration`. The scene's are what
-the overlay draws: unknowns folded into `Other` or `Done`, failures into one
-`Failed`, times in milliseconds on the window's clock. The CLI's
-`view/port.rs` maps between them, with tests.
+Activity has two vocabularies. `doppel_machine::activity` and
+`::recording` are the stream and a recording's trace as parsed (by
+`doppel-protocol`'s `convert`): they keep what this build doesn't know
+(`Unknown(i32)`) and time in `Duration`. The scene's are what the overlay
+draws: unknowns folded into `Other` or `Done`, failures into one `Failed`,
+times in milliseconds on the window's clock. `doppel_scene::from_daemon`
+maps one to the other, with tests, for the desktop viewer (through the
+CLI's `view/port.rs`) and the browser's film alike.
 
 ## Storage
 

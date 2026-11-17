@@ -19,8 +19,8 @@ use doppel_protocol::pb::common::v1 as common;
 use doppel_protocol::pb::daemon::v1 as daemon;
 use doppel_scene::elements::{self, Kind, Wrappers};
 use doppel_scene::timeline::{
-    Callout, CalloutLasts, CalloutOn, CalloutShape, Gesture, Mark, Moment, Scene, lanes, record,
-    scene_at,
+    ActivityEvent, Callout, CalloutLasts, CalloutOn, CalloutShape, Gesture, Mark, Moment, Scene,
+    lanes, record, scene_at,
 };
 use prost::Message as _;
 use serde_json::{Value, json};
@@ -574,7 +574,7 @@ fn the_timeline_is_pinned() {
                     daemon::Activity::decode(bytes.as_slice()).unwrap(),
                 )
                 .unwrap();
-                record(&mut moments, super::port::activity(read), *now);
+                record(&mut moments, ActivityEvent::of(read), *now);
             }
             json!({
                 "name": scenario.name,
