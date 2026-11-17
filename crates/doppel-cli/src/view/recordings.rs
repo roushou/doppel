@@ -6,7 +6,7 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-use doppel_viewer::{DaemonError, RecordingId, RecordingSummary, VideoName};
+use doppel_viewer::{DaemonError, RecordingId, RecordingSummary, VideoName, answers};
 
 use super::port::local;
 
@@ -63,13 +63,5 @@ pub(super) fn summary(summary: doppel_client::RecordingSummary) -> RecordingSumm
         .map_or(SystemTime::UNIX_EPOCH, |seconds| {
             SystemTime::UNIX_EPOCH + Duration::from_secs(seconds)
         });
-    RecordingSummary {
-        id: RecordingId::new(summary.id.to_string()),
-        started: local(started),
-        session: summary.session,
-        machines: summary.machines,
-        videos: summary.videos,
-        calls: summary.calls,
-        traced_ms: summary.traced_ms,
-    }
+    answers::summary(summary, local(started))
 }

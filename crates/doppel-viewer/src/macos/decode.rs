@@ -32,7 +32,7 @@ use objc2_video_toolbox::{
     VTDecompressionSession,
 };
 
-use crate::pixels::Buffer;
+use super::pixels::Buffer;
 
 /// Why a frame wasn't decoded; each carries VideoToolbox's or CoreMedia's
 /// status.

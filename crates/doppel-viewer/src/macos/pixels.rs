@@ -17,10 +17,11 @@ use core_video::pixel_buffer::{
 };
 use core_video::pixel_buffer_pool::CVPixelBufferPool;
 use core_video::r#return::kCVReturnSuccess;
+use gpui::{AnyElement, IntoElement as _, ObjectFit, Styled as _, surface};
 use objc2_core_foundation::CFRetained;
 use std::ptr::NonNull;
 
-use crate::{FrameRef, Plane};
+use super::ports::{FrameRef, Plane};
 
 /// A pixel buffer handed from a reader thread to the UI.
 #[derive(Debug, Clone)]
@@ -42,8 +43,18 @@ impl Buffer {
         self.0.clone()
     }
 
+    /// The frame, fitted into its box.
+    pub(crate) fn draw(&self) -> Option<AnyElement> {
+        self.surface().map(|pixels| {
+            surface(pixels)
+                .object_fit(ObjectFit::Contain)
+                .size_full()
+                .into_any_element()
+        })
+    }
+
     /// The buffer as GPUI draws it, with a reference of its own.
-    pub(crate) fn surface(&self) -> Option<CFRetained<objc2_core_video::CVPixelBuffer>> {
+    fn surface(&self) -> Option<CFRetained<objc2_core_video::CVPixelBuffer>> {
         let raw = self
             .0
             .as_concrete_TypeRef()

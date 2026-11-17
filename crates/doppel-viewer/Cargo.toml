@@ -5,15 +5,19 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 rust-version.workspace = true
-description = "The desktop window for running machines, drawn with GPUI."
+description = "The window for running machines, drawn with GPUI: on the desktop, and in a browser."
 
 [dependencies]
-core-foundation = "=0.10.0"
-core-video = "0.4.3"
 doppel-machine = { path = "../doppel-machine" }
+doppel-protocol = { path = "../doppel-protocol" }
 doppel-scene = { path = "../doppel-scene" }
 futures.workspace = true
 gpui = { package = "gpui-pre", version = "=0.3.12" }
+thiserror.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = "=0.10.0"
+core-video = "0.4.3"
 gpui_platform = { package = "gpui-pre-platform", version = "=0.3.12", features = ["font-kit"] }
 objc2 = "0.6"
 objc2-av-foundation = { version = "0.3.2", default-features = false, features = [
@@ -61,7 +65,6 @@ objc2-video-toolbox = { version = "0.3.2", default-features = false, features = 
   "objc2-core-video",
 ] }
 raw-window-handle = "0.6"
-thiserror.workspace = true
 
 [lints]
 workspace = true

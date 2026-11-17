@@ -24,9 +24,9 @@ use objc2_av_foundation::{
 use objc2_core_media::{CMTime, CMTimeRange, kCMTimePositiveInfinity};
 use objc2_foundation::{NSDictionary, NSString, NSURL};
 
+use super::decode::Decoder;
+use super::pixels::Buffer;
 use crate::LocalClock;
-use crate::decode::Decoder;
-use crate::pixels::Buffer;
 
 /// What the window asks of the player.
 #[derive(Debug, Clone, Copy, PartialEq)]

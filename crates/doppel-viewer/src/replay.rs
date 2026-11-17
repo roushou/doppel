@@ -17,9 +17,9 @@ use futures::StreamExt;
 use futures::channel::mpsc;
 use gpui::{
     AnyElement, AppContext, Bounds, Context, Div, ElementId, Entity, FontWeight,
-    InteractiveElement, IntoElement, MouseButton, MouseDownEvent, ObjectFit, ParentElement, Pixels,
-    Render, ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Task, Window, canvas,
-    div, prelude::FluentBuilder, px, relative, surface,
+    InteractiveElement, IntoElement, MouseButton, MouseDownEvent, ParentElement, Pixels, Render,
+    ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Task, Window, canvas, div,
+    prelude::FluentBuilder, px, relative,
 };
 
 use crate::elements::Named;
@@ -27,7 +27,7 @@ use crate::icons::Icon;
 use crate::input::Placement;
 use crate::inspect::{self, Act, Empty, Inspect, Pointing};
 use crate::overlay;
-use crate::player::Player;
+use crate::platform::{Frame, Player};
 use crate::reading;
 use crate::recordings::{
     self, Actor, Recording, RecordingId, RecordingSummary, Seek, TraceCall, TraceLine,
@@ -834,8 +834,8 @@ impl Replay {
                     points,
                 })
             });
-        if let Some(pixels) = shown.as_ref().and_then(|buffer| buffer.surface()) {
-            frame = frame.child(surface(pixels).object_fit(ObjectFit::Contain).size_full());
+        if let Some(drawn) = shown.as_ref().and_then(Frame::draw) {
+            frame = frame.child(drawn);
         }
         if let (Some(inspect), Some(picture), (Some(found), Some(snapshot))) =
             (self.inspect.as_ref(), picture, seen)

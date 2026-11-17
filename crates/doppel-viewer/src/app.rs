@@ -102,7 +102,7 @@ impl Window {
                         ..WindowOptions::default()
                     },
                     |window, cx| {
-                        crate::srgb::tag(window);
+                        crate::platform::tag_window(window);
                         cx.set_global(Theme::chosen(settings.theme(), window.appearance()));
                         cx.new(|cx| Root::new(daemon, clock, settings, shown, window, cx))
                     },

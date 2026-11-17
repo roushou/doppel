@@ -9,20 +9,14 @@ use std::time::{Duration, Instant, SystemTime};
 
 use futures::channel::{mpsc, oneshot};
 
-use doppel_client::{
-    ActivityStream, CheckpointResult, Client, ClientError, Listing, MachineFailure, SessionInfo,
-    SessionStatus, StopMode, StopOutcome, Window,
-};
+use doppel_client::{ActivityStream, Client, ClientError, Listing, StopMode, Window};
 use doppel_host::capabilities::{Clock, SystemClock, WallClock};
 use doppel_machine::checkpoint::AfterCheckpoint;
 use doppel_machine::machine::MachineName;
-use doppel_machine::outcome::{Certainty, Failure};
-use doppel_machine::vm::{RunState, Status};
 use doppel_viewer::{
     Activity, ActivityEvent, Answer, AxSnapshot, CheckpointLabel, Daemon, DaemonError, Hold, Later,
-    LocalTime, Machine, MachineReport, MachineState, Order, Recording, RecordingId,
-    RecordingSummary, Run, Screen, Session, SessionActivity, SessionId, SourceError, TextRead,
-    Verdict, VideoName,
+    LocalTime, Machine, MachineReport, Order, Recording, RecordingId, RecordingSummary, Screen,
+    Session, SessionId, SourceError, TextRead, Verdict, VideoName, answers,
 };
 
 use super::Frames;
@@ -141,30 +135,30 @@ impl Blocking {
         Ok(match order {
             Order::Start => {
                 client.start(name, Window::Hidden, by())?;
-                Verdict::done()
+                answers::done()
             }
-            Order::Stop => Verdict::stopped(client.stop(name, StopMode::Graceful, by())?.outcome),
-            Order::ForceStop => Verdict::stopped(client.stop(name, StopMode::Force, by())?.outcome),
+            Order::Stop => answers::stopped(client.stop(name, StopMode::Graceful, by())?.outcome),
+            Order::ForceStop => answers::stopped(client.stop(name, StopMode::Force, by())?.outcome),
             Order::Pause => {
                 client.pause(name, by())?;
-                Verdict::done()
+                answers::done()
             }
             Order::Resume => {
                 client.resume(name, by())?;
-                Verdict::done()
+                answers::done()
             }
-            Order::Checkpoint(label) => Verdict::checkpoint(
+            Order::Checkpoint(label) => answers::checkpoint(
                 client
                     .checkpoint(name, label, AfterCheckpoint::Resume, by())?
                     .result,
             ),
             Order::RollBack(label) => {
                 client.rollback(name, label, by())?;
-                Verdict::done()
+                answers::done()
             }
             Order::Restore(label) => {
                 client.restore(name, label, by())?;
-                Verdict::done()
+                answers::done()
             }
             Order::Fork { label, into } => {
                 client.fork(name, label, into, by())?;
@@ -195,7 +189,7 @@ impl Blocking {
             }
             Order::Delete => {
                 client.delete(name, by())?;
-                Verdict::done()
+                answers::done()
             }
         })
     }
@@ -231,125 +225,39 @@ impl Reach {
     }
 }
 
-/// How a lifecycle order ended, from the daemon's answers.
-trait Verdicts {
-    fn done() -> Self;
-    fn stopped(outcome: StopOutcome) -> Self;
-    fn checkpoint(result: CheckpointResult) -> Self;
-    fn failed(error: &ClientError) -> Self;
-}
-
-impl Verdicts for Verdict {
-    fn done() -> Self {
-        Self::Done {
-            note: None,
-            made: None,
-        }
-    }
-
-    fn stopped(outcome: StopOutcome) -> Self {
-        match outcome {
-            StopOutcome::Stopped => Self::done(),
-            StopOutcome::ShutdownPending => Self::Done {
-                note: Some("asked to shut down; it hasn't yet".into()),
-                made: None,
-            },
-        }
-    }
-
-    fn checkpoint(result: CheckpointResult) -> Self {
-        match result {
-            CheckpointResult::Completed {
-                left_paused: Some(failure),
-                ..
-            } => Self::Done {
-                note: Some(format!("saved, but it may be left paused: {failure}")),
-                made: None,
-            },
-            CheckpointResult::Completed {
-                left_paused: None, ..
-            } => Self::done(),
-            CheckpointResult::Failed { error, .. } => Self::Refused(error.to_string()),
-            CheckpointResult::Unknown { error, .. } => Self::Unknown(error.to_string()),
-            CheckpointResult::InProgress { .. } => {
-                Self::Unknown("the checkpoint ended before it finished".into())
-            }
-        }
-    }
-
-    /// A refusal when nothing was done; unknown when it may have been: the
-    /// connection broke after the order went out, or the answer can't be read.
-    fn failed(error: &ClientError) -> Self {
-        let words = error.to_string();
-        match error {
-            ClientError::Machine(failure) => match failure.certainty() {
-                Certainty::NotDone => Self::Refused(words),
-                Certainty::MaybeDone => Self::Unknown(words),
-            },
-            ClientError::NoDaemon(_)
-            | ClientError::Connect(_)
-            | ClientError::VersionMismatch { .. }
-            | ClientError::Encode(_)
-            | ClientError::Remote(_) => Self::Refused(words),
-            ClientError::Io(_)
-            | ClientError::Closed
-            | ClientError::Lost(_)
-            | ClientError::Timeout
-            | ClientError::Stream(_)
-            | ClientError::Protocol(_)
-            | ClientError::WrongAnswer(_)
-            | ClientError::Parse(_) => Self::Unknown(words),
-        }
+/// How an order the client couldn't carry out ended: refused when nothing
+/// was done; unknown when it may have been (the connection broke after the
+/// order went out, or the answer can't be read).
+fn failed(error: &ClientError) -> Verdict {
+    let words = error.to_string();
+    match error {
+        ClientError::Machine(failure) => answers::failed(failure),
+        ClientError::NoDaemon(_)
+        | ClientError::Connect(_)
+        | ClientError::VersionMismatch { .. }
+        | ClientError::Encode(_)
+        | ClientError::Remote(_) => Verdict::Refused(words),
+        ClientError::Io(_)
+        | ClientError::Closed
+        | ClientError::Lost(_)
+        | ClientError::Timeout
+        | ClientError::Stream(_)
+        | ClientError::Protocol(_)
+        | ClientError::WrongAnswer(_)
+        | ClientError::Parse(_) => Verdict::Unknown(words),
     }
 }
 
-/// The viewer's words for the client's answers.
+/// A listed machine, in the viewer's words; a stray entry is left out.
 fn machine(listing: Listing) -> Option<Machine> {
     match listing {
         Listing::Machine {
             name,
             status,
             lineage,
-        } => Some(Machine {
-            name,
-            state: match status {
-                Ok(Status::Stopped(_)) => MachineState::Stopped,
-                Ok(Status::Live(state)) => MachineState::Live(run(state)),
-                Err(failure) => MachineState::Unreadable(MachineFailure::message(&failure).into()),
-            },
-            lineage,
-        }),
+        } => Some(answers::machine(name, status, lineage)),
         // Not a machine's name: the daemon ignores it too.
         Listing::Unrecognized(_) => None,
-    }
-}
-
-const fn run(state: RunState) -> Run {
-    match state {
-        RunState::Starting => Run::Starting,
-        RunState::Running => Run::Running,
-        RunState::Paused => Run::Paused,
-        RunState::Pausing | RunState::Resuming | RunState::Saving | RunState::Restoring => {
-            Run::Busy
-        }
-        RunState::Stopping | RunState::Stopped => Run::Stopping,
-        RunState::Error => Run::Error,
-        RunState::Unrecognized(_) => Run::Unknown,
-    }
-}
-
-fn session(info: SessionInfo) -> Session {
-    Session {
-        id: SessionId(info.id),
-        client: info.client,
-        machines: info.machines,
-        running: info.running,
-        answered: info.answered,
-        activity: match info.state {
-            SessionStatus::Active => SessionActivity::Active,
-            SessionStatus::Paused => SessionActivity::Paused,
-            SessionStatus::Unknown(raw) => SessionActivity::Unknown(raw),
-        },
     }
 }
 
@@ -361,7 +269,7 @@ impl Blocking {
 
     fn sessions(&self) -> Result<Vec<Session>, DaemonError> {
         let sessions = self.call(|client| client.sessions(within(CALL)))?;
-        Ok(sessions.into_iter().map(session).collect())
+        Ok(sessions.into_iter().map(answers::session).collect())
     }
 
     fn hold(&self, session: SessionId, hold: Hold) -> Result<(), DaemonError> {
@@ -383,7 +291,7 @@ impl Blocking {
 
     fn run(&self, name: &MachineName, order: &Order) -> Verdict {
         self.order(name, order)
-            .unwrap_or_else(|error| Verdict::failed(&error))
+            .unwrap_or_else(|error| failed(&error))
     }
 
     fn open_screen(&self, name: &MachineName) -> Result<Screen, DaemonError> {
@@ -593,64 +501,23 @@ pub(super) fn local(at: SystemTime) -> LocalTime {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use doppel_machine::lineage::{Lineage, RecordedLineage};
+    use doppel_client::MachineFailure;
+    use doppel_machine::outcome::Certainty;
 
     #[test]
-    fn listings_become_machines_and_strays_are_left_out() {
-        let dev: MachineName = "dev".parse().unwrap();
-        assert_eq!(
-            machine(Listing::Machine {
-                name: dev.clone(),
-                status: Ok(Status::Live(RunState::Saving)),
-                lineage: RecordedLineage::Unreadable("bad".into()),
-            }),
-            Some(Machine {
-                name: dev.clone(),
-                state: MachineState::Live(Run::Busy),
-                lineage: RecordedLineage::Unreadable("bad".into()),
-            })
-        );
-        assert_eq!(
-            machine(Listing::Machine {
-                name: dev.clone(),
-                status: Err(MachineFailure::new("no spec".into(), Certainty::NotDone)),
-                lineage: RecordedLineage::Known(Lineage::default()),
-            })
-            .map(|machine| machine.state),
-            Some(MachineState::Unreadable("no spec".into()))
-        );
+    fn strays_are_left_out() {
         assert_eq!(machine(Listing::Unrecognized("Not A Name".into())), None);
     }
 
     #[test]
     fn a_failure_reads_as_refused_only_when_nothing_was_done() {
         let refused = ClientError::Machine(MachineFailure::new("busy".into(), Certainty::NotDone));
-        assert_eq!(Verdict::failed(&refused), Verdict::Refused("busy".into()));
+        assert_eq!(failed(&refused), Verdict::Refused("busy".into()));
         let maybe = ClientError::Machine(MachineFailure::new("lost".into(), Certainty::MaybeDone));
-        assert_eq!(Verdict::failed(&maybe), Verdict::Unknown("lost".into()));
-        assert!(matches!(
-            Verdict::failed(&ClientError::Closed),
-            Verdict::Unknown(_)
-        ));
+        assert_eq!(failed(&maybe), Verdict::Unknown("lost".into()));
+        assert!(matches!(failed(&ClientError::Closed), Verdict::Unknown(_)));
         assert_eq!(Reach::of(&ClientError::Closed), Reach::Lost);
         assert_eq!(Reach::of(&ClientError::Protocol("x")), Reach::Answered);
-    }
-
-    #[test]
-    fn a_shutdown_still_pending_is_done_with_a_note() {
-        assert_eq!(
-            Verdict::stopped(StopOutcome::ShutdownPending),
-            Verdict::Done {
-                note: Some("asked to shut down; it hasn't yet".into()),
-                made: None,
-            }
-        );
-        assert_eq!(
-            Verdict::checkpoint(CheckpointResult::InProgress {
-                awaiting: doppel_machine::checkpoint::Step::SyncingGuest,
-            }),
-            Verdict::Unknown("the checkpoint ended before it finished".into())
-        );
     }
 
     #[test]
