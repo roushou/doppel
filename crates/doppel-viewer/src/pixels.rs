@@ -17,6 +17,8 @@ use core_video::pixel_buffer::{
 };
 use core_video::pixel_buffer_pool::CVPixelBufferPool;
 use core_video::r#return::kCVReturnSuccess;
+use objc2_core_foundation::CFRetained;
+use std::ptr::NonNull;
 
 use crate::{FrameRef, Plane};
 
@@ -35,8 +37,20 @@ impl Buffer {
         Self(buffer)
     }
 
+    #[cfg(test)]
     pub(crate) fn pixel_buffer(&self) -> CVPixelBuffer {
         self.0.clone()
+    }
+
+    /// The buffer as GPUI draws it, with a reference of its own.
+    pub(crate) fn surface(&self) -> Option<CFRetained<objc2_core_video::CVPixelBuffer>> {
+        let raw = self
+            .0
+            .as_concrete_TypeRef()
+            .cast::<objc2_core_video::CVPixelBuffer>();
+        // SAFETY: both types name the same CoreFoundation object; retaining
+        // it gives the result its own reference, released on drop.
+        NonNull::new(raw).map(|buffer| unsafe { CFRetained::retain(buffer) })
     }
 
     /// Width and height in pixels.

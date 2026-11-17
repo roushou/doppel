@@ -184,6 +184,7 @@ impl Theme {
             offset: point(px(0.), px(0.)),
             blur_radius: px(0.),
             spread_radius: px(width),
+            inset: false,
         }
     }
 }

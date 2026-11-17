@@ -188,10 +188,11 @@ impl Ask {
         let focus = cx.focus_handle();
         match &question {
             Question::Checkpoint(_) | Question::Delete(_) => {
-                window.focus(&typed.focus_handle(cx));
+                let handle = typed.focus_handle(cx);
+                window.focus(&handle, cx);
             }
             Question::Choose { .. } | Question::ForceStop(_) | Question::StartGolden { .. } => {
-                window.focus(&focus);
+                window.focus(&focus, cx);
             }
         }
         let mut ask = Self {

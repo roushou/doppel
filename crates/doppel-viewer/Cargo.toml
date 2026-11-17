@@ -13,7 +13,8 @@ core-video = "0.4.3"
 doppel-machine = { path = "../doppel-machine" }
 doppel-scene = { path = "../doppel-scene" }
 futures = "0.3"
-gpui = "0.2.2"
+gpui = { package = "gpui-pre", version = "=0.3.12" }
+gpui_platform = { package = "gpui-pre-platform", version = "=0.3.12", features = ["font-kit"] }
 objc2 = "0.6"
 objc2-av-foundation = { version = "0.3.2", default-features = false, features = [
   "std",
@@ -37,7 +38,12 @@ objc2-core-media = { version = "0.3.2", default-features = false, features = [
   "CMTimeRange",
   "objc2-core-video",
 ] }
-objc2-core-video = { version = "0.3.2", default-features = false, features = ["std", "CVBuffer", "CVImageBuffer"] }
+objc2-core-video = { version = "0.3.2", default-features = false, features = [
+  "std",
+  "CVBuffer",
+  "CVImageBuffer",
+  "CVPixelBuffer",
+] }
 objc2-foundation = { version = "0.3.2", default-features = false, features = [
   "std",
   "NSURL",

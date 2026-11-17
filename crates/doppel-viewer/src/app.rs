@@ -15,9 +15,9 @@ use doppel_machine::machine::MachineName;
 use futures::StreamExt;
 use futures::channel::{mpsc, oneshot};
 use gpui::{
-    AnyElement, App, AppContext, Application, Bounds, Context, Div, ElementId, Entity, FocusHandle,
-    FontWeight, Hsla, InteractiveElement, IntoElement, KeyDownEvent, MouseButton, ParentElement,
-    Render, SharedString, Stateful, StatefulInteractiveElement, Styled, Subscription, Task,
+    AnyElement, App, AppContext, Bounds, Context, Div, ElementId, Entity, FocusHandle, FontWeight,
+    Hsla, InteractiveElement, IntoElement, KeyDownEvent, MouseButton, ParentElement, Render,
+    SharedString, Stateful, StatefulInteractiveElement, Styled, Subscription, Task,
     TitlebarOptions, Window as GpuiWindow, WindowBounds, WindowOptions, deferred, div,
     prelude::FluentBuilder, px, relative, rgb, size,
 };
@@ -93,7 +93,7 @@ impl Window {
         settings: Arc<dyn Settings>,
         shown: Vec<MachineName>,
     ) {
-        Application::new()
+        gpui_platform::application()
             .with_assets(Assets)
             .run(move |cx: &mut App| {
                 // Without them the window falls back to the system's fonts.
@@ -124,7 +124,7 @@ impl Window {
                     cx.quit();
                     return;
                 }
-                cx.on_window_closed(|cx| cx.quit()).detach();
+                cx.on_window_closed(|cx, _| cx.quit()).detach();
                 cx.activate(true);
             });
     }
@@ -288,7 +288,7 @@ impl Root {
         cx: &mut Context<Self>,
     ) -> Self {
         let focus = cx.focus_handle();
-        window.focus(&focus);
+        window.focus(&focus, cx);
         let poll = cx.spawn(async move |root, cx| {
             loop {
                 if root.update(cx, |root, cx| root.refresh(cx)).is_err() {
@@ -733,11 +733,11 @@ impl Root {
         let ask = cx.new(|cx| Ask::new(question, daemon, names, now, window, cx));
         let events = cx.subscribe_in(&ask, window, |root, _, event, window, cx| match event {
             AskEvent::Submit(name, order) => {
-                root.close_ask(window);
+                root.close_ask(window, cx);
                 root.run(name.clone(), order.clone(), cx);
             }
             AskEvent::Close => {
-                root.close_ask(window);
+                root.close_ask(window, cx);
                 cx.notify();
             }
         });
@@ -745,9 +745,9 @@ impl Root {
         cx.notify();
     }
 
-    fn close_ask(&mut self, window: &mut GpuiWindow) {
+    fn close_ask(&mut self, window: &mut GpuiWindow, cx: &mut App) {
         self.ask = None;
-        window.focus(&self.focus);
+        window.focus(&self.focus, cx);
     }
 
     /// Carries out an order, handing control back first when it ends what
@@ -1615,7 +1615,7 @@ impl Root {
             .child(
                 div()
                     .flex()
-                    .flex_shrink()
+                    .flex_shrink(1.)
                     .min_w(px(60.))
                     .max_w(px(width * 0.3))
                     .items_center()
@@ -2830,7 +2830,7 @@ impl Render for Root {
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|root, _, window, cx| {
-                            root.close_ask(window);
+                            root.close_ask(window, cx);
                             cx.notify();
                         }),
                     )

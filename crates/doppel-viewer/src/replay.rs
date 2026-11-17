@@ -860,12 +860,8 @@ impl Replay {
                     points,
                 })
             });
-        if let Some(buffer) = &shown {
-            frame = frame.child(
-                surface(buffer.pixel_buffer())
-                    .object_fit(ObjectFit::Contain)
-                    .size_full(),
-            );
+        if let Some(pixels) = shown.as_ref().and_then(|buffer| buffer.surface()) {
+            frame = frame.child(surface(pixels).object_fit(ObjectFit::Contain).size_full());
         }
         if let (Some(inspect), Some(picture), (Some(found), Some(snapshot))) =
             (self.inspect.as_ref(), picture, seen)
@@ -1448,7 +1444,7 @@ impl Render for Replay {
                 // Two parts video to one part trace, as the browser's grid.
                 .child(
                     stage
-                        .flex_shrink()
+                        .flex_shrink(1.)
                         .flex_basis(gpui::relative(0.))
                         .map(|mut stage| {
                             stage.style().flex_grow = Some(2.0);
@@ -1457,8 +1453,8 @@ impl Render for Replay {
                 )
                 .child(
                     trace
-                        .flex_grow()
-                        .flex_shrink()
+                        .flex_grow(1.)
+                        .flex_shrink(1.)
                         .flex_basis(gpui::relative(0.))
                         .min_w(px(TRACE_MIN)),
                 )

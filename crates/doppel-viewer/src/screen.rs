@@ -14,7 +14,7 @@ use futures::channel::{mpsc, oneshot};
 use gpui::{
     App, Bounds, Context, EventEmitter, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
     MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ObjectFit, ParentElement, Pixels,
-    Render, ScrollDelta, ScrollWheelEvent, Styled, Task, Window, canvas, div, px, surface,
+    Render, ScrollDelta, ScrollEvent, Styled, Task, Window, canvas, div, px, surface,
 };
 
 use crate::decode::Decoder;
@@ -554,8 +554,8 @@ impl ScreenView {
         }
     }
 
-    fn press_pointer(&mut self, event: &MouseDownEvent, window: &mut Window) {
-        window.focus(&self.focus);
+    fn press_pointer(&mut self, event: &MouseDownEvent, window: &mut Window, cx: &mut App) {
+        window.focus(&self.focus, cx);
         let (Some(button), Some(placement)) = (Button::from_gpui(event.button), self.placement())
         else {
             return;
@@ -614,7 +614,7 @@ impl ScreenView {
         });
     }
 
-    fn scrolled(&mut self, event: &ScrollWheelEvent) {
+    fn scrolled(&mut self, event: &ScrollEvent) {
         let Some(placement) = self.placement() else {
             return;
         };
@@ -656,9 +656,7 @@ impl Render for ScreenView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = *cx.global::<Theme>();
         let shown = match &self.state {
-            ViewState::Showing(buffer) | ViewState::Ended(Some(buffer)) => {
-                Some(buffer.pixel_buffer())
-            }
+            ViewState::Showing(buffer) | ViewState::Ended(Some(buffer)) => buffer.surface(),
             ViewState::Waiting | ViewState::Ended(None) | ViewState::Failed(_) => None,
         };
         let bounds = self.bounds.clone();
@@ -705,11 +703,11 @@ impl Render for ScreenView {
         }
         body.on_mouse_down(
             MouseButton::Left,
-            cx.listener(|view, event, window, _| view.press_pointer(event, window)),
+            cx.listener(|view, event, window, cx| view.press_pointer(event, window, cx)),
         )
         .on_mouse_down(
             MouseButton::Right,
-            cx.listener(|view, event, window, _| view.press_pointer(event, window)),
+            cx.listener(|view, event, window, cx| view.press_pointer(event, window, cx)),
         )
         .on_mouse_up(
             MouseButton::Left,
@@ -728,7 +726,7 @@ impl Render for ScreenView {
             cx.listener(|view, event, _, _| view.release(event)),
         )
         .on_mouse_move(cx.listener(|view, event, _, _| view.moved(event)))
-        .on_scroll_wheel(cx.listener(|view, event, _, _| view.scrolled(event)))
+        .on_scroll(cx.listener(|view, event, _, _| view.scrolled(event)))
         .on_key_down(cx.listener(|view, event, _, cx| view.key(event, cx)))
     }
 }

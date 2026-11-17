@@ -95,7 +95,7 @@ impl Render for TextField {
             .id("field")
             .track_focus(&self.focus)
             .on_key_down(cx.listener(|field, event, _, cx| field.key(event, cx)))
-            .on_click(cx.listener(|field, _, window, _| window.focus(&field.focus)))
+            .on_click(cx.listener(|field, _, window, cx| window.focus(&field.focus, cx)))
             .flex()
             .items_center()
             .h(px(34.))
