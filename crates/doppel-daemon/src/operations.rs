@@ -8,8 +8,9 @@ use doppel_host::files::Filesystem;
 use doppel_host::launcher::Window;
 use doppel_host::login::AwaitDesktopError;
 use doppel_host::machines::{
-    CHECKPOINT_TIMEOUT, CLAIM_TIMEOUT, CheckpointReport, Claim, Listing, MachineError, Machines,
-    Resumed, START_TIMEOUT, STOP_TIMEOUT, StopOutcome, StopReport,
+    AgentConnection, AgentConnectionError, CHECKPOINT_TIMEOUT, CLAIM_TIMEOUT, CheckpointReport,
+    Claim, Listing, MachineError, Machines, Paused, Resumed, START_TIMEOUT, STOP_TIMEOUT,
+    StopOutcome, StopReport,
 };
 use doppel_host::store::{Listed, StoreError};
 use doppel_host::vmm::{StopMode, VmmError};
@@ -43,7 +44,6 @@ use crate::call_events::CallEvent;
 use crate::forks::{ForkPlan, MacError, PlanError};
 use crate::scheduler::Cancelled;
 use crate::scheduler::{Begun, Call, Turn};
-use crate::session::{Paused, Session, SessionError};
 
 /// How an action on an element ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -100,11 +100,11 @@ impl Failure for CallError {
     }
 }
 
-impl From<SessionError> for CallError {
-    fn from(error: SessionError) -> Self {
+impl From<AgentConnectionError> for CallError {
+    fn from(error: AgentConnectionError) -> Self {
         match error {
-            SessionError::Connect(error) => Self::Machine(error),
-            SessionError::Request(error) => Self::Agent(error),
+            AgentConnectionError::Connect(error) => Self::Machine(error),
+            AgentConnectionError::Request(error) => Self::Agent(error),
         }
     }
 }
@@ -118,7 +118,7 @@ where
     /// started at its first.
     fn turn<'s>(&'s self, machine: &MachineName, call: &'s Call) -> Result<Turn<'s, C>, CallError> {
         let (turn, begun) = call
-            .turn(machine, &self.agent_sessions, || {
+            .turn(machine, &self.agent_connections, || {
                 self.machines.clock().now()
             })
             .map_err(|Cancelled| CallError::Cancelled)?;
@@ -138,14 +138,14 @@ where
     }
 
     /// A turn for an operation that stops, pauses or restarts the guest:
-    /// the agent session ends, and the next call opens a fresh one.
+    /// the agent connection is closed, and the next call opens a fresh one.
     fn lifecycle_turn<'s>(
         &'s self,
         machine: &MachineName,
         call: &'s Call,
     ) -> Result<Turn<'s, C>, CallError> {
         let mut turn = self.turn(machine, call)?;
-        turn.session().end();
+        turn.agent().close();
         Ok(turn)
     }
 
@@ -163,7 +163,7 @@ where
             Status::Live(state) if state.is_running() => {
                 let by = self.machines.deadline();
                 match turn
-                    .session()
+                    .agent()
                     .run(&self.machines, machine, by, |agent, by| agent.status(by))
                 {
                     Ok(status) => AgentReport::Connected(status),
@@ -196,18 +196,16 @@ where
         let mut turn = self.turn(machine, call)?;
         let by = self.machines.deadline();
         match via {
-            Via::Agent => Ok(turn
-                .session()
-                .run(&self.machines, machine, by, |agent, by| {
-                    let max = match size {
-                        ScreenshotSize::MaxPixels(n) => n,
-                        ScreenshotSize::MatchPoints => {
-                            let display = agent.status(by)?.display;
-                            Self::longest_side(display.width(), display.height())
-                        }
-                    };
-                    agent.capture(max, by)
-                })?),
+            Via::Agent => Ok(turn.agent().run(&self.machines, machine, by, |agent, by| {
+                let max = match size {
+                    ScreenshotSize::MaxPixels(n) => n,
+                    ScreenshotSize::MatchPoints => {
+                        let display = agent.status(by)?.display;
+                        Self::longest_side(display.width(), display.height())
+                    }
+                };
+                agent.capture(max, by)
+            })?),
             Via::Host => {
                 let max = match size {
                     ScreenshotSize::MaxPixels(n) => n,
@@ -267,10 +265,9 @@ where
         match via {
             Via::Agent => {
                 let by = self.machines.deadline();
-                turn.session()
-                    .run(&self.machines, machine, by, |agent, by| {
-                        agent.input(input, by)
-                    })?;
+                turn.agent().run(&self.machines, machine, by, |agent, by| {
+                    agent.input(input, by)
+                })?;
             }
             Via::Host => {
                 let by = self.machines.deadline();
@@ -303,11 +300,9 @@ where
     ) -> Result<AxSnapshot, CallError> {
         let mut turn = self.turn(machine, call)?;
         let by = self.machines.deadline();
-        Ok(turn
-            .session()
-            .run(&self.machines, machine, by, |agent, by| {
-                Self::take(agent, spec, by)
-            })?)
+        Ok(turn.agent().run(&self.machines, machine, by, |agent, by| {
+            Self::take(agent, spec, by)
+        })?)
     }
 
     /// A person's look at the frontmost app's focused window. It takes no
@@ -331,18 +326,19 @@ where
         let mut turn = self.turn(machine, call)?;
         let by = self.machines.deadline();
         match turn
-            .session()
+            .agent()
             .run(&self.machines, machine, by, |agent, by| agent.act(act, by))
         {
             Ok(()) => Ok(Acted::Done),
-            Err(SessionError::Request(AgentError::Remote(RemoteError::StaleReference {
-                ..
-            }))) => Ok(Acted::StaleReference),
+            Err(AgentConnectionError::Request(AgentError::Remote(
+                RemoteError::StaleReference { .. },
+            ))) => Ok(Acted::StaleReference),
             Err(error) => Err(error.into()),
         }
     }
 
-    /// Waits on accessibility snapshots, taken on the machine's session.
+    /// Waits on accessibility snapshots, taken on the machine's agent
+    /// connection.
     pub(crate) fn wait_for(
         &self,
         machine: &MachineName,
@@ -354,15 +350,15 @@ where
         let machines = &self.machines;
         Self::poll_until(
             machines,
-            turn.session(),
+            turn.agent(),
             call.cancel(),
             wait,
-            |session, by| match session.run(machines, machine, by, |agent, by| {
+            |connection, by| match connection.run(machines, machine, by, |agent, by| {
                 Self::take(agent, spec, by)
             }) {
                 Ok(snapshot) => Poll::Seen(snapshot),
-                Err(SessionError::Connect(error)) => Self::machine_poll(&error),
-                Err(SessionError::Request(error)) => Self::agent_poll(&error),
+                Err(AgentConnectionError::Connect(error)) => Self::machine_poll(&error),
+                Err(AgentConnectionError::Request(error)) => Self::agent_poll(&error),
             },
         )
     }
@@ -377,12 +373,10 @@ where
         let mut turn = self.turn(machine, call)?;
         let machines = &self.machines;
         // Not needed to read the screen, but its events wake the wait.
-        let _ = turn
-            .session()
-            .client(machines, machine, machines.deadline());
+        let _ = turn.agent().client(machines, machine, machines.deadline());
         Self::poll_until(
             machines,
-            turn.session(),
+            turn.agent(),
             call.cancel(),
             wait,
             |_, by| match machines
@@ -396,7 +390,7 @@ where
         )
     }
 
-    /// A channel of its own: a long program mustn't hold the session, and
+    /// A channel of its own: a long program mustn't hold the connection, and
     /// cancelling it closes the channel.
     pub(crate) fn exec(
         &self,
@@ -422,11 +416,9 @@ where
     ) -> Result<Vec<u8>, CallError> {
         let mut turn = self.turn(machine, call)?;
         let by = self.machines.deadline();
-        Ok(turn
-            .session()
-            .run(&self.machines, machine, by, |agent, by| {
-                agent.read_file(request, by)
-            })?)
+        Ok(turn.agent().run(&self.machines, machine, by, |agent, by| {
+            agent.read_file(request, by)
+        })?)
     }
 
     pub(crate) fn write_file(
@@ -437,11 +429,9 @@ where
     ) -> Result<(), CallError> {
         let mut turn = self.turn(machine, call)?;
         let by = self.machines.deadline();
-        Ok(turn
-            .session()
-            .run(&self.machines, machine, by, |agent, by| {
-                agent.write_file(request, by)
-            })?)
+        Ok(turn.agent().run(&self.machines, machine, by, |agent, by| {
+            agent.write_file(request, by)
+        })?)
     }
 
     pub(crate) fn checkpoint(
@@ -660,24 +650,24 @@ where
     /// gets the usual call budget, cut short by the wait's own end.
     fn poll_until<W: Watch>(
         machines: &Machines<C, F>,
-        session: &mut Session<C>,
+        agent: &mut AgentConnection<C>,
         cancel: &Cancel,
         wait: WaitSpec<W>,
-        mut poll: impl FnMut(&mut Session<C>, Deadline) -> Poll<W::Seen>,
+        mut poll: impl FnMut(&mut AgentConnection<C>, Deadline) -> Poll<W::Seen>,
     ) -> Result<WaitOutcome<W::Seen>, CallError> {
         let clock = machines.clock();
         let mut waiting = Waiting::start(wait, clock.now());
         loop {
             let by = machines.deadline().earlier(waiting.poll_deadline());
-            let seen = poll(session, by);
+            let seen = poll(agent, by);
             // Whatever changed before this poll's reply, it has seen.
-            session.seen();
+            agent.seen();
             let (mut next, mut at) = match waiting.observe(seen, clock.now()) {
                 Next::Done(outcome) => return Ok(outcome),
                 Next::PollAt(next, at) => (next, at),
             };
             loop {
-                match session.pause(clock, at, cancel) {
+                match agent.pause(clock, at, cancel) {
                     Paused::Due => break,
                     Paused::Changed => (next, at) = next.on_change(clock.now()),
                     Paused::Cancelled => return Err(CallError::Cancelled),
@@ -696,7 +686,7 @@ where
                 | RemoteError::Internal(_)
                 | RemoteError::Timeout { .. },
             )
-            // A broken session: the next poll connects afresh.
+            // A broken connection: the next poll connects afresh.
             | AgentError::Timeout
             | AgentError::Io(_)
             | AgentError::Closed => Poll::Retryable(error.to_string()),
@@ -764,7 +754,7 @@ mod tests {
             LocalFilesystem,
         );
         let cancel = Cancel::new();
-        let mut session = Session::default();
+        let mut agent = AgentConnection::default();
         let wait =
             WaitSpec::new(Condition::Appears("Save".into()), Duration::from_secs(60)).unwrap();
         let canceller = cancel.clone();
@@ -774,7 +764,7 @@ mod tests {
         });
         let started = SystemClock.now();
         // Never satisfied: only the cancel can end it early.
-        let result = Daemon::poll_until(&machines, &mut session, &cancel, wait, |_, _| {
+        let result = Daemon::poll_until(&machines, &mut agent, &cancel, wait, |_, _| {
             Poll::<AxSnapshot>::Retryable("no window yet".into())
         });
         later.join().unwrap();

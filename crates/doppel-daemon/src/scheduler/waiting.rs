@@ -23,7 +23,7 @@ use super::{
 };
 use crate::call_events::SessionCall;
 use crate::recording::Recordings;
-use crate::session::Session;
+use doppel_host::machines::AgentConnection;
 
 /// The scheduler with its waiting threads, shared by every connection.
 #[derive(Debug, Default)]
@@ -340,7 +340,7 @@ impl Call {
     pub(crate) fn turn<'s, C>(
         &'s self,
         machine: &MachineName,
-        agent_sessions: &'s AgentSessions<C>,
+        agent_connections: &'s AgentConnections<C>,
         now: impl FnOnce() -> Instant,
     ) -> Result<(Turn<'s, C>, Begun), Cancelled> {
         let (sender, answer) = mpsc::sync_channel(1);
@@ -359,9 +359,9 @@ impl Call {
         Ok((
             Turn {
                 call: self,
-                agent_sessions,
+                agent_connections,
                 machine: machine.clone(),
-                session: agent_sessions.take(machine),
+                agent: agent_connections.take(machine),
             },
             begun,
         ))
@@ -393,52 +393,53 @@ pub(crate) enum Begun {
     Again,
 }
 
-/// Each machine's agent session, while no turn holds it.
+/// Each machine's connection to its guest agent, while no turn holds it.
 #[derive(Debug)]
-pub(crate) struct AgentSessions<C>(Mutex<HashMap<MachineName, Session<C>>>);
+pub(crate) struct AgentConnections<C>(Mutex<HashMap<MachineName, AgentConnection<C>>>);
 
-impl<C> Default for AgentSessions<C> {
+impl<C> Default for AgentConnections<C> {
     fn default() -> Self {
         Self(Mutex::new(HashMap::new()))
     }
 }
 
-impl<C> AgentSessions<C> {
-    fn lock(&self) -> MutexGuard<'_, HashMap<MachineName, Session<C>>> {
-        // Sessions move in and out whole: consistent after any panic.
+impl<C> AgentConnections<C> {
+    fn lock(&self) -> MutexGuard<'_, HashMap<MachineName, AgentConnection<C>>> {
+        // Connections move in and out whole: consistent after any panic.
         self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn take(&self, machine: &MachineName) -> Session<C> {
+    fn take(&self, machine: &MachineName) -> AgentConnection<C> {
         self.lock().remove(machine).unwrap_or_default()
     }
 
-    fn put(&self, machine: MachineName, session: Session<C>) {
-        self.lock().insert(machine, session);
+    fn put(&self, machine: MachineName, agent: AgentConnection<C>) {
+        self.lock().insert(machine, agent);
     }
 }
 
-/// A machine's turn: it lasts until dropped, and holds the agent session.
+/// A machine's turn: it lasts until dropped, and holds the machine's
+/// connection to its guest agent.
 #[derive(Debug)]
 #[must_use = "the turn ends when dropped"]
 pub(crate) struct Turn<'s, C> {
     call: &'s Call,
-    agent_sessions: &'s AgentSessions<C>,
+    agent_connections: &'s AgentConnections<C>,
     machine: MachineName,
-    session: Session<C>,
+    agent: AgentConnection<C>,
 }
 
 impl<C> Turn<'_, C> {
-    pub(crate) const fn session(&mut self) -> &mut Session<C> {
-        &mut self.session
+    pub(crate) const fn agent(&mut self) -> &mut AgentConnection<C> {
+        &mut self.agent
     }
 }
 
 impl<C> Drop for Turn<'_, C> {
     fn drop(&mut self) {
         // Back before the next turn takes it.
-        self.agent_sessions
-            .put(self.machine.clone(), std::mem::take(&mut self.session));
+        self.agent_connections
+            .put(self.machine.clone(), std::mem::take(&mut self.agent));
         self.call
             .waiting
             .handle(Event::EndTurn(self.call.id, self.machine.clone()));
@@ -462,10 +463,10 @@ mod tests {
     #[test]
     fn a_waiting_call_wakes_when_its_turn_comes_or_it_is_cancelled() {
         let waiting = Arc::new(Waiting::default());
-        let agent_sessions = AgentSessions::<SystemClock>::default();
+        let agent_connections = AgentConnections::<SystemClock>::default();
         let holder = waiting.alone();
         let (held, begun) = holder
-            .turn(&dev(), &agent_sessions, || SystemClock.now())
+            .turn(&dev(), &agent_connections, || SystemClock.now())
             .unwrap();
         assert!(matches!(begun, Begun::First(_, None)));
         let cancel = Cancel::new();
@@ -474,11 +475,11 @@ mod tests {
         std::thread::scope(|scope| {
             let cancelled = scope.spawn(|| {
                 cancelled
-                    .turn(&dev(), &agent_sessions, || SystemClock.now())
+                    .turn(&dev(), &agent_connections, || SystemClock.now())
                     .map(|_| ())
             });
             let next = scope.spawn(|| {
-                next.turn(&dev(), &agent_sessions, || SystemClock.now())
+                next.turn(&dev(), &agent_connections, || SystemClock.now())
                     .map(|(_, begun)| matches!(begun, Begun::First(..)))
             });
             std::thread::sleep(Duration::from_millis(50));
@@ -491,7 +492,7 @@ mod tests {
         });
         // The holder's later turn is not its first.
         let (_, again) = holder
-            .turn(&dev(), &agent_sessions, || SystemClock.now())
+            .turn(&dev(), &agent_connections, || SystemClock.now())
             .unwrap();
         assert!(matches!(again, Begun::Again));
     }

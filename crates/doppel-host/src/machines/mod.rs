@@ -44,9 +44,11 @@ use crate::store::{Listed, Store, StoreError};
 use crate::vmm::{StopMode, VmmClient, VmmError};
 use doppel_protocol::transport::Cancel;
 
+mod agent_connection;
 mod machine;
 mod running;
 
+pub use agent_connection::{AgentConnection, AgentConnectionError, Paused};
 pub use machine::Machine;
 pub use running::RunningMachine;
 

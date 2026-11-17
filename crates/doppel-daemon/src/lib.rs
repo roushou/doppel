@@ -16,7 +16,6 @@ mod recording;
 mod requests;
 mod scheduler;
 mod serving;
-mod session;
 mod tokens;
 mod web;
 
@@ -75,14 +74,14 @@ impl Listener {
 }
 
 /// The machines, with a queue each: requests on one machine run one at a
-/// time, in arrival order, and hold its agent session.
+/// time, in arrival order, and hold its connection to the guest agent.
 #[derive(Debug)]
 pub struct Daemon<C, F> {
     machines: Machines<C, F>,
     /// Who may act: sessions, a person's control, each machine's line.
     scheduler: std::sync::Arc<scheduler::Waiting>,
-    /// Each machine's agent session, while no turn holds it.
-    agent_sessions: scheduler::AgentSessions<C>,
+    /// Each machine's connection to its guest agent, while no turn holds it.
+    agent_connections: scheduler::AgentConnections<C>,
     /// Viewers watching what agents do.
     watchers: std::sync::Arc<activity::Watchers>,
     /// Where recent snapshots' elements are, for calls that act on one.
@@ -104,7 +103,7 @@ impl<C: WallClock, F: Filesystem> Daemon<C, F> {
         Self {
             machines,
             scheduler: std::sync::Arc::default(),
-            agent_sessions: scheduler::AgentSessions::default(),
+            agent_connections: scheduler::AgentConnections::default(),
             watchers: std::sync::Arc::default(),
             elements: activity::Elements::default(),
             macs,
@@ -629,7 +628,7 @@ mod tests {
         let dev: doppel_machine::machine::MachineName = "dev".parse().unwrap();
         let holder = daemon.scheduler.alone();
         let (held, _) = holder
-            .turn(&dev, &daemon.agent_sessions, || SystemClock.now())
+            .turn(&dev, &daemon.agent_connections, || SystemClock.now())
             .unwrap();
         let (ours, theirs) = UnixStream::pair().unwrap();
         let soon = || {

@@ -76,7 +76,7 @@ second framing (gRPC) or second schema (JSON-RPC).
 
 ### MCP
 
-The tool runner lives in the daemon: the queues, agent sessions and refs.
+The tool runner lives in the daemon: the queues, agent connections and refs.
 `doppel mcp` is the command MCP clients launch (`claude mcp add doppel --
 doppel mcp --machine dev`); it serves rmcp over stdio and forwards each typed
 `ToolCall` to the daemon. Parsing stays in `doppel-mcp`, at the edge, so the

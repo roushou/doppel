@@ -34,7 +34,7 @@ pub(crate) mod session;
 use control::{Control, ControlAction, ControlError, ControlEvent};
 use session::{SessionAction, SessionEnd, SessionError, SessionEvent, SessionState};
 
-pub(crate) use waiting::{AgentSessions, Begun, Call, Turn, Waiting};
+pub(crate) use waiting::{AgentConnections, Begun, Call, Turn, Waiting};
 
 /// An open session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
