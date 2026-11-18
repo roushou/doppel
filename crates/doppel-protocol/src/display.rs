@@ -6,6 +6,8 @@
 use std::num::NonZeroU32;
 use std::ops::Range;
 
+use crate::pb::vmm::v1 as vmm;
+
 /// The layout as the VMM describes it, before it's checked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RingLayout {
@@ -17,6 +19,21 @@ pub struct RingLayout {
     pub luma_bytes_per_row: u32,
     pub chroma_offset: u64,
     pub chroma_bytes_per_row: u32,
+}
+
+impl From<&vmm::DisplayLayout> for RingLayout {
+    fn from(layout: &vmm::DisplayLayout) -> Self {
+        Self {
+            width_pixels: layout.width_pixels,
+            height_pixels: layout.height_pixels,
+            slot_count: layout.slot_count,
+            slot_stride: layout.slot_stride,
+            luma_offset: layout.luma_offset,
+            luma_bytes_per_row: layout.luma_bytes_per_row,
+            chroma_offset: layout.chroma_offset,
+            chroma_bytes_per_row: layout.chroma_bytes_per_row,
+        }
+    }
 }
 
 /// Why a layout doesn't fit its mapping.

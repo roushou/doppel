@@ -133,9 +133,15 @@ pub enum MachineError {
         running: MachineName,
     },
     #[error("machine '{machine}' has no checkpoint '{label}'")]
-    NoSuchCheckpoint { machine: MachineName, label: String },
+    NoSuchCheckpoint {
+        machine: MachineName,
+        label: CheckpointLabel,
+    },
     #[error("machine '{machine}' already has a checkpoint '{label}'")]
-    CheckpointExists { machine: MachineName, label: String },
+    CheckpointExists {
+        machine: MachineName,
+        label: CheckpointLabel,
+    },
     #[error("machine '{machine}' keeps checkpoint '{label}': {why}")]
     CheckpointKept {
         machine: MachineName,
@@ -1316,7 +1322,7 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
         if self.files.exists(&bundle.checkpoint(label).dir)? {
             return Err(MachineError::CheckpointExists {
                 machine: name.clone(),
-                label: label.as_str().to_owned(),
+                label: label.clone(),
             });
         }
         let mut client = self.running(name, self.step(by))?;
@@ -1438,7 +1444,7 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
         } else {
             Err(MachineError::NoSuchCheckpoint {
                 machine: bundle.name().clone(),
-                label: label.as_str().to_owned(),
+                label: label.clone(),
             })
         }
     }
@@ -1492,7 +1498,7 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
         if !self.files.exists(&bundle.checkpoint(label).dir)? {
             return Err(MachineError::NoSuchCheckpoint {
                 machine: name.clone(),
-                label: label.as_str().to_owned(),
+                label: label.clone(),
             });
         }
         self.store

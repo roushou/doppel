@@ -42,8 +42,8 @@ use doppel_gateway::{ChangeError, Token, TokenDigest, TokenId, TokenLabel, Ttl};
 use crate::activity;
 use crate::call_events::{Answered, CallEvent, SessionCall};
 use crate::call_events::{Guest, Traced};
-use crate::recording::Recordings;
-use crate::recording::library::{self, Library, LibraryError, RecordingId, TraceLine};
+use crate::recording::library::{Library, LibraryError, RecordingId, TraceLine};
+use crate::recording::{self, Recordings};
 use crate::requests::forks::PlanError;
 use crate::requests::handle::{Handle, Traits, Turn};
 use crate::requests::operations::{ForkStart, ForksError, TemporaryMachineError};
@@ -840,7 +840,7 @@ where
                 error: Some(Refusal::failure(&error)),
             }),
             Checkpoint::InProgress { awaiting, .. } => {
-                Wire::InProgress(daemon::CheckpointStep::from(awaiting) as i32)
+                Wire::InProgress(daemon::CheckpointStep::from(awaiting.step()) as i32)
             }
         };
         daemon::CheckpointReport {
@@ -1099,17 +1099,17 @@ where
                     machine: call.machine,
                     call: call.call,
                     outcome: match call.outcome {
-                        library::Outcome::Done => daemon::TraceOutcome::Done,
-                        library::Outcome::Failed => daemon::TraceOutcome::Failed,
-                        library::Outcome::TimedOut => daemon::TraceOutcome::TimedOut,
-                        library::Outcome::Refused => daemon::TraceOutcome::Refused,
+                        recording::Outcome::Done => daemon::TraceOutcome::Done,
+                        recording::Outcome::Failed => daemon::TraceOutcome::Failed,
+                        recording::Outcome::TimedOut => daemon::TraceOutcome::TimedOut,
+                        recording::Outcome::Refused => daemon::TraceOutcome::Refused,
                     } as i32,
                     error: call.error,
                     waited_ms: call.waited_ms,
                     queued_ms: call.queued_ms,
                     by: match call.by {
-                        library::By::Session => daemon::TraceActor::Session,
-                        library::By::Person => daemon::TraceActor::Person,
+                        recording::Actor::Session => daemon::TraceActor::Session,
+                        recording::Actor::Person => daemon::TraceActor::Person,
                     } as i32,
                     acted: call.acted.map(|acted| *acted),
                     seen: call.seen,

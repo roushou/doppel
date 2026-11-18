@@ -579,24 +579,22 @@ impl Replay {
         }
         if let (true, Some(picture), Some(now)) = (self.reading, picture, now) {
             let read = timeline::read_at(&self.moments, now);
-            let (drawn, whose, stale) = match &read {
-                Some(read) => (
-                    reading::Drawn::Read(&read.read),
-                    SharedString::from(format!(
+            let drawn = match &read {
+                Some(read) => reading::Drawn::Read {
+                    read: &read.read,
+                    whose: SharedString::from(format!(
                         "agent · {:.1} s before",
                         ((now - read.since_ms) / 1000.0).max(0.0)
                     )),
-                    read.acted_since,
-                ),
-                None => (reading::Drawn::Nothing, SharedString::default(), false),
+                    acted_since: read.acted_since,
+                },
+                None => reading::Drawn::Nothing,
             };
             let nothing: reading::ReadNow = Rc::new(|_, _| {});
             frame = frame.child(reading::layer(
                 "replay-text",
                 drawn,
                 picture,
-                whose,
-                stale,
                 None,
                 theme,
                 &nothing,

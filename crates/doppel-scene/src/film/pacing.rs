@@ -75,6 +75,13 @@ impl Stretch {
     }
 }
 
+/// Where a stretch starts, or the last one ends, on both clocks (ms).
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Knot {
+    film: f64,
+    session: f64,
+}
+
 /// A film's clock over a session, from `from_ms` until `until_ms`. Each
 /// stretch has its own speed, and the clock eases between them: the
 /// session's time at a film instant is the average, over [`EASE_MS`]
@@ -82,9 +89,9 @@ impl Stretch {
 /// as a ramp, and the film is as long as its stretches played.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Pace {
-    /// Where each stretch starts, and where the last ends: (film, session),
-    /// both increasing.
-    knots: Vec<(f64, f64)>,
+    /// Where each stretch starts, and where the last ends, both clocks
+    /// increasing.
+    knots: Vec<Knot>,
 }
 
 impl Pace {
@@ -92,30 +99,50 @@ impl Pace {
     #[must_use]
     pub fn of(moments: &[Moment], from_ms: f64, until_ms: f64) -> Self {
         // Where each speed holds: the slowest that covers an instant wins.
-        let mut windows: Vec<(f64, f64, f64)> = Vec::new();
+        let mut windows: Vec<Stretch> = Vec::new();
         for moment in moments.iter().filter(|moment| !moment.person) {
             let end = moment.end_ms.unwrap_or(until_ms).max(moment.start_ms);
             match played(moment.call.gesture) {
                 Played::Slow => {
                     let held = (moment.start_ms + MOVE_HOLD_MS).min(end);
-                    windows.push((moment.start_ms, held, MOVE_SPEED));
-                    windows.push((end, end + MOVE_TAIL_MS, MOVE_SPEED));
+                    windows.push(Stretch {
+                        from: moment.start_ms,
+                        until: held,
+                        speed: MOVE_SPEED,
+                    });
+                    windows.push(Stretch {
+                        from: end,
+                        until: end + MOVE_TAIL_MS,
+                        speed: MOVE_SPEED,
+                    });
                 }
                 Played::Machine => {
                     let speed = ((end - moment.start_ms) / MACHINE_MS).clamp(1.0, IDLE_SPEED);
-                    windows.push((moment.start_ms, end, speed));
-                    windows.push((end, end + MOVE_TAIL_MS, MOVE_SPEED));
+                    windows.push(Stretch {
+                        from: moment.start_ms,
+                        until: end,
+                        speed,
+                    });
+                    windows.push(Stretch {
+                        from: end,
+                        until: end + MOVE_TAIL_MS,
+                        speed: MOVE_SPEED,
+                    });
                 }
                 Played::Swept => {
                     if moment.seen.is_some() {
-                        windows.push((end, end + SWEEP_MS + SWEEP_TAIL_MS, 1.0));
+                        windows.push(Stretch {
+                            from: end,
+                            until: end + SWEEP_MS + SWEEP_TAIL_MS,
+                            speed: 1.0,
+                        });
                     }
                 }
             }
         }
         let mut cuts: Vec<f64> = vec![from_ms, until_ms];
-        for &(from, until, _) in &windows {
-            cuts.extend([from, until]);
+        for window in &windows {
+            cuts.extend([window.from, window.until]);
         }
         cuts.retain(|cut| (from_ms..=until_ms).contains(cut));
         cuts.sort_by(f64::total_cmp);
@@ -136,19 +163,25 @@ impl Pace {
                         until,
                         speed: windows
                             .iter()
-                            .filter(|(start, end, _)| (*start..*end).contains(&middle))
-                            .map(|(_, _, speed)| *speed)
+                            .filter(|window| (window.from..window.until).contains(&middle))
+                            .map(|window| window.speed)
                             .reduce(f64::min)
                             .unwrap_or(idle),
                     }
                 })
             })
             .collect();
-        let mut knots = vec![(0.0, from_ms)];
+        let mut knots = vec![Knot {
+            film: 0.0,
+            session: from_ms,
+        }];
         let mut film = 0.0;
         for stretch in &stretches {
             film += stretch.played();
-            knots.push((film, stretch.until));
+            knots.push(Knot {
+                film,
+                session: stretch.until,
+            });
         }
         Self { knots }
     }
@@ -156,7 +189,7 @@ impl Pace {
     /// How long the film runs.
     #[must_use]
     pub fn length(&self) -> f64 {
-        self.knots.last().map_or(0.0, |(film, _)| *film)
+        self.knots.last().map_or(0.0, |knot| knot.film)
     }
 
     /// Where the stretches alone put the film's `film` in the session,
@@ -166,18 +199,18 @@ impl Pace {
             return 0.0;
         };
         if self.knots.len() < 2 {
-            return first.1;
+            return first.session;
         }
-        let pair = if film <= first.0 {
+        let [start, end] = if film <= first.film {
             [self.knots[0], self.knots[1]]
-        } else if film >= last.0 {
+        } else if film >= last.film {
             [self.knots[self.knots.len() - 2], *last]
         } else {
-            let after = self.knots.partition_point(|(at, _)| *at <= film);
+            let after = self.knots.partition_point(|knot| knot.film <= film);
             [self.knots[after - 1], self.knots[after]]
         };
-        let [(f0, s0), (f1, s1)] = pair;
-        s0 + (film - f0) * (s1 - s0) / (f1 - f0)
+        start.session
+            + (film - start.film) * (end.session - start.session) / (end.film - start.film)
     }
 
     /// The area under [`Self::stepped`] from `a` until `b`: exact, since
@@ -187,7 +220,7 @@ impl Pace {
         points.extend(
             self.knots
                 .iter()
-                .map(|(film, _)| *film)
+                .map(|knot| knot.film)
                 .filter(|film| (a..b).contains(film) && *film > a),
         );
         points.push(b);
@@ -206,11 +239,11 @@ impl Pace {
         let (Some(first), Some(last)) = (self.knots.first(), self.knots.last()) else {
             return (0.0, 1.0);
         };
-        if film >= last.0 {
-            return (last.1, 1.0);
+        if film >= last.film {
+            return (last.session, 1.0);
         }
         let (a, b) = (film - EASE_MS / 2.0, film + EASE_MS / 2.0);
-        let at = (self.area(a, b) / EASE_MS).clamp(first.1, last.1);
+        let at = (self.area(a, b) / EASE_MS).clamp(first.session, last.session);
         let speed = (self.stepped(b) - self.stepped(a)) / EASE_MS;
         (at, speed)
     }

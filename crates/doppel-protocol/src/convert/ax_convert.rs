@@ -6,7 +6,7 @@ use doppel_desktop::ax::tree::{
 };
 use doppel_desktop::geometry::Rect;
 
-use super::ParseError;
+use super::{Millis, ParseError};
 use crate::pb::agent::v1 as agent;
 
 impl TryFrom<agent::AxSnapshot> for AxSnapshot {
@@ -195,7 +195,7 @@ impl agent::TakeAxSnapshot {
             }),
             max_nodes: request.max_nodes,
             max_depth: request.max_depth,
-            deadline_ms: u32::try_from(request.deadline.as_millis()).unwrap_or(u32::MAX),
+            deadline_ms: Millis::saturating(request.deadline).get(),
             menus: match request.menus {
                 Menus::Exclude => agent::MenuPolicy::Exclude,
                 Menus::Include => agent::MenuPolicy::Include,

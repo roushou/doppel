@@ -24,5 +24,11 @@ consoles for the people watching.
     higher ones.
   - If a file passes ~800 lines or a module mixes components, flag it
     instead of appending to it.
+- **Types:**
+  - Model fixed sets of states as enums, not strings, ints, or bool
+    clusters.
+  - Group parameters that travel together into a struct.
+  - No traits with a single implementor unless needed for tests.
+  - Prefer exhaustive `match` over `_ =>` on project enums.
 - **Docs describe Doppel as it is.** No dated logs, milestone results or
   "we used to" in docs or comments; git keeps the history.

@@ -102,6 +102,21 @@ struct Open {
     wake: UnixStream,
 }
 
+impl Open {
+    /// Tells its bridge to close, and why; a bridge already gone ignores it.
+    fn close(&self, why: Closing) {
+        let _ = (&self.wake).write_all(&[why.byte()]);
+    }
+}
+
+/// Wakes the accept loop: [`Gateway::stop`] writes `waker`,
+/// [`Gateway::serve`] polls `woken`.
+#[derive(Debug)]
+struct AcceptWake {
+    waker: UnixStream,
+    woken: UnixStream,
+}
+
 /// The gateway: its TLS setup, its open connections, and whether it's
 /// stopping.
 #[derive(Debug)]
@@ -112,7 +127,7 @@ pub struct Gateway {
     next: AtomicU64,
     stopping: AtomicBool,
     /// Wakes the accept loop to stop it.
-    wake: (UnixStream, UnixStream),
+    wake: AcceptWake,
 }
 
 impl Gateway {
@@ -131,7 +146,10 @@ impl Gateway {
             open: Mutex::new(HashMap::new()),
             next: AtomicU64::new(1),
             stopping: AtomicBool::new(false),
-            wake: UnixStream::pair().map_err(GatewayError::Accept)?,
+            wake: {
+                let (waker, woken) = UnixStream::pair().map_err(GatewayError::Accept)?;
+                AcceptWake { waker, woken }
+            },
         })
     }
 
@@ -163,7 +181,7 @@ impl Gateway {
                 }
                 let mut fds = [
                     PollFd::new(listener.as_fd(), PollFlags::POLLIN),
-                    PollFd::new(self.wake.1.as_fd(), PollFlags::POLLIN),
+                    PollFd::new(self.wake.woken.as_fd(), PollFlags::POLLIN),
                 ];
                 match poll(&mut fds, PollTimeout::NONE) {
                     Ok(_) | Err(nix::errno::Errno::EINTR) => {}
@@ -187,7 +205,7 @@ impl Gateway {
     pub fn revoke(&self, token: &TokenId) {
         for open in self.open().values() {
             if open.token == *token {
-                let _ = (&open.wake).write_all(&[Closing::Revoked.byte()]);
+                open.close(Closing::Revoked);
             }
         }
     }
@@ -196,9 +214,9 @@ impl Gateway {
     /// once they have.
     pub fn stop(&self) {
         self.stopping.store(true, Ordering::SeqCst);
-        let _ = (&self.wake.0).write_all(&[0]);
+        let _ = (&self.wake.waker).write_all(&[0]);
         for open in self.open().values() {
-            let _ = (&open.wake).write_all(&[Closing::Stopping.byte()]);
+            open.close(Closing::Stopping);
         }
     }
 
@@ -300,13 +318,10 @@ impl Gateway {
             stream.conn.send_close_notify();
             let _ = stream.flush();
         };
-        let secret = request.token.as_deref().map(str::parse::<TokenSecret>);
-        let checked = match secret {
+        let checked = match &request.token {
             None => Err("no token".to_owned()),
             Some(Err(error)) => Err(error.to_string()),
-            Some(Ok(secret)) => connections
-                .check(&secret)
-                .map_err(|error| error.to_string()),
+            Some(Ok(secret)) => connections.check(secret).map_err(|error| error.to_string()),
         };
         if let Err(why) = checked {
             end(stream, &http::forbidden());
@@ -386,7 +401,7 @@ impl Gateway {
         if self.stopping.load(Ordering::SeqCst)
             && let Some(open) = self.open().get(&id)
         {
-            let _ = (&open.wake).write_all(&[Closing::Stopping.byte()]);
+            open.close(Closing::Stopping);
         }
         let now = || connections.now();
         let ended = std::thread::scope(|scope| {

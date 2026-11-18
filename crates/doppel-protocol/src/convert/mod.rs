@@ -37,6 +37,16 @@ pub enum ParseError {
     Mark(#[from] doppel_desktop::mark::MarkError),
 }
 
+impl ParseError {
+    /// A field whose value the domain refused, and why.
+    pub fn invalid(field: &'static str, error: impl std::fmt::Display) -> Self {
+        Self::Invalid {
+            field,
+            reason: error.to_string(),
+        }
+    }
+}
+
 // --- Via ---------------------------------------------------------------------
 
 impl From<Via> for daemon::Via {
@@ -449,6 +459,24 @@ impl Micros {
 
     #[must_use]
     pub const fn get(self) -> u64 {
+        self.0
+    }
+}
+
+/// A duration as the wire's `*_ms` fields carry it: whole milliseconds in
+/// 32 bits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Millis(u32);
+
+impl Millis {
+    /// Below a millisecond is dropped; past `u32::MAX` saturates.
+    #[must_use]
+    pub fn saturating(duration: std::time::Duration) -> Self {
+        Self(u32::try_from(duration.as_millis()).unwrap_or(u32::MAX))
+    }
+
+    #[must_use]
+    pub const fn get(self) -> u32 {
         self.0
     }
 }

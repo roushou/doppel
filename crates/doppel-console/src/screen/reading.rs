@@ -20,7 +20,12 @@ use doppel_desktop::geometry::Rect;
 
 /// What the layer draws: a read, or why there is none to draw.
 pub(crate) enum Drawn<'a> {
-    Read(&'a TextRead),
+    /// A read, whose it is and how old, and whether the agent acted since.
+    Read {
+        read: &'a TextRead,
+        whose: SharedString,
+        acted_since: bool,
+    },
     Loading,
     Failed(&'a str),
     Nothing,
@@ -33,17 +38,21 @@ pub(crate) type ReadNow = Rc<dyn Fn(&mut Window, &mut App)>;
 /// was looked for, in the accent.
 const LINE: u32 = 0x00f0_b429;
 
-#[expect(clippy::too_many_arguments, reason = "one layer's whole state, drawn")]
 pub(crate) fn layer(
     id: &str,
     drawn: Drawn<'_>,
     picture: Picture,
-    whose: SharedString,
-    stale: bool,
     looking: Option<Looking>,
     theme: &Theme,
     read_now: &ReadNow,
 ) -> impl IntoElement {
+    let stale = matches!(
+        drawn,
+        Drawn::Read {
+            acted_since: true,
+            ..
+        }
+    );
     let mut layer = div().absolute().inset_0().overflow_hidden();
     let place = |frame: &Rect| {
         let (left, top) = picture.place(frame.left(), frame.top());
@@ -51,7 +60,7 @@ pub(crate) fn layer(
             picture.place(frame.left() + frame.width(), frame.top() + frame.height());
         (left, top, (right - left).max(1.), (bottom - top).max(1.))
     };
-    if let Drawn::Read(read) = &drawn {
+    if let Drawn::Read { read, .. } = &drawn {
         let ink = rgb(LINE);
         for (index, line) in read.lines.iter().enumerate() {
             let (left, top, width, height) = place(&line.frame);
@@ -111,18 +120,20 @@ pub(crate) fn layer(
         }
     }
     let state: SharedString = match &drawn {
-        Drawn::Read(read) => match &read.query {
+        Drawn::Read { read, whose, .. } => match &read.query {
             Some(query) if read.found.is_empty() => format!("{whose} · “{query}” not found").into(),
             Some(query) => format!("{whose} · “{query}” ×{}", read.found.len()).into(),
-            None => whose,
+            None => whose.clone(),
         },
         Drawn::Loading => "Reading…".into(),
         Drawn::Failed(why) => format!("Can't read the screen: {why}").into(),
         Drawn::Nothing => "No text read yet".into(),
     };
     let state: SharedString = match &drawn {
-        Drawn::Read(_) if stale => format!("{state} · acted since").into(),
-        Drawn::Read(_) | Drawn::Loading | Drawn::Failed(_) | Drawn::Nothing => state,
+        Drawn::Read {
+            acted_since: true, ..
+        } => format!("{state} · acted since").into(),
+        Drawn::Read { .. } | Drawn::Loading | Drawn::Failed(_) | Drawn::Nothing => state,
     };
     let read_now = read_now.clone();
     let chip = div()

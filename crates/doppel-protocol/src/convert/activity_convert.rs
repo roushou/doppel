@@ -14,13 +14,6 @@ use super::ParseError;
 use crate::pb::common::v1 as common;
 use crate::pb::daemon::v1 as daemon;
 
-fn invalid(field: &'static str, reason: impl ToString) -> ParseError {
-    ParseError::Invalid {
-        field,
-        reason: reason.to_string(),
-    }
-}
-
 /// An event as the daemon sends it. Refused without a phase, with a
 /// machine name that isn't one, or with names a console can't read.
 impl TryFrom<daemon::Activity> for Activity {
@@ -45,7 +38,7 @@ impl TryFrom<daemon::Activity> for Activity {
             machine: activity
                 .machine
                 .parse()
-                .map_err(|error| invalid("machine", error))?,
+                .map_err(|error| ParseError::invalid("machine", error))?,
             client: activity.client,
             caption: activity.caption,
             phase,
@@ -61,7 +54,11 @@ impl TryFrom<daemon::TextRead> for TextRead {
         Ok(Self {
             text: read.text.ok_or(ParseError::Missing("text"))?.try_into()?,
             query: match read.query {
-                Some(query) => Some(query.parse().map_err(|error| invalid("query", error))?),
+                Some(query) => Some(
+                    query
+                        .parse()
+                        .map_err(|error| ParseError::invalid("query", error))?,
+                ),
                 None => None,
             },
             found: read
@@ -204,13 +201,19 @@ impl TryFrom<daemon::RecordingSummary> for RecordingSummary {
     type Error = ParseError;
     fn try_from(summary: daemon::RecordingSummary) -> Result<Self, ParseError> {
         Ok(Self {
-            id: summary.id.parse().map_err(|error| invalid("id", error))?,
+            id: summary
+                .id
+                .parse()
+                .map_err(|error| ParseError::invalid("id", error))?,
             started_unix_seconds: summary.started_unix_seconds,
             session: summary.session,
             machines: summary
                 .machines
                 .iter()
-                .map(|name| name.parse().map_err(|error| invalid("machines", error)))
+                .map(|name| {
+                    name.parse()
+                        .map_err(|error| ParseError::invalid("machines", error))
+                })
                 .collect::<Result<_, _>>()?,
             videos: summary.videos,
             calls: summary.calls,
@@ -226,7 +229,10 @@ impl TryFrom<daemon::Recording> for Recording {
     type Error = ParseError;
     fn try_from(recording: daemon::Recording) -> Result<Self, ParseError> {
         Ok(Self {
-            id: recording.id.parse().map_err(|error| invalid("id", error))?,
+            id: recording
+                .id
+                .parse()
+                .map_err(|error| ParseError::invalid("id", error))?,
             videos: recording
                 .videos
                 .into_iter()

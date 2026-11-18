@@ -7,6 +7,7 @@ use base64::engine::general_purpose::STANDARD;
 use sha1::{Digest as _, Sha1};
 
 use crate::assets::{Asset, Assets, CACHE_CONTROL, Encoding};
+use crate::tokens::{TokenError, TokenSecret};
 
 /// The longest request head read before giving up on it.
 pub(crate) const MAX_HEAD: usize = 16 * 1024;
@@ -182,8 +183,9 @@ impl Served {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct VideoRequest {
     pub(crate) path: VideoPath,
-    /// The token cookie's value, if it came with one.
-    pub(crate) token: Option<String>,
+    /// The token cookie, if it came with one, parsed: the secret never
+    /// travels as text past here.
+    pub(crate) token: Option<Result<TokenSecret, TokenError>>,
     pub(crate) wanted: Wanted,
 }
 
@@ -324,7 +326,7 @@ impl Request {
         if let Some(path) = VideoPath::parse(&self.path) {
             return Route::Video(VideoRequest {
                 path,
-                token: self.cookie(TOKEN_COOKIE).map(str::to_owned),
+                token: self.cookie(TOKEN_COOKIE).map(str::parse),
                 wanted: Wanted::parse(self.header("range")),
             });
         }
@@ -556,13 +558,18 @@ mod tests {
 
     #[test]
     fn a_video_is_named_by_one_folder_and_one_mp4_in_it() {
-        let asked = video(
+        let secret = TokenSecret::from_bytes([7; TokenSecret::BYTES]);
+        let asked = video(&format!(
             "GET /recordings/2026-11-14T06-15-42Z-s1/live-001.mp4 HTTP/1.1\r\n\
-             Cookie: theme=dark; doppel-token=dpl_abc\r\nRange: bytes=0-1\r\n\r\n",
-        );
+             Cookie: theme=dark; doppel-token={}\r\nRange: bytes=0-1\r\n\r\n",
+            secret.expose()
+        ));
         assert_eq!(asked.path.folder(), "2026-11-14T06-15-42Z-s1");
         assert_eq!(asked.path.file(), "live-001.mp4");
-        assert_eq!(asked.token.as_deref(), Some("dpl_abc"));
+        assert_eq!(asked.token, Some(Ok(secret)));
+        let malformed =
+            video("GET /recordings/a/b.mp4 HTTP/1.1\r\nCookie: doppel-token=dpl_abc\r\n\r\n");
+        assert_eq!(malformed.token, Some(Err(TokenError::Malformed)));
         assert_eq!(
             asked.wanted,
             Wanted::From {

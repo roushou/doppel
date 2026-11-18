@@ -33,7 +33,7 @@ use doppel_machine::lineage::RecordedLineage;
 use doppel_machine::login::Desktop;
 use doppel_machine::machine::MachineName;
 use doppel_machine::vm::{NextStart, RunState, Status};
-use doppel_protocol::convert::{ParseError, RemoteError};
+use doppel_protocol::convert::{Millis, ParseError, RemoteError};
 use doppel_protocol::exchange::ExchangeError;
 use doppel_protocol::frame::{EncodeError, StreamError};
 use doppel_protocol::pb::agent::v1 as agent;
@@ -79,18 +79,18 @@ pub struct TokenEntry {
 
 impl TokenEntry {
     fn from_wire(entry: daemon::TokenEntry) -> Result<Self, ParseError> {
-        let invalid = |field| {
-            move |error: doppel_gateway::TokenError| ParseError::Invalid {
-                field,
-                reason: error.to_string(),
-            }
-        };
         let at = |seconds| UNIX_EPOCH + Duration::from_secs(seconds);
         Ok(Self {
-            id: entry.id.parse().map_err(invalid("token.id"))?,
+            id: entry
+                .id
+                .parse()
+                .map_err(|error| ParseError::invalid("token.id", error))?,
             label: match entry.label.as_str() {
                 "" => None,
-                raw => Some(raw.parse().map_err(invalid("token.label"))?),
+                raw => Some(
+                    raw.parse()
+                        .map_err(|error| ParseError::invalid("token.label", error))?,
+                ),
             },
             issued: at(entry.issued_unix_seconds),
             expires: at(entry.expires_unix_seconds),
@@ -962,7 +962,7 @@ impl<C: Clock> Client<C> {
             daemon::WaitForElement {
                 name: name.to_string(),
                 condition: Some(wait.condition().into()),
-                timeout_ms: Self::millis(wait.timeout()),
+                timeout_ms: Millis::saturating(wait.timeout()).get(),
                 spec: Some(spec.into()),
             },
             call,
@@ -984,7 +984,7 @@ impl<C: Clock> Client<C> {
             daemon::WaitForText {
                 name: name.to_string(),
                 condition: Some(wait.condition().into()),
-                timeout_ms: Self::millis(wait.timeout()),
+                timeout_ms: Millis::saturating(wait.timeout()).get(),
             },
             call,
         )?;
@@ -1214,11 +1214,6 @@ impl<C: Clock> Client<C> {
             call,
         )?;
         Ok(result.try_into()?)
-    }
-
-    /// Milliseconds for the wire; waits are at most a minute.
-    fn millis(duration: std::time::Duration) -> u32 {
-        u32::try_from(duration.as_millis()).unwrap_or(u32::MAX)
     }
 
     /// Sends a request whose answer is only that it was done.

@@ -15,7 +15,7 @@ use super::ports::{
     EncodedSource, FrameSource, Frames, InputSink, Next, NextEncoded, Screen, Takeover,
 };
 use crate::resync::{Resync, Step};
-use crate::screen::{Feed, Mailbox, PumpReplies, Pumped, Update, superseded};
+use crate::screen::{Control, Feed, Mailbox, PumpReplies, Pumped, Update, superseded};
 use crate::steering::{SteerEvent, SteerRequest};
 
 /// Starts reading `screen`'s source into `mailbox`, and, when it takes
@@ -40,8 +40,11 @@ pub(crate) fn start(screen: Screen, mailbox: Mailbox, replies: PumpReplies) -> F
     });
     Feed {
         points: screen.points,
-        takes_control,
-        input,
+        control: match input {
+            None => Control::ViewOnly,
+            Some(sender) if takes_control => Control::Steered(sender),
+            Some(sender) => Control::Direct(sender),
+        },
     }
 }
 

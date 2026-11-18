@@ -185,14 +185,63 @@ pub enum GuestAfterFailure {
     ResumeRequested,
 }
 
+/// What a checkpoint has saved once its memory is: everything a completed
+/// one reports.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Saved<E> {
+    pub guest_sync: GuestSync<E>,
+    pub memory_bytes: u64,
+}
+
+/// The step an in-progress checkpoint awaits, with what the steps before it
+/// learned: the guest sync once it has answered, the memory once saved.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Awaiting<E> {
+    SyncingGuest,
+    Pausing(GuestSync<E>),
+    Flushing(GuestSync<E>),
+    Cloning(GuestSync<E>),
+    SavingMemory(GuestSync<E>),
+    Committing(Saved<E>),
+    Finishing(Saved<E>),
+}
+
+impl<E> Awaiting<E> {
+    #[must_use]
+    pub const fn step(&self) -> Step {
+        match self {
+            Self::SyncingGuest => Step::SyncingGuest,
+            Self::Pausing(_) => Step::Pausing,
+            Self::Flushing(_) => Step::Flushing,
+            Self::Cloning(_) => Step::Cloning,
+            Self::SavingMemory(_) => Step::SavingMemory,
+            Self::Committing(_) => Step::Committing,
+            Self::Finishing(_) => Step::Finishing,
+        }
+    }
+
+    fn map_error<F>(self, f: impl Fn(E) -> F) -> Awaiting<F> {
+        let saved = |saved: Saved<E>| Saved {
+            guest_sync: saved.guest_sync.map_error(&f),
+            memory_bytes: saved.memory_bytes,
+        };
+        match self {
+            Self::SyncingGuest => Awaiting::SyncingGuest,
+            Self::Pausing(sync) => Awaiting::Pausing(sync.map_error(&f)),
+            Self::Flushing(sync) => Awaiting::Flushing(sync.map_error(&f)),
+            Self::Cloning(sync) => Awaiting::Cloning(sync.map_error(&f)),
+            Self::SavingMemory(sync) => Awaiting::SavingMemory(sync.map_error(&f)),
+            Self::Committing(done) => Awaiting::Committing(saved(done)),
+            Self::Finishing(done) => Awaiting::Finishing(saved(done)),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Checkpoint<E> {
     InProgress {
         plan: CheckpointPlan,
-        awaiting: Step,
-        /// Known once the sync step has answered.
-        guest_sync: Option<GuestSync<E>>,
-        memory_bytes: Option<u64>,
+        awaiting: Awaiting<E>,
     },
     Completed {
         plan: CheckpointPlan,
@@ -219,16 +268,9 @@ impl<E> Checkpoint<E> {
     /// report in another error type.
     pub fn map_error<F>(self, f: impl Fn(E) -> F) -> Checkpoint<F> {
         match self {
-            Self::InProgress {
+            Self::InProgress { plan, awaiting } => Checkpoint::InProgress {
                 plan,
-                awaiting,
-                guest_sync,
-                memory_bytes,
-            } => Checkpoint::InProgress {
-                plan,
-                awaiting,
-                guest_sync: guest_sync.map(|sync| sync.map_error(&f)),
-                memory_bytes,
+                awaiting: awaiting.map_error(&f),
             },
             Self::Completed {
                 plan,
@@ -277,9 +319,7 @@ impl<E: std::fmt::Debug> Checkpoint<E> {
         (
             Self::InProgress {
                 plan,
-                awaiting: Step::SyncingGuest,
-                guest_sync: None,
-                memory_bytes: None,
+                awaiting: Awaiting::SyncingGuest,
             },
             vec![Action::SyncGuest],
         )
@@ -313,38 +353,28 @@ impl<E: std::fmt::Debug> Checkpoint<E> {
             state: state.state_name(),
             answer,
         };
-        let (plan, awaiting, guest_sync, memory_bytes) = match self {
-            Self::InProgress {
-                plan,
-                awaiting,
-                guest_sync,
-                memory_bytes,
-            } => (plan, awaiting, guest_sync, memory_bytes),
+        let (plan, awaiting) = match self {
+            Self::InProgress { plan, awaiting } => (plan, awaiting),
             terminal @ (Self::Completed { .. } | Self::Failed { .. } | Self::Unknown { .. }) => {
                 return Err(illegal(&terminal, answer));
             }
         };
-        let progress = |plan, awaiting, guest_sync, memory_bytes| Self::InProgress {
-            plan,
-            awaiting,
-            guest_sync,
-            memory_bytes,
-        };
+        let progress = |plan, awaiting| Self::InProgress { plan, awaiting };
 
         Ok(match (awaiting, answer) {
-            (Step::SyncingGuest, Ok(Event::GuestSynced(sync))) => (
-                progress(plan, Step::Pausing, Some(sync), None),
+            (Awaiting::SyncingGuest, Ok(Event::GuestSynced(sync))) => (
+                progress(plan, Awaiting::Pausing(sync)),
                 vec![Action::PauseVm],
             ),
-            (Step::Pausing, Ok(Event::Paused)) => {
+            (Awaiting::Pausing(sync), Ok(Event::Paused)) => {
                 let flush = [&plan.source.disk, &plan.source.aux]
                     .map(|p| FileOp::Flush { path: p.clone() });
                 (
-                    progress(plan, Step::Flushing, guest_sync, None),
+                    progress(plan, Awaiting::Flushing(sync)),
                     vec![Action::Files(flush.into())],
                 )
             }
-            (Step::Flushing, Ok(Event::FilesDone)) => {
+            (Awaiting::Flushing(sync), Ok(Event::FilesDone)) => {
                 let t = &plan.staging;
                 let mut ops = vec![FileOp::CreateDir {
                     path: t.dir.clone(),
@@ -360,18 +390,18 @@ impl<E: std::fmt::Debug> Checkpoint<E> {
                     });
                 }
                 (
-                    progress(plan, Step::Cloning, guest_sync, None),
+                    progress(plan, Awaiting::Cloning(sync)),
                     vec![Action::Files(ops)],
                 )
             }
-            (Step::Cloning, Ok(Event::FilesDone)) => {
+            (Awaiting::Cloning(sync), Ok(Event::FilesDone)) => {
                 let path = plan.staging.memory.clone();
                 (
-                    progress(plan, Step::SavingMemory, guest_sync, None),
+                    progress(plan, Awaiting::SavingMemory(sync)),
                     vec![Action::SaveMemory { path }],
                 )
             }
-            (Step::SavingMemory, Ok(Event::MemorySaved { bytes })) => {
+            (Awaiting::SavingMemory(guest_sync), Ok(Event::MemorySaved { bytes })) => {
                 let commit = vec![
                     FileOp::Flush {
                         path: plan.staging.memory.clone(),
@@ -381,81 +411,77 @@ impl<E: std::fmt::Debug> Checkpoint<E> {
                         to: plan.target.dir.clone(),
                     },
                 ];
+                let saved = Saved {
+                    guest_sync,
+                    memory_bytes: bytes,
+                };
                 (
-                    progress(plan, Step::Committing, guest_sync, Some(bytes)),
+                    progress(plan, Awaiting::Committing(saved)),
                     vec![Action::Files(commit)],
                 )
             }
-            (Step::Committing, Ok(Event::FilesDone)) => {
+            (Awaiting::Committing(saved), Ok(Event::FilesDone)) => {
                 let next = match plan.then {
                     AfterCheckpoint::Resume => Action::ResumeVm,
                     AfterCheckpoint::Stop => Action::StopVm,
                 };
-                (
-                    progress(plan, Step::Finishing, guest_sync, memory_bytes),
-                    vec![next],
-                )
+                (progress(plan, Awaiting::Finishing(saved)), vec![next])
             }
-            (Step::Finishing, Ok(done @ (Event::Resumed | Event::Stopped))) => {
+            (Awaiting::Finishing(saved), Ok(done @ (Event::Resumed | Event::Stopped))) => {
                 let as_asked = matches!(
                     (plan.then, &done),
                     (AfterCheckpoint::Resume, Event::Resumed)
                         | (AfterCheckpoint::Stop, Event::Stopped)
                 );
-                match (guest_sync, memory_bytes) {
-                    (Some(guest_sync), Some(memory_bytes)) if as_asked => {
-                        let then = plan.then;
-                        (
-                            Self::Completed {
-                                plan,
-                                guest_sync,
-                                memory_bytes,
-                                aftermath: Aftermath::AsRequested(then),
-                            },
-                            vec![],
-                        )
-                    }
-                    (guest_sync, memory_bytes) => {
-                        return Err(illegal(
-                            &progress(plan, Step::Finishing, guest_sync, memory_bytes),
-                            Ok(done),
-                        ));
-                    }
+                if !as_asked {
+                    return Err(illegal(
+                        &progress(plan, Awaiting::Finishing(saved)),
+                        Ok(done),
+                    ));
                 }
+                let then = plan.then;
+                (
+                    Self::Completed {
+                        plan,
+                        guest_sync: saved.guest_sync,
+                        memory_bytes: saved.memory_bytes,
+                        aftermath: Aftermath::AsRequested(then),
+                    },
+                    vec![],
+                )
             }
 
             // Files and memory are committed, so a resume or stop that failed,
             // or whose outcome is unknown, still leaves a valid checkpoint.
-            (Step::Finishing, Err(unconfirmed)) => match (guest_sync, memory_bytes) {
-                (Some(guest_sync), Some(memory_bytes)) => (
-                    Self::Completed {
-                        plan,
-                        guest_sync,
-                        memory_bytes,
-                        aftermath: Aftermath::LeftPaused(unconfirmed),
-                    },
-                    vec![],
-                ),
-                (guest_sync, memory_bytes) => {
-                    return Err(illegal(
-                        &progress(plan, Step::Finishing, guest_sync, memory_bytes),
-                        Err(unconfirmed),
-                    ));
-                }
-            },
-            (at @ (Step::SyncingGuest | Step::Pausing), Err(Unconfirmed::Failed(error))) => (
+            (Awaiting::Finishing(saved), Err(unconfirmed)) => (
+                Self::Completed {
+                    plan,
+                    guest_sync: saved.guest_sync,
+                    memory_bytes: saved.memory_bytes,
+                    aftermath: Aftermath::LeftPaused(unconfirmed),
+                },
+                vec![],
+            ),
+            (
+                awaiting @ (Awaiting::SyncingGuest | Awaiting::Pausing(_)),
+                Err(Unconfirmed::Failed(error)),
+            ) => (
                 Self::Failed {
                     plan,
-                    at,
+                    at: awaiting.step(),
                     error,
                     guest: GuestAfterFailure::Untouched,
                 },
                 vec![],
             ),
             (
-                at @ (Step::Flushing | Step::Cloning | Step::SavingMemory | Step::Committing),
+                awaiting @ (Awaiting::Flushing(_)
+                | Awaiting::Cloning(_)
+                | Awaiting::SavingMemory(_)
+                | Awaiting::Committing(_)),
                 Err(Unconfirmed::Failed(error)),
             ) => {
+                let at = awaiting.step();
                 let dir = plan.staging.dir.clone();
                 let mut actions = vec![Action::ResumeVm];
                 // Flushing created nothing yet; later steps may have.
@@ -476,23 +502,30 @@ impl<E: std::fmt::Debug> Checkpoint<E> {
             // The guest may be paused, the memory half saved: claim nothing,
             // and leave the staging for the next claim to settle.
             (
-                at @ (Step::SyncingGuest
-                | Step::Pausing
-                | Step::Flushing
-                | Step::Cloning
-                | Step::SavingMemory
-                | Step::Committing),
+                awaiting @ (Awaiting::SyncingGuest
+                | Awaiting::Pausing(_)
+                | Awaiting::Flushing(_)
+                | Awaiting::Cloning(_)
+                | Awaiting::SavingMemory(_)
+                | Awaiting::Committing(_)),
                 Err(Unconfirmed::Unknown(error)),
-            ) => (Self::Unknown { plan, at, error }, vec![]),
+            ) => (
+                Self::Unknown {
+                    plan,
+                    at: awaiting.step(),
+                    error,
+                },
+                vec![],
+            ),
 
             (
-                at @ (Step::SyncingGuest
-                | Step::Pausing
-                | Step::Flushing
-                | Step::Cloning
-                | Step::SavingMemory
-                | Step::Committing
-                | Step::Finishing),
+                awaiting @ (Awaiting::SyncingGuest
+                | Awaiting::Pausing(_)
+                | Awaiting::Flushing(_)
+                | Awaiting::Cloning(_)
+                | Awaiting::SavingMemory(_)
+                | Awaiting::Committing(_)
+                | Awaiting::Finishing(_)),
                 Ok(
                     event @ (Event::GuestSynced(_)
                     | Event::Paused
@@ -502,10 +535,7 @@ impl<E: std::fmt::Debug> Checkpoint<E> {
                     | Event::Stopped),
                 ),
             ) => {
-                return Err(illegal(
-                    &progress(plan, at, guest_sync, memory_bytes),
-                    Ok(event),
-                ));
+                return Err(illegal(&progress(plan, awaiting), Ok(event)));
             }
         })
     }

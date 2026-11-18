@@ -16,7 +16,7 @@ use doppel_protocol::pb::agent::v1 as agent;
 use doppel_protocol::pb::daemon::v1 as daemon;
 use prost::Message as _;
 
-use crate::recording::{RefsLine, SizeLine, TargetLine, gesture_named};
+use crate::recording::{Actor, Outcome, RefsLine, SizeLine, TargetLine, gesture_named};
 
 /// A recording's name: the folder `recording` makes for a session, when the
 /// session started (UTC, to the second) and its id, as
@@ -185,22 +185,6 @@ impl FromStr for VideoFile {
     }
 }
 
-/// How a traced request ended, as a trace line says.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Outcome {
-    Done,
-    Failed,
-    TimedOut,
-    Refused,
-}
-
-/// Who a trace line is about.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum By {
-    Session,
-    Person,
-}
-
 /// One line of a trace, read back.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum TraceLine {
@@ -219,7 +203,7 @@ pub(crate) struct TraceCall {
     pub(crate) error: Option<String>,
     pub(crate) waited_ms: Option<u64>,
     pub(crate) queued_ms: Option<u64>,
-    pub(crate) by: By,
+    pub(crate) by: Actor,
     /// What it did on the screen and where, when the trace kept it.
     pub(crate) acted: Option<Box<daemon::CallStarted>>,
     /// The trace kept the snapshot it saw: [`Library::seen`] reads it.
@@ -237,11 +221,12 @@ struct RawCall {
     end_ms: u64,
     machine: Option<String>,
     call: String,
-    outcome: String,
+    outcome: Outcome,
     error: Option<String>,
     waited_ms: Option<u64>,
     queued_ms: Option<u64>,
-    by: Option<String>,
+    /// Absent for the session's own calls.
+    by: Option<Actor>,
     gesture: Option<String>,
     /// A target this build can't read is dropped: the call is still shown.
     #[serde(default, deserialize_with = "readable")]
@@ -269,32 +254,19 @@ where
 impl TraceLine {
     /// Reads one line of `trace.jsonl`.
     pub(crate) fn parse(line: &str) -> Self {
-        let unreadable = || Self::Unreadable(line.to_owned());
         let Ok(raw) = serde_json::from_str::<RawCall>(line) else {
-            return unreadable();
-        };
-        let outcome = match raw.outcome.as_str() {
-            "done" => Outcome::Done,
-            "failed" => Outcome::Failed,
-            "timed_out" => Outcome::TimedOut,
-            "refused" => Outcome::Refused,
-            _ => return unreadable(),
-        };
-        let by = match raw.by.as_deref() {
-            None => By::Session,
-            Some("person") => By::Person,
-            Some(_) => return unreadable(),
+            return Self::Unreadable(line.to_owned());
         };
         Self::Call(TraceCall {
             start_ms: raw.start_ms,
             end_ms: raw.end_ms,
             machine: raw.machine,
             call: raw.call,
-            outcome,
+            outcome: raw.outcome,
             error: raw.error,
             waited_ms: raw.waited_ms,
             queued_ms: raw.queued_ms,
-            by,
+            by: raw.by.unwrap_or(Actor::Session),
             acted: raw.gesture.map(|gesture| {
                 Box::new(daemon::CallStarted {
                     gesture: gesture_named(&gesture).into(),
@@ -697,7 +669,7 @@ mod tests {
                 error: None,
                 waited_ms: None,
                 queued_ms: None,
-                by: By::Person,
+                by: Actor::Person,
                 acted: None,
                 seen: false,
                 refs: None,
@@ -770,7 +742,7 @@ mod tests {
                 Some("bad name"),
                 Some(30),
                 Some(40),
-                By::Session
+                Actor::Session
             )
         );
         for line in [

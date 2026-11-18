@@ -136,13 +136,32 @@ pub(crate) struct TraceEntry<'a> {
     pub(crate) read: Option<&'a daemon::TextRead>,
 }
 
-/// Who did what a trace line records.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Who did what a trace line records. A trace line names only a person;
+/// a line without `by` is the session's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub(crate) enum Actor {
     /// The session: one of its calls.
+    #[serde(skip)]
     Session,
     /// A person at a console, who had control.
     Person,
+}
+
+impl Actor {
+    const fn is_session(&self) -> bool {
+        matches!(self, Self::Session)
+    }
+}
+
+/// How a traced request ended, as a trace line names it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum Outcome {
+    Done,
+    Failed,
+    TimedOut,
+    Refused,
 }
 
 impl Recordings {
@@ -502,7 +521,7 @@ struct TraceLine<'a> {
     end_ms: u64,
     machine: Option<String>,
     call: &'a str,
-    outcome: &'static str,
+    outcome: Outcome,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -510,8 +529,8 @@ struct TraceLine<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     queued_ms: Option<u64>,
     /// Absent for the session's own calls.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    by: Option<&'static str>,
+    #[serde(skip_serializing_if = "Actor::is_session")]
+    by: Actor,
     #[serde(skip_serializing_if = "Option::is_none")]
     gesture: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -670,28 +689,9 @@ pub(crate) const fn gesture_name(gesture: Gesture) -> Option<&'static str> {
 /// The gesture a trace line names; a name this build doesn't know reads as
 /// unspecified, which consoles show as another call.
 pub(crate) fn gesture_named(name: &str) -> Gesture {
-    [
-        Gesture::Click,
-        Gesture::DoubleClick,
-        Gesture::SecondaryClick,
-        Gesture::Move,
-        Gesture::Drag,
-        Gesture::Scroll,
-        Gesture::Key,
-        Gesture::Type,
-        Gesture::Act,
-        Gesture::Look,
-        Gesture::Wait,
-        Gesture::Run,
-        Gesture::Lifecycle,
-        Gesture::Checkpoint,
-        Gesture::Rollback,
-        Gesture::Other,
-        Gesture::Mark,
-    ]
-    .into_iter()
-    .find(|gesture| gesture_name(*gesture) == Some(name))
-    .unwrap_or(Gesture::Unspecified)
+    Gesture::from_str_name(&format!("GESTURE_{}", name.to_ascii_uppercase()))
+        .filter(|gesture| gesture_name(*gesture) == Some(name))
+        .unwrap_or(Gesture::Unspecified)
 }
 
 impl TraceEntry<'_> {
@@ -700,10 +700,10 @@ impl TraceEntry<'_> {
             u64::try_from(at.saturating_duration_since(origin).as_millis()).unwrap_or(u64::MAX)
         };
         let (outcome, error) = match &self.outcome {
-            Traced::Done => ("done", None),
-            Traced::Failed(why) => ("failed", Some(why.as_str())),
-            Traced::TimedOut(last_error) => ("timed_out", last_error.as_deref()),
-            Traced::Refused(why) => ("refused", Some(why.as_str())),
+            Traced::Done => (Outcome::Done, None),
+            Traced::Failed(why) => (Outcome::Failed, Some(why.as_str())),
+            Traced::TimedOut(last_error) => (Outcome::TimedOut, last_error.as_deref()),
+            Traced::Refused(why) => (Outcome::Refused, Some(why.as_str())),
         };
         let line = TraceLine {
             start_ms: millis(self.started),
@@ -718,10 +718,7 @@ impl TraceEntry<'_> {
             queued_ms: self
                 .queued
                 .map(|queued| u64::try_from(queued.as_millis()).unwrap_or(u64::MAX)),
-            by: match self.by {
-                Actor::Session => None,
-                Actor::Person => Some("person"),
-            },
+            by: self.by,
             gesture: self.acted.and_then(|acted| gesture_name(acted.gesture())),
             target: self
                 .acted
@@ -1003,10 +1000,11 @@ mod tests {
             assert_eq!(&TargetLine::of(target).unwrap().target(), target);
         }
         // Every gesture's name reads back.
-        for gesture in 1..=15 {
-            let gesture = Gesture::try_from(gesture).unwrap();
+        for gesture in (1..).map_while(|raw| Gesture::try_from(raw).ok()) {
             assert_eq!(gesture_named(gesture_name(gesture).unwrap()), gesture);
         }
+        assert_eq!(gesture_named("CLICK"), Gesture::Unspecified);
+        assert_eq!(gesture_named("unspecified"), Gesture::Unspecified);
         assert_eq!(gesture_named("juggle"), Gesture::Unspecified);
     }
 

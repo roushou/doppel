@@ -3,23 +3,14 @@ use doppel_desktop::files::{FileMode, ReadRequest, WritePolicy, WriteRequest};
 use super::ParseError;
 use crate::pb::agent::v1 as agent;
 
-impl ParseError {
-    fn file(field: &'static str, error: &dyn std::fmt::Display) -> Self {
-        Self::Invalid {
-            field,
-            reason: error.to_string(),
-        }
-    }
-}
-
 impl TryFrom<agent::ReadFile> for ReadRequest {
     type Error = ParseError;
     fn try_from(wire: agent::ReadFile) -> Result<Self, ParseError> {
         let path = wire
             .path
             .parse()
-            .map_err(|error| ParseError::file("path", &error))?;
-        Self::new(path, wire.max_bytes).map_err(|error| ParseError::file("max_bytes", &error))
+            .map_err(|error| ParseError::invalid("path", error))?;
+        Self::new(path, wire.max_bytes).map_err(|error| ParseError::invalid("max_bytes", error))
     }
 }
 
@@ -29,10 +20,10 @@ impl TryFrom<agent::WriteFile> for WriteRequest {
         let path = wire
             .path
             .parse()
-            .map_err(|error| ParseError::file("path", &error))?;
+            .map_err(|error| ParseError::invalid("path", error))?;
         // 0 means the default, as the agent reads it.
         let mode = FileMode::new(if wire.mode == 0 { 0o644 } else { wire.mode })
-            .map_err(|error| ParseError::file("mode", &error))?;
+            .map_err(|error| ParseError::invalid("mode", error))?;
         let policy = match agent::WritePolicy::try_from(wire.policy) {
             Ok(agent::WritePolicy::CreateNew) => WritePolicy::CreateNew,
             Ok(agent::WritePolicy::Replace) => WritePolicy::Replace,
@@ -44,7 +35,7 @@ impl TryFrom<agent::WriteFile> for WriteRequest {
             }
         };
         Self::new(path, wire.data.to_vec(), mode, policy)
-            .map_err(|error| ParseError::file("data", &error))
+            .map_err(|error| ParseError::invalid("data", error))
     }
 }
 
