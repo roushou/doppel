@@ -152,6 +152,16 @@ impl<'m, C: Clock, F: Filesystem> Machine<'m, C, F> {
         self.machines.catch_up_screen(&self.name, cancel)
     }
 
+    /// The build the running machine's agent says it is: `None` for a bare
+    /// binary, which has none.
+    ///
+    /// # Errors
+    /// [`MachineError`]: not running, or no agent answers.
+    pub fn agent_build(&self, by: Deadline) -> Result<Option<AgentBuild>, MachineError> {
+        let agent = self.machines.agent(&self.name, by)?;
+        Ok(agent.peer_build().cloned())
+    }
+
     /// Applies the golden settings to the running, logged-in machine.
     ///
     /// # Errors

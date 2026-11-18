@@ -240,6 +240,10 @@ message Lineage {
 message GoldenRole {
   // The checkpoint new machines start from.
   string checkpoint = 1;
+  // The build of the agent that checkpoint holds, as `golden prepare`
+  // recorded it. Empty when it wasn't: marked by hand, or prepared before
+  // Doppel recorded it.
+  string agent_build = 2;
 }
 
 message ForkedFrom {

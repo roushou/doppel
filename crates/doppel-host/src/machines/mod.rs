@@ -18,7 +18,9 @@ use doppel_machine::checkpoint::{
 use doppel_machine::deadline::{Deadline, Remaining};
 use doppel_machine::exec::{ExecError, ExecOutput, ExecRequest, Termination};
 use doppel_machine::guest_path::GuestPathError;
-use doppel_machine::lineage::{CheckpointKept, Lineage, Origin, RecordedLineage, Role};
+use doppel_machine::lineage::{
+    CheckpointKept, Lineage, Origin, RecordedLineage, Role, TemplateAgent,
+};
 use doppel_machine::login::{LoginOutcome, LoginPolicy};
 use doppel_machine::machine::{
     Hardware, HardwareModel, MacAddress, MachineIdentifier, MachineName, MachineSpec, Platform,
@@ -473,13 +475,18 @@ impl<C: Clock, F: Filesystem> Claim<'_, C, F> {
     }
 
     /// Makes this machine a golden image whose new machines start from
-    /// `template`, one of its checkpoints. Its origin stays.
+    /// `template`, one of its checkpoints, which holds `agent`. Its origin
+    /// stays.
     ///
     /// # Errors
     /// [`MachineError::NoSuchCheckpoint`], [`MachineError::LineageUnreadable`]
     /// (rewriting it would lose an origin nobody could read), or I/O.
-    pub fn mark_golden(&self, template: &CheckpointLabel) -> Result<Lineage, MachineError> {
-        self.machines.mark_golden(self, template)
+    pub fn mark_golden(
+        &self,
+        template: &CheckpointLabel,
+        agent: TemplateAgent,
+    ) -> Result<Lineage, MachineError> {
+        self.machines.mark_golden(self, template, agent)
     }
 
     /// Writes `grant` into this machine's disk: the guest boots with the
@@ -1577,12 +1584,14 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
         &self,
         claim: &Claim<'_, C, F>,
         template: &CheckpointLabel,
+        agent: TemplateAgent,
     ) -> Result<Lineage, MachineError> {
         self.existing_checkpoint(&claim.bundle, template)?;
         self.change_role(
             claim,
             Role::Golden {
                 template: template.clone(),
+                agent,
             },
         )
     }

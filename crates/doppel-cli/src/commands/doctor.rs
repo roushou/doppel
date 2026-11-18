@@ -65,7 +65,7 @@ fn archive(path: &Path) -> Archive {
         return Archive::Missing;
     }
     match agent_archive(Some(path.to_path_buf())) {
-        Ok(archive) => Archive::Present(archive.build.to_string()),
+        Ok(archive) => Archive::Present(archive.build),
         Err(error) => Archive::Unreadable(crate::ErrorMessage::of(&error).to_string()),
     }
 }
@@ -112,7 +112,7 @@ fn machines(client: &Client<SystemClock>) -> Result<Vec<Machine>, ClientError> {
         let role = match lineage {
             RecordedLineage::Unreadable(why) => Role::Unreadable(why),
             RecordedLineage::Known(lineage) => match lineage.role {
-                LineageRole::Golden { template } => {
+                LineageRole::Golden { template, agent } => {
                     let template_found = match client.report(&name, within(CALL_TIMEOUT)) {
                         Ok(report) if report.checkpoints.contains(&template) => Checkpoint::Present,
                         Ok(_) => Checkpoint::Missing,
@@ -121,6 +121,7 @@ fn machines(client: &Client<SystemClock>) -> Result<Vec<Machine>, ClientError> {
                     Role::Golden {
                         template,
                         template_found,
+                        agent,
                     }
                 }
                 LineageRole::Working | LineageRole::Temporary => Role::Other,

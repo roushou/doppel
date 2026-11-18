@@ -90,6 +90,7 @@ fn doctor_on_an_empty_store_says_not_ready_in_json_and_exits_1() {
             ("agent-archive", statuses[1].1),
             ("daemon", "fail"),
             ("golden-image", "skipped"),
+            ("golden-agent", "skipped"),
             ("room", "skipped"),
         ]
     );

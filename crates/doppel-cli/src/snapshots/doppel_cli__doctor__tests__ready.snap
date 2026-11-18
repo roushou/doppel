@@ -33,6 +33,11 @@ expression: "format!(\"{:#}\", Diagnosis::of(&f).json())"
       "detail": "golden-27 (template ready)"
     },
     {
+      "check": "golden-agent",
+      "status": "pass",
+      "detail": "no agent archive here to compare with"
+    },
+    {
       "check": "room",
       "status": "pass",
       "detail": "1 of 2 VMs running"

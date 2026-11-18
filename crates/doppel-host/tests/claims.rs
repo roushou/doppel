@@ -23,7 +23,7 @@ use doppel_host::launcher::VmmBinary;
 use doppel_host::machines::{ImportSource, MachineError, Machines};
 use doppel_host::store::{Store, StoreError};
 use doppel_machine::bundle::{DataRoot, FileOp, RuntimeDir};
-use doppel_machine::lineage::{Lineage, Origin, RecordedLineage, Role};
+use doppel_machine::lineage::{Lineage, Origin, RecordedLineage, Role, TemplateAgent};
 use doppel_machine::machine::{
     CpuCount, DiskSize, DisplaySpec, Hardware, MachineName, MemorySize, NetworkSpec,
 };
@@ -620,15 +620,22 @@ fn a_role_is_recorded_beside_the_origin_and_an_unreadable_one_is_never_a_default
     );
     let claim = machines.claim(&name("dev"), machines.deadline()).unwrap();
     assert!(matches!(
-        claim.mark_golden(&"missing".parse().unwrap()),
+        claim.mark_golden(&"missing".parse().unwrap(), TemplateAgent::Unrecorded),
         Err(MachineError::NoSuchCheckpoint { .. })
     ));
     assert!(!dev.lineage().exists(), "a refused mark writes nothing");
-    let golden = claim.mark_golden(&"ready".parse().unwrap()).unwrap();
+    let build: doppel_machine::agent::AgentBuild = "20261118T164320Z-7da947b".parse().unwrap();
+    let golden = claim
+        .mark_golden(
+            &"ready".parse().unwrap(),
+            TemplateAgent::Recorded(build.clone()),
+        )
+        .unwrap();
     assert_eq!(
         golden.role,
         Role::Golden {
-            template: "ready".parse().unwrap()
+            template: "ready".parse().unwrap(),
+            agent: TemplateAgent::Recorded(build),
         }
     );
     assert_eq!(golden.origin, Origin::Unrecorded);

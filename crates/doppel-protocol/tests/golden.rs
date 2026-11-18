@@ -421,6 +421,7 @@ fn golden_lineage() -> daemon::Lineage {
     daemon::Lineage {
         role: Some(daemon::lineage::Role::Golden(daemon::GoldenRole {
             checkpoint: "ready".into(),
+            agent_build: "20261118T164320Z-7da947b".into(),
         })),
         origin: Some(daemon::lineage::Origin::Installed(daemon::Done {})),
     }

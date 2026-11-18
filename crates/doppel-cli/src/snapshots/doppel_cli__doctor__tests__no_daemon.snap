@@ -28,6 +28,11 @@ expression: "format!(\"{:#}\",\nDiagnosis::of(&facts(Daemon::NotRunning(Service:
       "detail": "needs daemon"
     },
     {
+      "check": "golden-agent",
+      "status": "skipped",
+      "detail": "needs daemon"
+    },
+    {
       "check": "room",
       "status": "skipped",
       "detail": "needs daemon"

@@ -9,7 +9,7 @@ use doppel_machine::ax::tree::{SnapshotScope, SnapshotSpec};
 use doppel_machine::bundle::CheckpointLabel;
 use doppel_machine::checkpoint::{AfterCheckpoint, GuestAfterFailure, Step};
 use doppel_machine::input::Via;
-use doppel_machine::lineage::{Lineage, Origin, RecordedLineage, Role};
+use doppel_machine::lineage::{Lineage, Origin, RecordedLineage, Role, TemplateAgent};
 use doppel_machine::login::{Desktop, LoginOutcome};
 use doppel_machine::machine::SpecError;
 use doppel_machine::outcome::{Certainty, Failure};
@@ -317,13 +317,37 @@ impl daemon::Certainty {
 
 // --- Lineage, as the daemon tells it ----------------------------------
 
+/// A template's agent as `GoldenRole.agent_build` carries it, in the bundle
+/// and on the wire alike: empty when not recorded.
+pub(crate) fn agent_build(agent: &TemplateAgent) -> String {
+    match agent {
+        TemplateAgent::Recorded(build) => build.as_str().to_owned(),
+        TemplateAgent::Unrecorded => String::new(),
+    }
+}
+
+/// The inverse of [`agent_build`]. A build id this build can't read is an
+/// error, never read as unrecorded.
+pub(crate) fn template_agent(raw: &str) -> Result<TemplateAgent, ParseError> {
+    match raw {
+        "" => Ok(TemplateAgent::Unrecorded),
+        raw => raw.parse().map(TemplateAgent::Recorded).map_err(
+            |error: doppel_machine::agent::AgentBuildError| ParseError::Invalid {
+                field: "lineage.golden.agent_build",
+                reason: error.to_string(),
+            },
+        ),
+    }
+}
+
 impl From<&Lineage> for daemon::Lineage {
     fn from(lineage: &Lineage) -> Self {
         use daemon::lineage::{Origin as WireOrigin, Role as WireRole};
         let role = match &lineage.role {
             Role::Working => WireRole::Working(daemon::Done {}),
-            Role::Golden { template } => WireRole::Golden(daemon::GoldenRole {
+            Role::Golden { template, agent } => WireRole::Golden(daemon::GoldenRole {
                 checkpoint: template.to_string(),
+                agent_build: agent_build(agent),
             }),
             Role::Temporary => WireRole::Temporary(daemon::Done {}),
         };
@@ -361,6 +385,7 @@ impl TryFrom<&daemon::Lineage> for Lineage {
             Some(WireRole::Working(_)) => Role::Working,
             Some(WireRole::Golden(golden)) => Role::Golden {
                 template: label("lineage.golden.checkpoint", &golden.checkpoint)?,
+                agent: template_agent(&golden.agent_build)?,
             },
             Some(WireRole::Temporary(_)) => Role::Temporary,
             None => return Err(ParseError::Missing("lineage.role")),
@@ -666,6 +691,7 @@ mod tests {
     fn lineage_round_trips() {
         let golden = Role::Golden {
             template: "ready".parse().unwrap(),
+            agent: doppel_machine::lineage::TemplateAgent::Unrecorded,
         };
         let forked = Origin::Forked {
             from: "golden-27".parse().unwrap(),
@@ -703,6 +729,13 @@ mod tests {
         assert!(refused(|wire| {
             wire.role = Some(WireRole::Golden(daemon::GoldenRole {
                 checkpoint: "Not A Label".into(),
+                agent_build: String::new(),
+            }));
+        }));
+        assert!(refused(|wire| {
+            wire.role = Some(WireRole::Golden(daemon::GoldenRole {
+                checkpoint: "ready".into(),
+                agent_build: "not a build".into(),
             }));
         }));
         assert!(refused(|wire| {

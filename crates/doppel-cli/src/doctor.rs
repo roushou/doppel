@@ -5,7 +5,9 @@
 use std::fmt;
 use std::path::PathBuf;
 
+use doppel_machine::agent::AgentBuild;
 use doppel_machine::bundle::CheckpointLabel;
+use doppel_machine::lineage::TemplateAgent;
 use doppel_machine::machine::MachineName;
 
 /// What the command found, before any judgement.
@@ -34,7 +36,7 @@ pub(crate) enum Program {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Archive {
     /// With its build id.
-    Present(String),
+    Present(AgentBuild),
     Missing,
     /// It or its build id couldn't be read, with why.
     Unreadable(String),
@@ -86,6 +88,8 @@ pub(crate) enum Role {
     Golden {
         template: CheckpointLabel,
         template_found: Checkpoint,
+        /// The agent its template holds: what its forks run.
+        agent: TemplateAgent,
     },
     /// A working or temporary machine.
     Other,
@@ -110,6 +114,8 @@ pub(crate) enum Check {
     AgentArchive,
     Daemon,
     GoldenImage,
+    /// Whether golden images hold the agent this doppel ships.
+    GoldenAgent,
     Room,
 }
 
@@ -120,6 +126,7 @@ impl Check {
             Self::AgentArchive => "agent-archive",
             Self::Daemon => "daemon",
             Self::GoldenImage => "golden-image",
+            Self::GoldenAgent => "golden-agent",
             Self::Room => "room",
         }
     }
@@ -194,13 +201,18 @@ pub(crate) struct Diagnosis {
 impl Diagnosis {
     pub(crate) fn of(facts: &Facts) -> Self {
         let mut goldens = Vec::new();
-        let (golden, room) = match &facts.daemon {
+        let (golden, agents, room) = match &facts.daemon {
             Daemon::Answered(machines) => {
                 let (verdict, ready) = golden_image(machines);
                 goldens = ready;
-                (verdict, room(machines, facts.max_running))
+                (
+                    verdict,
+                    golden_agent(machines, &facts.agent_archive_found),
+                    room(machines, facts.max_running),
+                )
             }
             Daemon::NotRunning(_) | Daemon::OtherVersion { .. } | Daemon::Failed(_) => (
+                Verdict::Skipped(Check::Daemon),
                 Verdict::Skipped(Check::Daemon),
                 Verdict::Skipped(Check::Daemon),
             ),
@@ -211,6 +223,7 @@ impl Diagnosis {
                 (Check::AgentArchive, agent_archive(facts)),
                 (Check::Daemon, daemon(&facts.daemon)),
                 (Check::GoldenImage, golden),
+                (Check::GoldenAgent, agents),
                 (Check::Room, room),
             ],
             goldens,
@@ -362,6 +375,7 @@ fn golden_image(machines: &[Machine]) -> (Verdict, Vec<Golden>) {
             Role::Golden {
                 template,
                 template_found: Checkpoint::Present,
+                ..
             } => ready.push(Golden {
                 name: name.clone(),
                 template: template.clone(),
@@ -369,6 +383,7 @@ fn golden_image(machines: &[Machine]) -> (Verdict, Vec<Golden>) {
             Role::Golden {
                 template,
                 template_found: Checkpoint::Missing,
+                ..
             } => unusable.push(format!("{name}: its template '{template}' is gone")),
             Role::Golden {
                 template_found: Checkpoint::Unknown(why),
@@ -404,6 +419,56 @@ fn golden_image(machines: &[Machine]) -> (Verdict, Vec<Golden>) {
         },
     };
     (verdict, ready)
+}
+
+/// Whether the golden images ready to fork hold the agent beside this
+/// doppel. An older agent still works (the host asks what it can do), so a
+/// difference only warns: forks miss what the newer agent adds.
+fn golden_agent(machines: &[Machine], archive: &Archive) -> Verdict {
+    let ready: Vec<_> = machines
+        .iter()
+        .filter_map(|machine| match &machine.role {
+            Role::Golden {
+                template_found: Checkpoint::Present,
+                agent,
+                ..
+            } => Some((&machine.name, agent)),
+            Role::Golden { .. } | Role::Other | Role::Unreadable(_) => None,
+        })
+        .collect();
+    if ready.is_empty() {
+        return Verdict::Skipped(Check::GoldenImage);
+    }
+    let shipped = match archive {
+        Archive::Present(build) => build,
+        Archive::Missing | Archive::Unreadable(_) => {
+            return Verdict::Pass("no agent archive here to compare with".to_owned());
+        }
+    };
+    let mut behind = Vec::new();
+    for (name, agent) in &ready {
+        match agent {
+            TemplateAgent::Recorded(build) if build == shipped => {}
+            TemplateAgent::Recorded(build) => behind.push(format!("{name} has build {build}")),
+            TemplateAgent::Unrecorded => {
+                behind.push(format!(
+                    "{name}'s isn't recorded (prepared before Doppel kept it)"
+                ));
+            }
+        }
+    }
+    if behind.is_empty() {
+        let names: Vec<_> = ready.iter().map(|(name, _)| name.to_string()).collect();
+        Verdict::Pass(format!("{} on build {shipped}", names.join(", ")))
+    } else {
+        Verdict::Warn {
+            problem: format!(
+                "not this doppel's agent (build {shipped}): {}; their forks run that one",
+                behind.join("; ")
+            ),
+            fix: "prepare it again with this agent: doppel start NAME, doppel agent install NAME, doppel golden prepare NAME --checkpoint NEW-LABEL".to_owned(),
+        }
+    }
 }
 
 fn room(machines: &[Machine], max: usize) -> Verdict {
@@ -442,8 +507,13 @@ mod tests {
             role: Role::Golden {
                 template: label("ready"),
                 template_found: found,
+                agent: TemplateAgent::Recorded(build("abc123")),
             },
         }
+    }
+
+    fn build(raw: &str) -> AgentBuild {
+        raw.parse().unwrap()
     }
 
     fn working(raw: &str, power: Power) -> Machine {
@@ -459,7 +529,7 @@ mod tests {
             vmm: "/opt/doppel/doppel-vmm".into(),
             vmm_found: Program::Present,
             agent_archive: "/opt/doppel/doppel-agent.zip".into(),
-            agent_archive_found: Archive::Present("abc123".into()),
+            agent_archive_found: Archive::Present(build("abc123")),
             daemon,
             max_running: 2,
         }
@@ -568,6 +638,54 @@ mod tests {
         let d = Diagnosis::of(&facts(Daemon::Answered(machines)));
         assert_eq!(verdict(&d, Check::Room).status(), "fail");
         assert!(!d.is_ready());
+    }
+
+    #[test]
+    fn a_golden_image_on_another_agent_only_warns_with_how_to_refresh() {
+        let mut older = golden("old", Checkpoint::Present);
+        older.role = Role::Golden {
+            template: label("ready"),
+            template_found: Checkpoint::Present,
+            agent: TemplateAgent::Recorded(build("abc100")),
+        };
+        let mut unknown = golden("unknown", Checkpoint::Present);
+        unknown.role = Role::Golden {
+            template: label("ready"),
+            template_found: Checkpoint::Present,
+            agent: TemplateAgent::Unrecorded,
+        };
+        let d = Diagnosis::of(&facts(Daemon::Answered(vec![
+            golden("current", Checkpoint::Present),
+            older,
+            unknown,
+        ])));
+        let agents = verdict(&d, Check::GoldenAgent);
+        assert_eq!(agents.status(), "warn");
+        let detail = agents.detail();
+        assert!(detail.contains("old has build abc100"), "{detail}");
+        assert!(detail.contains("unknown's isn't recorded"), "{detail}");
+        assert!(!detail.contains("current"), "{detail}");
+        assert!(agents.fix().unwrap().contains("doppel golden prepare"));
+        assert!(d.is_ready(), "an older agent still serves");
+    }
+
+    #[test]
+    fn golden_images_on_this_agent_pass_and_without_an_archive_nothing_is_compared() {
+        let mut f = facts(Daemon::Answered(vec![golden("g", Checkpoint::Present)]));
+        assert_eq!(
+            verdict(&Diagnosis::of(&f), Check::GoldenAgent),
+            &Verdict::Pass("g on build abc123".to_owned())
+        );
+        f.agent_archive_found = Archive::Missing;
+        assert_eq!(
+            verdict(&Diagnosis::of(&f), Check::GoldenAgent).status(),
+            "pass"
+        );
+        let none = Diagnosis::of(&facts(Daemon::Answered(vec![working("dev", Power::Off)])));
+        assert_eq!(
+            verdict(&none, Check::GoldenAgent),
+            &Verdict::Skipped(Check::GoldenImage)
+        );
     }
 
     #[test]

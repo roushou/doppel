@@ -2,9 +2,10 @@
 
 use anyhow::{Result, bail};
 use clap::Subcommand;
-use doppel_host::machines::{CHECKPOINT_TIMEOUT, CLAIM_TIMEOUT};
+use doppel_host::machines::{CALL_TIMEOUT, CHECKPOINT_TIMEOUT, CLAIM_TIMEOUT};
 use doppel_machine::bundle::CheckpointLabel;
 use doppel_machine::checkpoint::{AfterCheckpoint, Checkpoint, GuestSync};
+use doppel_machine::lineage::TemplateAgent;
 use doppel_machine::machine::MachineName;
 use doppel_protocol::transport::Cancel;
 
@@ -43,9 +44,10 @@ impl GoldenCommand {
         match self {
             Self::Prepare { name, checkpoint } => prepare(ctx, name, checkpoint),
             Self::Mark { name, checkpoint } => {
+                // Which agent the checkpoint holds can't be read from it.
                 let lineage = machines
                     .claim(&name, machines.within(CLAIM_TIMEOUT))?
-                    .mark_golden(&checkpoint)?;
+                    .mark_golden(&checkpoint, TemplateAgent::Unrecorded)?;
                 Ok(Report::GoldenMarked {
                     name,
                     label: checkpoint,
@@ -77,6 +79,14 @@ pub(crate) fn prepare(ctx: &Context, name: MachineName, label: CheckpointLabel) 
     machines
         .machine(&name)
         .golden_prepare(|step| eprintln!("{name}: {step}…"))?;
+    // What the checkpoint will hold, and so what its forks run.
+    let agent = match machines
+        .machine(&name)
+        .agent_build(machines.within(CALL_TIMEOUT))?
+    {
+        Some(build) => TemplateAgent::Recorded(build),
+        None => TemplateAgent::Unrecorded,
+    };
     eprintln!("{name}: settings applied; checkpointing as '{label}' and stopping…");
     let report = claim.checkpoint(
         &label,
@@ -95,7 +105,7 @@ pub(crate) fn prepare(ctx: &Context, name: MachineName, label: CheckpointLabel) 
             guest_sync: GuestSync::Synced,
             ..
         } => {
-            claim.mark_golden(&label)?;
+            claim.mark_golden(&label, agent)?;
             Ok(Report::GoldenPrepared {
                 name,
                 label,

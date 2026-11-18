@@ -298,10 +298,12 @@ impl Next {
             Role::Golden {
                 template,
                 template_found: Checkpoint::Present,
+                ..
             } => Self::Done(template.clone()),
             Role::Golden {
                 template,
                 template_found: Checkpoint::Missing | Checkpoint::Unknown(_),
+                ..
             } => Self::Blocked(Blocked::TemplateMissing {
                 name: name.clone(),
                 template: template.clone(),
@@ -406,6 +408,7 @@ mod tests {
             role: Role::Golden {
                 template: "ready".parse().unwrap(),
                 template_found: Checkpoint::Present,
+                agent: doppel_machine::lineage::TemplateAgent::Unrecorded,
             },
         };
         // With or without a record: one made by hand counts too.

@@ -83,6 +83,7 @@ fn the_lineage_file_is_pinned() {
     let lineage = Lineage {
         role: Role::Golden {
             template: "ready".parse().unwrap(),
+            agent: doppel_machine::lineage::TemplateAgent::Unrecorded,
         },
         origin: Origin::Installed,
     };

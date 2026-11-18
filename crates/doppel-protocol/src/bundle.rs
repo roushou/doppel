@@ -128,8 +128,9 @@ impl From<&Lineage> for bundle::Lineage {
         use bundle::lineage::{Origin as StoredOrigin, Role as StoredRole};
         let role = match &lineage.role {
             Role::Working => StoredRole::Working(bundle::Working {}),
-            Role::Golden { template } => StoredRole::Golden(bundle::GoldenRole {
+            Role::Golden { template, agent } => StoredRole::Golden(bundle::GoldenRole {
                 checkpoint: template.to_string(),
+                agent_build: crate::convert::agent_build(agent),
             }),
             Role::Temporary => StoredRole::Temporary(bundle::Temporary {}),
         };
@@ -167,6 +168,7 @@ impl TryFrom<&bundle::Lineage> for Lineage {
             Some(StoredRole::Working(_)) => Role::Working,
             Some(StoredRole::Golden(golden)) => Role::Golden {
                 template: label("lineage.golden.checkpoint", &golden.checkpoint)?,
+                agent: crate::convert::template_agent(&golden.agent_build)?,
             },
             Some(StoredRole::Temporary(_)) => Role::Temporary,
             None => return Err(ParseError::Missing("lineage.role")),
@@ -272,6 +274,7 @@ mod tests {
     fn lineage_round_trips() {
         let golden = Role::Golden {
             template: "ready".parse().unwrap(),
+            agent: doppel_machine::lineage::TemplateAgent::Unrecorded,
         };
         let forked = Origin::Forked {
             from: "golden-27".parse().unwrap(),
@@ -309,6 +312,13 @@ mod tests {
         assert!(refused(|stored| {
             stored.role = Some(StoredRole::Golden(bundle::GoldenRole {
                 checkpoint: "Not A Label".into(),
+                agent_build: String::new(),
+            }));
+        }));
+        assert!(refused(|stored| {
+            stored.role = Some(StoredRole::Golden(bundle::GoldenRole {
+                checkpoint: "ready".into(),
+                agent_build: "not a build".into(),
             }));
         }));
         assert!(refused(|stored| {
