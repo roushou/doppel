@@ -251,7 +251,17 @@ if command -v brew >/dev/null; then
   fi
   installed="$("$(brew --prefix)/bin/doppel" --version)"
   [[ "$installed" == "doppel $version" ]] || die "brew installed $installed, not doppel $version"
-  spctl -a -t install "$(brew --prefix)/opt/doppel/libexec/doppel" || die "Gatekeeper refuses the installed doppel"
+  # Gatekeeper asks Apple for the notarization, which it learns of some
+  # minutes after accepting it.
+  accepted=no
+  for _ in $(seq 1 30); do
+    if spctl -a -t install "$(brew --prefix)/opt/doppel/libexec/doppel" 2>/dev/null; then
+      accepted=yes
+      break
+    fi
+    sleep 20
+  done
+  [[ "$accepted" == yes ]] || die "Gatekeeper still refuses the installed doppel after 10 minutes: spctl -a -vv -t install $(brew --prefix)/opt/doppel/libexec/doppel"
 fi
 
 echo "released $tag: https://github.com/$repo/releases/tag/$tag"
