@@ -74,6 +74,7 @@ enum Command {
     SetPassword(lifecycle::SetPasswordCmd),
     ForgetPassword(lifecycle::ForgetPasswordCmd),
     Status(machines::StatusCmd),
+    Delete(machines::DeleteCmd),
     /// Record a machine's display to a video file.
     #[command(subcommand)]
     Record(record::RecordCommand),
@@ -128,6 +129,7 @@ impl Command {
             | Self::Start(_)
             | Self::Login(_)
             | Self::Status(_)
+            | Self::Delete(_)
             | Self::View(_)
             | Self::Stop(_)
             | Self::Pause(_)
@@ -169,6 +171,7 @@ impl Command {
             Self::SetPassword(cmd) => cmd.run(&ctx),
             Self::ForgetPassword(cmd) => cmd.run(&ctx),
             Self::Status(cmd) => cmd.run(&ctx),
+            Self::Delete(cmd) => cmd.run(&ctx),
             Self::Record(cmd) => cmd.run(&ctx),
             Self::View(cmd) => cmd.run(&ctx),
             Self::Stop(cmd) => cmd.run(&ctx),

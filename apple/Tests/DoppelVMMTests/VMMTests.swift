@@ -124,8 +124,14 @@ import DoppelWire
         #expect(text.lines.first?.text.contains("Save") == true, "\(text.lines)")
     }
 
-    @Test func theAccurateRecognizerReadsWhenItWorksAndNothingIsSaid() throws {
-        let text = try TextRecognizer.recognize(try Self.image("Save", at: CGPoint(x: 40, y: 120)), displayPoints: CGSize(width: 400, height: 200))
+    @Test func whenTheAccurateRecognizerWorksNothingIsSaid() throws {
+        // A recognizer that works by construction: whether Vision's accurate
+        // one works is this Mac's Neural Engine's business (e5rtError 13).
+        var levels: [VNRequestTextRecognitionLevel] = []
+        let text = try TextRecognizer.recognize(try Self.image("Save", at: CGPoint(x: 40, y: 120)), displayPoints: CGSize(width: 400, height: 200)) { request, _ in
+            levels.append(request.recognitionLevel)
+        }
+        #expect(levels == [.accurate])
         #expect(text.accurateFailed.isEmpty)
     }
 

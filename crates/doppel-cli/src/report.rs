@@ -79,6 +79,8 @@ pub enum Report {
         path: PathBuf,
     },
     PasswordDeleted(MachineName),
+    /// `delete`.
+    Deleted(MachineName),
     NoPassword(MachineName),
     RecordingStarted {
         name: MachineName,
@@ -367,6 +369,7 @@ impl fmt::Display for Report {
                 writeln!(f, "{name}: saved to {} (mode 600)", path.display())
             }
             Self::PasswordDeleted(name) => writeln!(f, "{name}: stored password deleted"),
+            Self::Deleted(name) => writeln!(f, "{name}: deleted"),
             Self::NoPassword(name) => writeln!(f, "{name}: no stored password"),
             Self::RecordingStarted { name, path } => {
                 writeln!(f, "{name}: recording to {}", path.display())

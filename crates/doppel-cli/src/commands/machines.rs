@@ -1,9 +1,9 @@
-//! `ls`, `create`, `import` and `status`: which machines there are, and
-//! making new ones.
+//! `ls`, `create`, `import`, `status` and `delete`: which machines there
+//! are, and making and removing them.
 
 use std::path::PathBuf;
 
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _, Result, bail};
 use clap::Args;
 use doppel_host::capabilities::OsEntropy;
 use doppel_host::golden::plan::GuestUserName;
@@ -15,7 +15,7 @@ use doppel_machine::machine::{
 };
 
 use crate::context::Context;
-use crate::daemon_at::within;
+use crate::daemon_at::{LIFECYCLE, within};
 use crate::report::Report;
 
 /// List machines.
@@ -146,6 +146,87 @@ impl StatusCmd {
             status,
         })
     }
+}
+
+/// Delete a machine for good: its disk and its checkpoints. Its
+/// recordings stay. It must be stopped, unless `--stop`. Asks first in a
+/// terminal; anywhere else, pass `--yes`.
+#[derive(Debug, Args)]
+pub(crate) struct DeleteCmd {
+    name: MachineName,
+    /// Don't ask: for scripts.
+    #[arg(long)]
+    yes: bool,
+    /// Power it off first if it runs (as `stop --force`).
+    #[arg(long)]
+    stop: bool,
+}
+
+impl DeleteCmd {
+    pub(crate) fn run(self, ctx: &Context) -> Result<Report> {
+        use doppel_client::{Listing, StopMode};
+        use doppel_machine::lineage::{RecordedLineage, Role};
+        use doppel_machine::vm::Status;
+        let client = ctx.daemon()?.connect()?;
+        let name = self.name;
+        let report = client.report(&name, within(CALL_TIMEOUT))?;
+        let golden =
+            client
+                .machines(within(CALL_TIMEOUT))?
+                .into_iter()
+                .any(|listing| match listing {
+                    Listing::Machine {
+                        name: listed,
+                        lineage: RecordedLineage::Known(lineage),
+                        ..
+                    } => listed == name && matches!(lineage.role, Role::Golden { .. }),
+                    Listing::Machine { .. } | Listing::Unrecognized(_) => false,
+                });
+        let running = match report.status {
+            Status::Live(_) => true,
+            Status::Stopped(_) => false,
+        };
+        if running && !self.stop {
+            bail!("{name} is running: stop it first (doppel stop {name}), or pass --stop");
+        }
+        if !self.yes {
+            let what = format!(
+                "{}{name}{}{}",
+                if golden { "golden image " } else { "" },
+                match report.checkpoints.len() {
+                    0 => String::new(),
+                    1 => " and its checkpoint".to_owned(),
+                    n => format!(" and its {n} checkpoints"),
+                },
+                if running { ", powering it off," } else { "" },
+            );
+            if !confirm(&format!("Delete {what} for good? [y/N] "))? {
+                bail!("{name}: not deleted");
+            }
+        }
+        if running {
+            client.stop(&name, StopMode::Force, within(LIFECYCLE))?;
+        }
+        client.delete(&name, within(LIFECYCLE))?;
+        Ok(Report::Deleted(name))
+    }
+}
+
+/// Asks on the terminal; anything but yes is no. Not a terminal: refused,
+/// so a script must say `--yes`.
+fn confirm(question: &str) -> Result<bool> {
+    use std::io::{BufRead as _, IsTerminal as _};
+    let stdin = std::io::stdin();
+    if !stdin.is_terminal() {
+        bail!("deleting is for good: pass --yes to do it without asking");
+    }
+    eprint!("{question}");
+    let mut answer = String::new();
+    stdin.lock().read_line(&mut answer)?;
+    Ok(matches!(
+        answer.trim().to_ascii_lowercase().as_str(),
+        "y" | "yes"
+    ))
 }
 
 /// A new machine's hardware, as `create` and `import` take it.
