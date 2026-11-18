@@ -7,8 +7,8 @@ use std::time::Duration;
 use anyhow::{Context as _, Result, bail};
 use clap::{Subcommand, ValueEnum};
 use doppel_host::capabilities::{Clock as _, SystemClock};
-use doppel_machine::agent::VsockPort;
 use doppel_machine::machine::MachineName;
+use doppel_machine::vm::VsockPort;
 
 use crate::context::Context;
 use crate::report::Report;

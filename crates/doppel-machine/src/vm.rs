@@ -1,8 +1,27 @@
 //! A VM's state: as its VMM reports it while it runs, and a machine's
-//! status, running or stopped.
+//! status, running or stopped; and the vsock ports its guest listens on.
 
 use crate::agent::AgentReport;
 use crate::bundle::CheckpointLabel;
+
+/// A vsock port in the guest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VsockPort(u32);
+
+impl VsockPort {
+    /// Where `doppel-agent` listens.
+    pub const AGENT: Self = Self(7400);
+
+    #[must_use]
+    pub const fn new(port: u32) -> Self {
+        Self(port)
+    }
+
+    #[must_use]
+    pub const fn get(self) -> u32 {
+        self.0
+    }
+}
 
 /// A machine's state, its agent's, and its checkpoints.
 #[derive(Debug, Clone, PartialEq)]

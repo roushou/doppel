@@ -5,25 +5,6 @@ use std::str::FromStr;
 
 use crate::geometry::Size;
 
-/// A vsock port in the guest.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct VsockPort(u32);
-
-impl VsockPort {
-    /// Where `doppel-agent` listens.
-    pub const AGENT: Self = Self(7400);
-
-    #[must_use]
-    pub const fn new(port: u32) -> Self {
-        Self(port)
-    }
-
-    #[must_use]
-    pub const fn get(self) -> u32 {
-        self.0
-    }
-}
-
 /// A macOS privacy permission the agent needs for some operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Permission {
