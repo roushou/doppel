@@ -117,8 +117,14 @@ used as one pool: placing runs, and a viewer across hosts. Not designed yet.
 - What can be checked on a live machine is: rebuild with `scripts/build.sh`,
   restart the daemon (`launchctl kickstart -k gui/$(id -u)/dev.doppel.doppeld`),
   and drive a machine.
-- `scripts/release.sh` builds a release for Apple silicon, signed with a
-  Developer ID and notarized, and the Homebrew formula that installs it.
+- `scripts/release.sh VERSION` releases from main in one go: it sets the
+  workspace's one version, builds, signs with a Developer ID, notarizes,
+  publishes the GitHub release with notes from the commits, updates the
+  Homebrew tap, and checks that `brew` installs it. A patch version
+  (0.2.1) changes nothing users or integrators rely on (the CLI and its
+  `--json`, the MCP tools, the store, the protocol between separately
+  upgraded pieces); a minor version may, and says how. The commit types
+  sort the notes; they don't pick the version.
 - [crates.md](crates.md) says which crate owns what and which may depend on
   which. Pure decisions live in pure crates and modules, and are tested
   without I/O.

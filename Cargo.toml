@@ -3,6 +3,8 @@ resolver = "3"
 members = ["crates/*"]
 
 [workspace.package]
+# Every crate's, and the release's: scripts/release.sh sets it.
+version = "0.2.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 publish = false
