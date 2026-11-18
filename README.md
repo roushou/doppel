@@ -44,8 +44,7 @@ It's early: the [roadmap](docs/roadmap.md) says what works.
 
 ## Get started
 
-You need an Apple silicon Mac on macOS 27, with about 60 GB free while
-setup runs (macOS is a 26 GB download, removed once installed).
+Needs an Apple silicon Mac on macOS 27, with about 60 GB free.
 
 ```sh
 brew install roushou/doppel/doppel
@@ -53,61 +52,14 @@ doppel setup
 claude mcp add doppel -- doppel mcp --from golden
 ```
 
-`doppel setup` installs the daemon, downloads the newest macOS this Mac
-supports, installs it into a new machine, puts the guest agent in with its
-permissions granted, and makes the machine a golden image, `golden`. Each
-agent session then gets a fresh fork of it, deleted when the session ends.
-It takes a while; run it again after an interruption and it carries on.
-`--ipsw` installs from a restore image you have, and `--json` reports for
-programs that set Doppel up.
-
-`doppel doctor` checks that an agent can be given a machine, and says what
-to fix if not; `--json` is the same for programs. `doppel --help` lists
-every command.
-
-### Step by step
-
-What `setup` does, to make a machine your own way:
-
-- Have launchd start the daemon when needed:
-
-  ```sh
-  doppel daemon install
-  ```
-
-- Make a machine. macOS makes the account itself on its first boot; then
-  the guest agent goes in:
-
-  ```sh
-  doppel create dev --ipsw path/to/macOS.ipsw --user doppel
-  doppel agent bootstrap dev --user doppel
-  ```
-
-- Grant the agent Accessibility and Screen Recording. Doppel writes the
-  guest's own records of both into its disk while it's shut down, so no
-  prompt comes up:
-
-  ```sh
-  doppel stop dev
-  doppel agent grant dev --user doppel
-  doppel start dev
-  ```
-
-- Make it a golden image, and give each agent session a fresh fork of it,
-  deleted when the session ends:
-
-  ```sh
-  doppel golden prepare dev
-  claude mcp add doppel -- doppel mcp --from dev
-  ```
+`doppel setup` downloads macOS and makes a golden image; each agent
+session gets a fresh fork of it. Run it again after an interruption and it
+carries on. `doppel doctor` says what's missing, if anything.
 
 ### From source
 
-To work on Doppel, build it instead: Xcode 27, Rust (pinned in
-`rust-toolchain.toml`), Node.js with pnpm, and
-[`buf`](https://buf.build/docs/installation). Builds are signed with your
-Developer ID Application or Apple Development identity if you have one: the
-guest's permission grants follow the agent's signature.
+Needs Xcode 27, Rust, and `wasm-bindgen-cli` (the build says which
+version); `scripts/check.sh` also needs `buf` and `dprint`.
 
 ```sh
 scripts/build.sh
