@@ -12,7 +12,7 @@ use doppel_machine::lineage::{RecordedLineage, Role as LineageRole};
 use doppel_machine::vm::Status;
 
 use crate::commands::agent::agent_archive;
-use crate::context::Context;
+use crate::context::{Context, InstallDir};
 use crate::daemon_at::within;
 use crate::doctor::{
     Archive, Checkpoint, Daemon, Diagnosis, Facts, Machine, Power, Program, Role, Service,
@@ -35,7 +35,7 @@ pub(crate) struct DoctorCmd {
 
 impl DoctorCmd {
     pub(crate) fn run(self, ctx: &Context) -> Result<Report> {
-        let agent_archive = std::env::current_exe()?.with_file_name("doppel-agent.zip");
+        let agent_archive = InstallDir::current()?.agent_archive();
         let facts = Facts {
             vmm: ctx.vmm().to_path_buf(),
             vmm_found: program(ctx.vmm()),

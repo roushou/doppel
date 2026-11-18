@@ -4,7 +4,9 @@
 # doppel-agent runs inside the guest: `doppel agent install <machine>` puts
 # doppel-agent.zip (Doppel Agent.app) there, or copy the bare binary by hand.
 #   scripts/build.sh            debug
-#   scripts/build.sh --release  release
+#   scripts/build.sh --release  release: also signs doppel, and signs everything
+#                               with the hardened runtime and a secure timestamp,
+#                               as notarization requires (scripts/release.sh)
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 profile=debug; cargo_flags=(); swift_config=debug
@@ -22,20 +24,29 @@ cp "$root/apple/.build/$swift_config/doppel-vmm" "$out"
 # Sign with a stable identity so the guest agent keeps its Accessibility and
 # Screen Recording grants across rebuilds: TCC matches an ad-hoc build by its
 # cdhash, which every rebuild changes. DOPPEL_SIGNING_IDENTITY wins; otherwise
-# the keychain's Apple Development identity is used when there is exactly one.
+# the keychain's Developer ID Application identity, then its Apple Development
+# one, each when there is exactly one. Developer ID first: releases are signed
+# with it, so a dev build's agent keeps the grants a release's was given.
 # Ad-hoc signing still builds and runs, but each new agent needs its
 # grants again.
 identity="${DOPPEL_SIGNING_IDENTITY:-}"
+for kind in "Developer ID Application" "Apple Development"; do
+  if [[ -n "$identity" ]]; then break; fi
+  found="$(security find-identity -v -p codesigning | awk -v kind="\"$kind: " 'index($0, kind) {print $2}')"
+  if [[ -n "$found" && "$(wc -l <<<"$found")" -eq 1 ]]; then identity="$found"; fi
+done
 if [[ -z "$identity" ]]; then
-  found="$(security find-identity -v -p codesigning | awk '/"Apple Development: /{print $2}')"
-  if [[ -n "$found" && "$(wc -l <<<"$found")" -eq 1 ]]; then
-    identity="$found"
-  else
-    identity="-"
-    echo "warning: ad-hoc signing (set DOPPEL_SIGNING_IDENTITY): a rebuilt agent loses its guest grants" >&2
-  fi
+  identity="-"
+  echo "warning: ad-hoc signing (set DOPPEL_SIGNING_IDENTITY): a rebuilt agent loses its guest grants" >&2
 fi
-codesign --force --sign "$identity" --entitlements "$root/resources/doppel-vmm.entitlements" "$out"
+sign_flags=()
+if [[ "$profile" == release ]]; then
+  sign_flags=(--options runtime)
+  # A timestamp needs a real identity: ad-hoc signatures have none.
+  if [[ "$identity" != "-" ]]; then sign_flags+=(--timestamp); fi
+  codesign --force --sign "$identity" "${sign_flags[@]}" "$root/target/$profile/doppel"
+fi
+codesign --force --sign "$identity" ${sign_flags[@]+"${sign_flags[@]}"} --entitlements "$root/resources/doppel-vmm.entitlements" "$out"
 codesign -d --entitlements - "$out" 2>/dev/null | grep -q com.apple.security.virtualization
 
 # The guest app: `doppel agent install <machine>` installs doppel-agent.zip as a
@@ -47,7 +58,7 @@ mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$root/apple/.build/$swift_config/doppel-agent" "$app/Contents/MacOS/doppel-agent"
 printf '%s\n' "$build_id" > "$app/Contents/Resources/build-id"
 sed "s/@BUILD_ID@/$build_id/" "$root/resources/doppel-agent-Info.plist" > "$app/Contents/Info.plist"
-codesign --force --sign "$identity" --identifier dev.doppel.agent "$app"
+codesign --force --sign "$identity" ${sign_flags[@]+"${sign_flags[@]}"} --identifier dev.doppel.agent "$app"
 codesign --verify --strict "$app"
 rm -f "$root/target/$profile/doppel-agent.zip"
 (cd "$root/target/$profile" && ditto -c -k --keepParent "Doppel Agent.app" doppel-agent.zip)

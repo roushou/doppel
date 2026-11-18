@@ -120,13 +120,24 @@ impl Launchctl {
     }
 
     /// Loads the job from its plist.
+    /// Loads the job. launchd finishes unloading a job of the same label
+    /// after `bootout` returns, even after `print` stops listing it, and
+    /// refuses to load it meanwhile (exit status 5, "Input/output error"),
+    /// so that is retried for up to 10 s.
     pub(crate) fn bootstrap(&self, plist: &Path) -> Result<()> {
-        Self::run(
-            Command::new("launchctl")
-                .arg("bootstrap")
-                .arg(&self.domain)
-                .arg(plist),
-        )
+        const STILL_UNLOADING: i32 = 5;
+        const TRIES: u32 = 20;
+        const BETWEEN: std::time::Duration = std::time::Duration::from_millis(500);
+        let mut command = Command::new("launchctl");
+        command.arg("bootstrap").arg(&self.domain).arg(plist);
+        for _ in 1..TRIES {
+            let output = command.output().context("running launchctl")?;
+            if output.status.code() != Some(STILL_UNLOADING) {
+                return Self::check(&command, &output);
+            }
+            std::thread::sleep(BETWEEN);
+        }
+        Self::run(&mut command)
     }
 
     /// Unloads the job, stopping the daemon if it runs. Not an error when
@@ -164,6 +175,10 @@ impl Launchctl {
 
     fn run(command: &mut Command) -> Result<()> {
         let output = command.output().context("running launchctl")?;
+        Self::check(command, &output)
+    }
+
+    fn check(command: &Command, output: &std::process::Output) -> Result<()> {
         if !output.status.success() {
             bail!(
                 "{:?} failed: {}",
@@ -234,7 +249,25 @@ impl Service {
         Self::remove_if_present(&self.agent.socket)?;
         std::fs::write(&self.plist, self.agent.plist())
             .with_context(|| format!("writing {}", self.plist.display()))?;
-        self.launchctl.bootstrap(&self.plist)
+        self.launchctl.bootstrap(&self.plist)?;
+        self.await_socket()
+    }
+
+    /// launchd makes the socket a moment after `bootstrap` returns; a
+    /// command right after the install must find it.
+    fn await_socket(&self) -> Result<()> {
+        const TRIES: u32 = 100;
+        const BETWEEN: std::time::Duration = std::time::Duration::from_millis(100);
+        for _ in 0..TRIES {
+            if self.agent.socket.exists() {
+                return Ok(());
+            }
+            std::thread::sleep(BETWEEN);
+        }
+        bail!(
+            "launchd loaded the daemon but never made its socket {}; see `doppel daemon status`",
+            self.agent.socket.display()
+        )
     }
 
     /// Unloads the job, stopping the daemon, and removes its plist and

@@ -11,7 +11,7 @@ use doppel_host::golden::plan::GuestUserName;
 use doppel_host::machines::CLAIM_TIMEOUT;
 use doppel_machine::machine::MachineName;
 
-use crate::context::Context;
+use crate::context::{Context, InstallDir};
 use crate::report::Report;
 
 #[derive(Debug, Subcommand)]
@@ -81,7 +81,7 @@ impl AgentCommand {
             } => {
                 let path = match archive {
                     Some(path) => path,
-                    None => std::env::current_exe()?.with_file_name("doppel-agent.zip"),
+                    None => InstallDir::current()?.agent_archive(),
                 };
                 let csreq = path.with_extension("csreq");
                 let requirement =
@@ -130,7 +130,7 @@ impl AgentCommand {
 pub(crate) fn agent_archive(archive: Option<PathBuf>) -> Result<AgentArchive> {
     let path = match archive {
         Some(path) => path,
-        None => std::env::current_exe()?.with_file_name("doppel-agent.zip"),
+        None => InstallDir::current()?.agent_archive(),
     };
     let build_file = path.with_extension("build-id");
     let build = std::fs::read_to_string(&build_file)
