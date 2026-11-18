@@ -87,8 +87,13 @@ pub(crate) fn reel_of(
             video.file.as_str()
         );
     };
-    let mut timeline = Timeline::from_trace(recording, &video.machine);
-    timeline.fill_seen(|line| snapshot(line).map(|kept| Seen::Live(Arc::new(kept))));
+    let mut timeline = Timeline::new();
+    for mut moment in recording.moments(&video.machine) {
+        if let Some(Seen::Recorded(line)) = moment.seen {
+            moment.seen = snapshot(line).map(|kept| Seen::Live(Arc::new(kept)));
+        }
+        timeline.add(moment);
+    }
     #[expect(clippy::cast_precision_loss, reason = "milliseconds of a recording")]
     let until = recording.traced_ms() as f64 + POINTER_MS;
     Ok((

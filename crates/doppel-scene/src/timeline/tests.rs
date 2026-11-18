@@ -130,7 +130,7 @@ fn the_snapshot_shown_is_the_latest_taken_and_says_when_the_agent_acted_since() 
             start + 100.0,
         );
     };
-    let mut timeline = Timeline::default();
+    let mut timeline = Timeline::new();
     look(1, 3, 0.0, &mut timeline);
     timeline.record(
         ActivityEvent::Started(call(2, Gesture::Wait, Target::Nowhere)),
@@ -190,7 +190,7 @@ fn the_snapshot_shown_is_the_latest_taken_and_says_when_the_agent_acted_since() 
 
 #[test]
 fn a_recent_call_is_placed_back_in_time_once() {
-    let mut timeline = Timeline::default();
+    let mut timeline = Timeline::new();
     let recent = |request| ActivityEvent::Recent {
         call: call(request, Gesture::Click, Target::Nowhere),
         started_ms_ago: 5000.0,
@@ -228,20 +228,20 @@ fn a_recent_call_is_placed_back_in_time_once() {
 fn the_reading_band_finishes_its_pass_after_a_look_ends() {
     let look = || ActivityEvent::Started(call(1, Gesture::Look, Target::Nowhere));
     let scan = |timeline: &Timeline, at: f64| timeline.scene_at(at).of(1).unwrap().scan;
-    let mut quick = Timeline::default();
+    let mut quick = Timeline::new();
     quick.record(look(), 0.0);
     quick.record(ended(1, Ending::Done), 300.0);
     assert_eq!(scan(&quick, 400.0), Some(0.0));
     assert_eq!(scan(&quick, SWEEP_MS - 1.0), Some(0.0));
     assert_eq!(scan(&quick, SWEEP_MS), None);
     // A longer look runs to the end of the pass it ends in.
-    let mut long = Timeline::default();
+    let mut long = Timeline::new();
     long.record(look(), 0.0);
     long.record(ended(1, Ending::Done), SWEEP_MS + 100.0);
     assert_eq!(scan(&long, 2.0 * SWEEP_MS - 1.0), Some(0.0));
     assert_eq!(scan(&long, 2.0 * SWEEP_MS), None);
     // One still looking keeps sweeping, each pass from the top.
-    let mut open = Timeline::default();
+    let mut open = Timeline::new();
     open.record(look(), 0.0);
     assert_eq!(scan(&open, 10.0 * SWEEP_MS), Some(0.0));
     assert_eq!(swept(500.0, 500.0), 0.0);
@@ -251,7 +251,7 @@ fn the_reading_band_finishes_its_pass_after_a_look_ends() {
 
 #[test]
 fn a_call_is_under_way_until_it_ends_and_a_little_after() {
-    let mut timeline = Timeline::default();
+    let mut timeline = Timeline::new();
     timeline.record(
         ActivityEvent::Started(call(1, Gesture::Click, Target::Point(at(10.0, 20.0)))),
         0.0,
@@ -277,7 +277,7 @@ fn a_call_is_under_way_until_it_ends_and_a_little_after() {
 
 #[test]
 fn each_session_has_its_own_pointer_call_and_lane() {
-    let mut timeline = Timeline::default();
+    let mut timeline = Timeline::new();
     let by = |session, request, gesture, target| Call {
         key: CallKey { session, request },
         client: format!("agent {session}"),
@@ -331,7 +331,7 @@ fn a_mark_goes_just_after_its_call_ends_or_when_the_next_starts() {
             },
         )
     };
-    let mut timeline = Timeline::default();
+    let mut timeline = Timeline::new();
     timeline.record(ActivityEvent::Started(press()), 0.0);
     let marks = |timeline: &Timeline, at| timeline.scene_at(at).of(1).unwrap().marks.len();
     assert_eq!(marks(&timeline, 900.0), 1, "under way, it shows");
@@ -346,7 +346,7 @@ fn a_mark_goes_just_after_its_call_ends_or_when_the_next_starts() {
         "gone once the screen changed"
     );
 
-    let mut timeline = Timeline::default();
+    let mut timeline = Timeline::new();
     timeline.record(ActivityEvent::Started(press()), 0.0);
     timeline.record(
         ActivityEvent::Started(call(2, Gesture::Look, Target::Nowhere)),
@@ -357,7 +357,7 @@ fn a_mark_goes_just_after_its_call_ends_or_when_the_next_starts() {
 
 #[test]
 fn a_failure_marks_where_the_pointer_was() {
-    let mut timeline = Timeline::default();
+    let mut timeline = Timeline::new();
     timeline.record(
         ActivityEvent::Started(call(1, Gesture::Move, Target::Point(at(5.0, 5.0)))),
         0.0,
@@ -405,7 +405,7 @@ fn calls_read_by_what_they_did() {
 
 #[test]
 fn a_timeline_keeps_its_latest_calls() {
-    let mut timeline = Timeline::default();
+    let mut timeline = Timeline::new();
     for request in 0..(KEPT as u64 + 5) {
         timeline.record(
             ActivityEvent::Started(call(request, Gesture::Wait, Target::Nowhere)),
@@ -424,7 +424,7 @@ fn a_timeline_keeps_its_latest_calls() {
 
 #[test]
 fn a_timeline_moves_while_a_call_runs_or_a_mark_fades() {
-    let mut timeline = Timeline::default();
+    let mut timeline = Timeline::new();
     timeline.record(
         ActivityEvent::Started(call(1, Gesture::Wait, Target::Nowhere)),
         0.0,
@@ -438,7 +438,7 @@ fn a_timeline_moves_while_a_call_runs_or_a_mark_fades() {
 
 #[test]
 fn the_panel_shows_the_newer_of_the_agents_snapshot_and_a_persons_look() {
-    let mut timeline = Timeline::default();
+    let mut timeline = Timeline::new();
     timeline.record(
         ActivityEvent::Started(call(1, Gesture::Look, Target::Nowhere)),
         0.0,
@@ -506,7 +506,7 @@ fn the_panel_shows_the_newer_of_the_agents_snapshot_and_a_persons_look() {
             ..
         })
     ));
-    assert_eq!(Timeline::default().showing(None, 0.0), Showing::Nothing);
+    assert_eq!(Timeline::new().showing(None, 0.0), Showing::Nothing);
 }
 
 #[test]
@@ -521,7 +521,7 @@ fn the_text_layer_shows_the_newer_of_the_agents_read_and_a_persons() {
             found: Vec::new(),
         }))
     };
-    let mut timeline = Timeline::default();
+    let mut timeline = Timeline::new();
     let find = |request, start: f64, text: &str, timeline: &mut Timeline| {
         timeline.record(
             ActivityEvent::Started(call(request, Gesture::Look, Target::Nowhere)),
@@ -614,7 +614,7 @@ fn marked(request: u64, lasts: CalloutLasts) -> Call {
 
 #[test]
 fn a_mark_shows_for_its_time_without_moving_the_pointer() {
-    let mut timeline = Timeline::default();
+    let mut timeline = Timeline::new();
     timeline.record(
         ActivityEvent::Started(call(1, Gesture::Click, Target::Point(at(1.0, 2.0)))),
         0.0,
@@ -637,7 +637,7 @@ fn a_mark_shows_for_its_time_without_moving_the_pointer() {
 
 #[test]
 fn a_mark_until_acted_goes_when_the_agent_next_changes_the_screen() {
-    let mut timeline = Timeline::default();
+    let mut timeline = Timeline::new();
     timeline.record(
         ActivityEvent::Started(marked(1, CalloutLasts::UntilActed(5000.0))),
         0.0,
@@ -658,7 +658,7 @@ fn a_mark_until_acted_goes_when_the_agent_next_changes_the_screen() {
 
 #[test]
 fn a_refused_mark_shows_nothing() {
-    let mut timeline = Timeline::default();
+    let mut timeline = Timeline::new();
     timeline.record(
         ActivityEvent::Started(marked(1, CalloutLasts::For(5000.0))),
         0.0,
@@ -668,60 +668,25 @@ fn a_refused_mark_shows_nothing() {
 }
 
 #[test]
-fn a_trace_becomes_the_machines_moments_and_people_draw_nothing() {
-    use crate::recordings::{Actor, Recording, RecordingId, TraceCall, TraceLine, TraceOutcome};
-    let traced = |start_ms, machine: Option<&str>, by, outcome| {
-        TraceLine::Call(Box::new(TraceCall {
-            why: None,
+fn calls_added_out_of_order_take_their_place_by_start() {
+    let mut timeline = Timeline::new();
+    for (request, start_ms) in [(1, 300.0), (2, 100.0), (3, 300.0), (4, 200.0)] {
+        timeline.add(Moment {
             start_ms,
-            end_ms: start_ms + 500,
-            machine: machine.map(|raw| raw.parse().unwrap()),
-            call: "click".into(),
-            outcome,
-            error: None,
-            waited_ms: None,
-            queued_ms: None,
-            by,
+            end_ms: Some(start_ms + 50.0),
+            call: call(request, Gesture::Click, Target::Nowhere),
+            failed: None,
+            person: false,
             seen: None,
             refs: None,
             read: None,
-            acted: Some((Gesture::Click, Target::Point(at(5.0, 6.0)))),
-            callout: None,
-        }))
-    };
-    let recording = Recording {
-        id: RecordingId::new("r".into()),
-        videos: Vec::new(),
-        trace: vec![
-            traced(100, Some("dev"), Actor::Session, TraceOutcome::Done),
-            traced(200, Some("web"), Actor::Session, TraceOutcome::Done),
-            traced(300, None, Actor::Session, TraceOutcome::TimedOut),
-            traced(2000, Some("dev"), Actor::Person, TraceOutcome::Done),
-            TraceLine::Unreadable(String::new()),
-        ],
-    };
-    let dev: MachineName = "dev".parse().unwrap();
-    let timeline = Timeline::from_trace(&recording, &dev);
-    let starts: Vec<f64> = timeline
+        });
+    }
+    let order: Vec<u64> = timeline
         .moments()
         .iter()
-        .map(|moment| moment.start_ms)
+        .map(|moment| moment.call.key.request)
         .collect();
-    assert_eq!(starts, [100.0, 300.0, 2000.0]);
-    assert_eq!(timeline.moments()[1].failed.as_deref(), Some("timed out"));
-    assert!(timeline.moments()[2].person);
-    // The person's stretch draws nothing over the screen.
-    let scene = timeline.scene_at(2100.0);
-    assert!(scene.agents.iter().all(|agent| agent.current.is_none()));
-    // A trace's lines come as calls end; the moments are in start order.
-    let ended_first = Recording {
-        trace: recording.trace.iter().rev().cloned().collect(),
-        ..recording
-    };
-    let starts: Vec<f64> = Timeline::from_trace(&ended_first, &dev)
-        .moments()
-        .iter()
-        .map(|moment| moment.start_ms)
-        .collect();
-    assert_eq!(starts, [100.0, 300.0, 2000.0]);
+    // Calls that started together keep the order they came in.
+    assert_eq!(order, [2, 4, 1, 3]);
 }

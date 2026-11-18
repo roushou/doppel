@@ -79,7 +79,7 @@ impl<S, H: Default> Default for Panel<S, H> {
             overlay: Overlay::default(),
             look: None,
             text_look: None,
-            timeline: Timeline::default(),
+            timeline: Timeline::new(),
             took: None,
             report: None,
             handles: H::default(),

@@ -15,8 +15,6 @@ use doppel_desktop::ax::tree::AxSnapshot;
 use doppel_desktop::geometry::{Point, Rect};
 use doppel_machine::machine::MachineName;
 
-use crate::recordings::{Actor, Recording, TraceOutcome};
-
 mod activity;
 mod scene;
 mod seen;
@@ -279,14 +277,22 @@ pub fn swept(start: f64, now: f64) -> f64 {
 }
 
 /// One machine's calls as moments, in the order they started (calls that
-/// started together keep the order they came in). Recorded live, it keeps
-/// the latest [`KEPT`].
+/// started together keep the order they came in). What it records live
+/// keeps the latest [`KEPT`].
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Timeline {
     moments: Vec<Moment>,
 }
 
 impl Timeline {
+    /// One with no calls yet.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            moments: Vec::new(),
+        }
+    }
+
     /// Its moments, in start order.
     #[must_use]
     pub fn moments(&self) -> &[Moment] {
@@ -371,26 +377,20 @@ impl Timeline {
         }
     }
 
-    /// Places `moment` after every one that started no later, and drops
-    /// the oldest past [`KEPT`].
+    /// Adds a call as [`Self::add`] does, and drops the oldest past [`KEPT`].
     fn keep(&mut self, moment: Moment) {
-        let at = self
-            .moments
-            .partition_point(|kept| kept.start_ms.total_cmp(&moment.start_ms).is_le());
-        self.moments.insert(at, moment);
+        self.add(moment);
         if self.moments.len() > KEPT {
             self.moments.drain(..self.moments.len() - KEPT);
         }
     }
 
-    /// Puts what `resolve` makes of each snapshot still on a recording's
-    /// trace line in its place.
-    pub fn fill_seen(&mut self, mut resolve: impl FnMut(u32) -> Option<Seen>) {
-        for moment in &mut self.moments {
-            if let Some(Seen::Recorded(line)) = moment.seen {
-                moment.seen = resolve(line);
-            }
-        }
+    /// Adds a call, after every one that started no later.
+    pub fn add(&mut self, moment: Moment) {
+        let at = self
+            .moments
+            .partition_point(|kept| kept.start_ms.total_cmp(&moment.start_ms).is_le());
+        self.moments.insert(at, moment);
     }
 }
 
@@ -529,65 +529,5 @@ impl Call {
             Gesture::Lifecycle if self.caption.is_empty() => "Changing the machine".into(),
             Gesture::Lifecycle | Gesture::Other => self.caption.clone(),
         }
-    }
-}
-
-impl Timeline {
-    /// A recording's calls on `machine` (and those naming none) as moments,
-    /// timed from the session's start, in the order they started whatever
-    /// the trace's order.
-    #[must_use]
-    pub fn from_trace(recording: &Recording, machine: &MachineName) -> Self {
-        let mut calls: Vec<_> = recording
-            .calls()
-            .filter(|call| call.machine.as_ref().is_none_or(|named| named == machine))
-            .collect();
-        calls.sort_by_key(|call| call.start_ms);
-        let moments = calls
-            .into_iter()
-            .enumerate()
-            .map(|(index, traced)| {
-                let (gesture, target) = traced
-                    .acted
-                    .clone()
-                    .unwrap_or((Gesture::Other, Target::Nowhere));
-                let callout = traced.callout.clone();
-                Moment {
-                    start_ms: traced.start_ms as f64,
-                    end_ms: Some(traced.end_ms as f64),
-                    call: Call {
-                        key: CallKey {
-                            session: 0,
-                            request: index as u64,
-                        },
-                        machine: machine.clone(),
-                        client: String::new(),
-                        caption: traced.call.clone(),
-                        gesture,
-                        target,
-                        callout,
-                        why: traced.why.clone(),
-                    },
-                    failed: match traced.outcome {
-                        TraceOutcome::Done => None,
-                        TraceOutcome::Failed
-                        | TraceOutcome::TimedOut
-                        | TraceOutcome::Refused
-                        | TraceOutcome::Unknown(_) => Some(
-                            traced
-                                .error
-                                .clone()
-                                .or_else(|| traced.outcome.words())
-                                .unwrap_or_default(),
-                        ),
-                    },
-                    person: traced.by == Actor::Person,
-                    seen: traced.seen.map(Seen::Recorded),
-                    refs: traced.refs.clone(),
-                    read: traced.read.clone(),
-                }
-            })
-            .collect();
-        Self { moments }
     }
 }

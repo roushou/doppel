@@ -27,7 +27,7 @@ use crate::screen::Picture;
 use crate::screen::inspect::{self, Act, Empty, Inspect, Pointing};
 use crate::screen::overlay;
 use crate::screen::reading;
-use crate::timeline::{self, Timeline};
+use crate::timeline::{self, Moment, Timeline};
 use crate::transport::{Follow, Transport};
 use crate::ui::icons::Icon;
 use crate::ui::theme::{MONO, Theme};
@@ -220,7 +220,7 @@ impl Replay {
             playing: None,
             unplayable: None,
             _locate: None,
-            timeline: Timeline::default(),
+            timeline: Timeline::new(),
             screen: Rc::default(),
             strip: Rc::default(),
             scrub: Rc::default(),
@@ -255,7 +255,11 @@ impl Replay {
         self.current = index;
         self.playing = None;
         self.unplayable = None;
-        self.timeline = Timeline::from_trace(&self.recording, &video.machine);
+        let mut timeline = Timeline::new();
+        for moment in self.recording.moments(&video.machine) {
+            timeline.add(moment);
+        }
+        self.timeline = timeline;
         let located = self.daemon.video(&self.recording.id, &video.file);
         self._locate = Some(cx.spawn(async move |replay, cx| {
             let located = located.await;
@@ -469,13 +473,16 @@ impl Replay {
 
     /// The moments with each snapshot fetched so far in place, so the film
     /// shows what the agent took in as soon as it's here.
-    fn with_seen(&self) -> Timeline {
-        let mut timeline = self.timeline.clone();
-        timeline.fill_seen(|line| match self.fetched.get(&line) {
-            Some(Fetch::Seen(snapshot)) => Some(timeline::Seen::Live(snapshot.clone())),
-            Some(Fetch::Loading | Fetch::Failed(_)) | None => Some(timeline::Seen::Recorded(line)),
-        });
-        timeline
+    fn with_seen(&self) -> Vec<Moment> {
+        let mut moments = self.timeline.moments().to_vec();
+        for moment in &mut moments {
+            if let Some(timeline::Seen::Recorded(line)) = moment.seen
+                && let Some(Fetch::Seen(snapshot)) = self.fetched.get(&line)
+            {
+                moment.seen = Some(timeline::Seen::Live(snapshot.clone()));
+            }
+        }
+        moments
     }
 
     /// Takes in what a person did in the elements panel.
@@ -600,8 +607,8 @@ impl Replay {
         if let (Some(picture), Some(now)) = (picture, now)
             && !self.timeline.moments().is_empty()
         {
-            let seen = self.with_seen();
-            frame = frame.child(overlay::layer(seen.moments(), picture, now));
+            let moments = self.with_seen();
+            frame = frame.child(overlay::layer(&moments, picture, now));
         }
         if let Some(problem) = problem {
             frame = frame.child(
