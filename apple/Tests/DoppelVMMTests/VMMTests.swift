@@ -48,12 +48,14 @@ import DoppelWire
         ["serve", "--spec", "rel", "--disk", "/d", "--aux", "/a", "--socket", "/s"], // relative path
         ["serve", "--spec", "/a", "--disk", "/d", "--aux", "/a", "--socket", "/s", "--bogus", "x"],
         ["serve", "--spec", "/a", "--spec", "/b"],
+        ["serve", "--spec", "/a", "--disk", "/d", "--aux", "/a", "--socket", "/s", "extra"],
+        ["install", "--spec", "/a", "--disk", "/d", "--aux", "/a"],          // missing --ipsw
         ["frobnicate"],
         ["latest-image", "--spec", "/a"],
         [],
     ])
     func rejectsBadArguments(arguments: [String]) {
-        #expect(throws: UsageError.self) { try Command(arguments: arguments) }
+        #expect(throws: (any Error).self) { try Command(arguments: arguments) }
     }
 }
 

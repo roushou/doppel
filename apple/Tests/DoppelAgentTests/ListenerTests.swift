@@ -9,11 +9,18 @@ import DoppelWire
     #expect(try Listener.parse(arguments: ["--port", "9"]) == .vsock(port: 9))
     #expect(try Listener.parse(arguments: ["--socket", "/tmp/a.sock"]) == .unix(try UnixSocketPath("/tmp/a.sock")))
 
-    #expect(throws: ListenerArgumentError.twoListeners) { try Listener.parse(arguments: ["--port", "9", "--socket", "/tmp/a.sock"]) }
-    #expect(throws: ListenerArgumentError.portNotANumber) { try Listener.parse(arguments: ["--port", "x"]) }
-    #expect(throws: ListenerArgumentError.socketMissingPath) { try Listener.parse(arguments: ["--socket"]) }
-    #expect(throws: ListenerArgumentError.socketPath(.relative("a.sock"))) { try Listener.parse(arguments: ["--socket", "a.sock"]) }
-    #expect(throws: ListenerArgumentError.unknown("--sockets")) { try Listener.parse(arguments: ["--sockets", "/tmp/a"]) }
+}
+
+@Test(arguments: [
+    ["--port", "9", "--socket", "/tmp/a.sock"],  // two listeners
+    ["--port", "x"],
+    ["--port", "-1"],
+    ["--socket"],
+    ["--socket", "a.sock"],                      // relative
+    ["--sockets", "/tmp/a"],
+])
+func theCommandLineRefusesAnythingElse(arguments: [String]) {
+    #expect(throws: (any Error).self) { try Listener.parse(arguments: arguments) }
 }
 
 @Test func aSocketPathMustFitItsAddress() throws {

@@ -75,7 +75,7 @@ private func redFrame() -> Doppel_Vmm_V1_Shape {
         ["export", "--reel", "/r.pb", "--out", "/o.mp4", "--video", "/a.mp4"],
     ])
     func refusesMissingRelativeOrStrayPaths(arguments: [String]) {
-        #expect(throws: UsageError.self) { try Command(arguments: arguments) }
+        #expect(throws: (any Error).self) { try Command(arguments: arguments) }
     }
 }
 

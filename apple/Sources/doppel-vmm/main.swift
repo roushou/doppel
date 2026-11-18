@@ -1,10 +1,5 @@
 // doppel-vmm: one process per VM. Started by `doppel`, never by hand.
-//
-//   doppel-vmm serve   --spec S --disk D --aux A --socket P [--consume-state F] [--window]
-//                      [--provision-user U --provision-full-name N --provision-password-file F]
-//   doppel-vmm install --spec S --disk D --aux A --ipsw I
-//   doppel-vmm export  --video V --reel R --out O
-//   doppel-vmm latest-image
+// `doppel-vmm --help` lists its commands; Command.swift parses them.
 
 import AppKit
 import DoppelVMM
@@ -13,8 +8,7 @@ let command: Command
 do {
     command = try Command(arguments: Array(CommandLine.arguments.dropFirst()))
 } catch {
-    FileHandle.standardError.write(Data("doppel-vmm: \(error)\n".utf8))
-    exit(64)
+    Command.exit(withError: error)
 }
 
 _ = NSApplication.shared
