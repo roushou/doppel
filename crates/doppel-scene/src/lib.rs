@@ -9,7 +9,6 @@ pub mod attention;
 pub mod elements;
 pub mod encoded;
 pub mod film;
-pub mod from_daemon;
 pub mod model;
 pub mod panel;
 pub mod recordings;
