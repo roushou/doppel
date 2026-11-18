@@ -89,6 +89,9 @@ after it starts can take a few seconds. Chrome shows page content only when
 started with `--force-renderer-accessibility`, for example through `exec`:
 `/usr/bin/open -a "Google Chrome" --args --force-renderer-accessibility URL`.
 For apps with no useful tree, use `find_text` and `screenshot`.
+`find_text` reads with Vision's accurate recognizer. When that fails, it
+reads with the fast one and its result says so, with the reason: small or
+dense text may then be misread.
 
 ## Two paths for input and screen
 

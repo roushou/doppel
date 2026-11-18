@@ -1060,6 +1060,7 @@ mod tests {
                 height: 800.0,
             }),
             lines: vec![line("Save as", 10.0, 10.0), line("Cancel", 10.0, 40.0)],
+            accurate_failed: String::new(),
         };
         let read = read(&text, Some("cancel"));
         assert_eq!(read.query.as_deref(), Some("cancel"));

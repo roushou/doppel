@@ -120,6 +120,9 @@ message RecognizedText {
   doppel.common.v1.Size display_points = 1;
   // In reading order as Vision returns it.
   repeated TextLine lines = 2;
+  // Set when Vision's accurate recognizer failed and its fast one read the
+  // lines: why the accurate one failed. Empty: the accurate one read them.
+  string accurate_failed = 3;
 }
 
 message TextLine {

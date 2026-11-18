@@ -2,6 +2,7 @@ import Foundation
 import Testing
 import AppKit
 import Virtualization
+import Vision
 import DoppelWire
 @testable import DoppelVMM
 
@@ -98,6 +99,25 @@ import DoppelWire
         let cancel = line.words[0].frame, save = line.words[1].frame
         #expect(cancel.origin.x + cancel.size.width <= save.origin.x + 1, "words in order, side by side")
         #expect(save.origin.x > 80 && save.origin.x < 200, "\(save)")
+    }
+
+    @Test func theFastRecognizerReadsWhenTheAccurateOneFailsAndTheResultSaysWhy() throws {
+        struct Broken: Error, CustomStringConvertible { var description: String { "e5rtError 13" } }
+        let image = try Self.image("Save Changes", at: CGPoint(x: 40, y: 120))
+        var levels: [VNRequestTextRecognitionLevel] = []
+        let text = try TextRecognizer.recognize(image, displayPoints: CGSize(width: 400, height: 200)) { request, image in
+            levels.append(request.recognitionLevel)
+            if request.recognitionLevel == .accurate { throw Broken() }
+            try TextRecognizer.vision(request, on: image)
+        }
+        #expect(levels == [.accurate, .fast])
+        #expect(text.accurateFailed == "e5rtError 13")
+        #expect(text.lines.first?.text.contains("Save") == true, "\(text.lines)")
+    }
+
+    @Test func theAccurateRecognizerReadsWhenItWorksAndNothingIsSaid() throws {
+        let text = try TextRecognizer.recognize(try Self.image("Save", at: CGPoint(x: 40, y: 120)), displayPoints: CGSize(width: 400, height: 200))
+        #expect(text.accurateFailed.isEmpty)
     }
 
     @Test func aBlankDisplayHasNoLines() throws {

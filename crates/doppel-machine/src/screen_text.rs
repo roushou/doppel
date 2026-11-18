@@ -240,6 +240,35 @@ pub struct TextMatch<'a> {
 pub struct ScreenText {
     display: Size,
     lines: Vec<TextLine>,
+    recognizer: Recognizer,
+}
+
+/// Which of Vision's recognizers read a display's text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Recognizer {
+    /// The accurate one, as asked.
+    Accurate,
+    /// The fast one, because the accurate one failed: it misreads small and
+    /// dense text more often.
+    Fast(AccurateFailed),
+}
+
+/// Why Vision's accurate recognizer failed. Never empty.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AccurateFailed(String);
+
+impl AccurateFailed {
+    /// `None` for an empty reason, which says nothing failed.
+    #[must_use]
+    pub fn new(why: impl Into<String>) -> Option<Self> {
+        let why = why.into();
+        (!why.is_empty()).then_some(Self(why))
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 impl ScreenText {
@@ -264,7 +293,22 @@ impl ScreenText {
                 row
             })
             .collect();
-        Self { display, lines }
+        Self {
+            display,
+            lines,
+            recognizer: Recognizer::Accurate,
+        }
+    }
+
+    /// The same text, as read by `recognizer`.
+    #[must_use]
+    pub fn read_by(self, recognizer: Recognizer) -> Self {
+        Self { recognizer, ..self }
+    }
+
+    #[must_use]
+    pub const fn recognizer(&self) -> &Recognizer {
+        &self.recognizer
     }
 
     #[must_use]
@@ -336,6 +380,16 @@ impl ScreenText {
                     .collect()
             }
         };
+        match &self.recognizer {
+            Recognizer::Accurate => {}
+            Recognizer::Fast(why) => {
+                let _ = writeln!(
+                    out,
+                    "Read by the fast recognizer, as the accurate one failed ({}): small or dense text may be misread.",
+                    why.as_str()
+                );
+            }
+        }
         if !shown.is_empty() {
             out.push_str("Points are display points: pass them to click as x, y.\n");
         }
@@ -401,6 +455,28 @@ mod tests {
 
     fn query(raw: &str) -> TextQuery {
         raw.parse().unwrap()
+    }
+
+    #[test]
+    fn an_empty_reason_is_no_failure() {
+        assert_eq!(AccurateFailed::new(""), None);
+        assert_eq!(
+            AccurateFailed::new("e5rtError 13").unwrap().as_str(),
+            "e5rtError 13"
+        );
+    }
+
+    #[test]
+    fn text_from_the_fast_recognizer_says_so() {
+        let text = screen(vec![line("Save", 100.0, 500.0, 0.9)]).read_by(Recognizer::Fast(
+            AccurateFailed::new("e5rtError 13").unwrap(),
+        ));
+        insta::assert_snapshot!(text.render(None), @r#"
+        # Text on screen · 1280×800 pt · 1 line
+        Read by the fast recognizer, as the accurate one failed (e5rtError 13): small or dense text may be misread.
+        Points are display points: pass them to click as x, y.
+        - "Save" at 120, 510
+        "#);
     }
 
     #[test]

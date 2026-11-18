@@ -1451,6 +1451,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
                                         confidence: 0.9,
                                         words: Vec::new(),
                                     }],
+                                    accurate_failed: String::new(),
                                 }),
                                 query: Some("save".into()),
                                 found: vec![common::Rect {
