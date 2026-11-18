@@ -96,7 +96,7 @@ final class AgentConnection: @unchecked Sendable {
             guard case .recognized(let message, _) = frame else { return }
             switch message.kind {
             case .hello(let peer):
-                guard peer.protocolVersion == 1 else { return }
+                guard peer.protocolVersion == WireVersion.agent else { return }
                 greeted = true
             case .request(let request) where greeted:
                 if case .subscribe = request.operation {

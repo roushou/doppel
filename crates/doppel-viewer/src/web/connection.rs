@@ -11,8 +11,8 @@ use std::task::{Context, Poll};
 
 use daemon::daemon_frame::Kind;
 use daemon::daemon_response::Outcome;
-use doppel_protocol::PROTOCOL_VERSION;
 use doppel_protocol::convert::RemoteError;
+use doppel_protocol::exchange::Protocol as _;
 use doppel_protocol::pb::common::v1 as common;
 use doppel_protocol::pb::daemon::v1 as daemon;
 use doppel_protocol::report::MachineFailure;
@@ -116,7 +116,7 @@ impl Connection {
                 send(
                     &socket,
                     Kind::Hello(common::Hello {
-                        protocol_version: PROTOCOL_VERSION,
+                        protocol_version: daemon::DaemonFrame::VERSION,
                         software_version: "doppel browser".into(),
                         ..common::Hello::default()
                     }),

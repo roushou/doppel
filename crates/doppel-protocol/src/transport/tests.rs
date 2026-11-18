@@ -4,8 +4,8 @@ use std::os::unix::net::UnixStream;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::PROTOCOL_VERSION;
 use crate::exchange::ExchangeConfig;
+use crate::exchange::Protocol;
 use crate::frame::{FrameDecoder, FrameEncoder, MaxFrameLen, Received};
 use crate::pb::common::v1 as common;
 use crate::pb::vmm::v1 as vmm;
@@ -44,7 +44,7 @@ fn bytes(frame: &vmm::VmmFrame) -> Vec<u8> {
 fn hello() -> vmm::VmmFrame {
     vmm::VmmFrame {
         kind: Some(vmm::vmm_frame::Kind::Hello(common::Hello {
-            protocol_version: PROTOCOL_VERSION,
+            protocol_version: vmm::VmmFrame::VERSION,
             ..common::Hello::default()
         })),
     }
@@ -144,7 +144,7 @@ fn pair() -> (Channel<vmm::VmmFrame, Now>, Peer) {
 #[test]
 fn a_call_gets_its_response_and_events_wait_their_turn() {
     let (mut channel, mut peer) = pair();
-    assert_eq!(channel.peer().protocol_version, PROTOCOL_VERSION);
+    assert_eq!(channel.peer().protocol_version, vmm::VmmFrame::VERSION);
     let answering = thread::spawn(move || {
         let id = peer.request();
         peer.send(&stopped());
@@ -353,7 +353,7 @@ fn shared_pair() -> (SharedChannel<daemon::DaemonFrame, Now>, DaemonPeer) {
         };
         peer.send(&daemon::DaemonFrame {
             kind: Some(daemon::daemon_frame::Kind::Hello(common::Hello {
-                protocol_version: PROTOCOL_VERSION,
+                protocol_version: daemon::DaemonFrame::VERSION,
                 ..common::Hello::default()
             })),
         });

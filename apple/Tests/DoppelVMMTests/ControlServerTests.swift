@@ -20,7 +20,7 @@ private struct Peer {
         }
         guard connected == 0 else { throw ControlServerError.system("connect", errno) }
         var hello = Doppel_Vmm_V1_VmmFrame()
-        hello.hello = .with { $0.protocolVersion = 1 }
+        hello.hello = .with { $0.protocolVersion = WireVersion.vmm }
         try send(hello)
     }
 
@@ -54,7 +54,7 @@ private func eventually(_ condition: () -> Bool) -> Bool {
         let server = try ControlServer(path: path)
         defer { server.removeSocket() }
         // Request 1 is a plain one; request 2 opens the display.
-        server.serve(hello: .with { $0.protocolVersion = 1 }) { _ in
+        server.serve(hello: .with { $0.protocolVersion = WireVersion.vmm }) { _ in
             Reply(.done(.init()), then: Self.opening.take() ? .streamDisplay : .nothing)
         }
         let peer = try Peer(path: path)

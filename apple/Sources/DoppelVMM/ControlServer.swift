@@ -317,7 +317,7 @@ private final class Connection: @unchecked Sendable {
             guard case .recognized(let message, _) = frame else { return }
             switch message.kind {
             case .hello(let hello):
-                guard hello.protocolVersion == 1 else { return }
+                guard hello.protocolVersion == WireVersion.vmm else { return }
                 greeted = true
             case .request(let request) where greeted:
                 let reply = Self.await { await handler(request.operation) }

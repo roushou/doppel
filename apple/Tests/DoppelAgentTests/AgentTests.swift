@@ -362,7 +362,7 @@ private final class Host {
         let agentSide = fds[1]
         Thread.detachNewThread {
             AgentConnection(fd: agentSide, events: events).run(
-                hello: .with { $0.protocolVersion = 1 },
+                hello: .with { $0.protocolVersion = WireVersion.agent },
                 handler: { _ in .done(.init()) }
             )
         }
@@ -390,8 +390,8 @@ private final class Host {
 @Test func onlyASubscribedConnectionGetsEvents() throws {
     let events = EventHub()
     let host = Host(serving: events)
-    #expect(try host.next()?.hello.protocolVersion == 1)
-    try host.send(.with { $0.hello.protocolVersion = 1 })
+    #expect(try host.next()?.hello.protocolVersion == WireVersion.agent)
+    try host.send(.with { $0.hello.protocolVersion = WireVersion.agent })
 
     // Not subscribed: a published event never arrives; the reply does.
     events.publish(.with { $0.uiChanged.pid = 9 })
