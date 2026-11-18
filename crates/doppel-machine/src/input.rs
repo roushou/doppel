@@ -91,7 +91,67 @@ pub enum NamedKey {
     End,
     PageUp,
     PageDown,
-    F(u8),
+    F(FunctionKey),
+}
+
+/// A function key: F1 to F12, the ones a Mac keyboard has.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FunctionKey {
+    F1,
+    F2,
+    F3,
+    F4,
+    F5,
+    F6,
+    F7,
+    F8,
+    F9,
+    F10,
+    F11,
+    F12,
+}
+
+impl FunctionKey {
+    /// Every one, F1 first.
+    pub const ALL: [Self; 12] = [
+        Self::F1,
+        Self::F2,
+        Self::F3,
+        Self::F4,
+        Self::F5,
+        Self::F6,
+        Self::F7,
+        Self::F8,
+        Self::F9,
+        Self::F10,
+        Self::F11,
+        Self::F12,
+    ];
+
+    /// Fn: `None` outside 1..=12.
+    #[must_use]
+    pub fn numbered(n: u8) -> Option<Self> {
+        Self::ALL.get(usize::from(n).checked_sub(1)?).copied()
+    }
+
+    /// Its number, 1..=12.
+    #[must_use]
+    pub const fn number(self) -> u8 {
+        match self {
+            Self::F1 => 1,
+            Self::F2 => 2,
+            Self::F3 => 3,
+            Self::F4 => 4,
+            Self::F5 => 5,
+            Self::F6 => 6,
+            Self::F7 => 7,
+            Self::F8 => 8,
+            Self::F9 => 9,
+            Self::F10 => 10,
+            Self::F11 => 11,
+            Self::F12 => 12,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -119,12 +179,15 @@ impl FromStr for Key {
             "pageup" => NamedKey::PageUp,
             "pagedown" => NamedKey::PageDown,
             other => match (
-                other.strip_prefix('f').and_then(|n| n.parse::<u8>().ok()),
+                other
+                    .strip_prefix('f')
+                    .and_then(|n| n.parse::<u8>().ok())
+                    .and_then(FunctionKey::numbered),
                 s.chars().collect::<Vec<_>>().as_slice(),
             ) {
-                (Some(n @ 1..=12), _) => NamedKey::F(n),
+                (Some(key), _) => NamedKey::F(key),
                 (_, [c]) => return Ok(Self::Character(*c)),
-                (Some(_) | None, _) => return Err(InputError::UnknownKey(s.to_owned())),
+                (None, _) => return Err(InputError::UnknownKey(s.to_owned())),
             },
         };
         Ok(Self::Named(named))
@@ -226,6 +289,16 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_function_key_is_one_of_f1_to_f12() {
+        assert_eq!(FunctionKey::numbered(0), None);
+        assert_eq!(FunctionKey::numbered(13), None);
+        for n in 1..=12 {
+            assert_eq!(FunctionKey::numbered(n).map(FunctionKey::number), Some(n));
+        }
+        assert!("f13".parse::<KeyChord>().is_err());
+    }
+
+    #[test]
     fn chords() {
         assert_eq!(
             "cmd+shift+4".parse::<KeyChord>().unwrap(),
@@ -244,7 +317,7 @@ mod tests {
         );
         assert_eq!(
             "F12".parse::<KeyChord>().unwrap().key,
-            Key::Named(NamedKey::F(12))
+            Key::Named(NamedKey::F(FunctionKey::F12))
         );
         assert_eq!(
             "cmd++".parse::<KeyChord>().unwrap(),

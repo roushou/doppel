@@ -460,7 +460,7 @@ where
     ) -> Result<daemon::LoginResult, Refusal> {
         let name = Refusal::name("name", &request.name)?;
         let outcome = self.await_desktop(&name, call)?;
-        Ok((&outcome).into())
+        Ok(daemon::LoginResult::in_micros(&outcome))
     }
 
     pub(super) fn stop_request(
@@ -691,7 +691,9 @@ where
                 .map(|(name, start)| {
                     use daemon::run_fork::Outcome as Wire;
                     let outcome = match start {
-                        ForkStart::Desktop(outcome) => Wire::Desktop((&outcome).into()),
+                        ForkStart::Desktop(outcome) => {
+                            Wire::Desktop(daemon::LoginResult::in_micros(&outcome))
+                        }
                         ForkStart::Start(error) => Wire::Failure(Refusal::unconfirmed(&error)),
                         ForkStart::AwaitDesktop(error) => Wire::Failure(Refusal::failure(&error)),
                         ForkStart::Interrupted => Wire::Failure(daemon::MachineFailure {
@@ -1297,7 +1299,7 @@ where
         let name = Refusal::name("name", &request.name)?;
         let wait = ParseError::element_wait(request.condition, request.timeout_ms)?;
         let outcome = self.wait_for(&name, wait, Self::spec(request.spec)?, call)?;
-        Ok((&outcome).into())
+        Ok(daemon::ElementWaitResult::in_micros(&outcome))
     }
 
     pub(super) fn text_wait_request(
@@ -1308,7 +1310,7 @@ where
         let name = Refusal::name("name", &request.name)?;
         let wait = ParseError::text_wait(request.condition, request.timeout_ms)?;
         let outcome = self.wait_for_text(&name, wait, call)?;
-        Ok((&outcome).into())
+        Ok(daemon::TextWaitResult::in_micros(&outcome))
     }
 
     pub(super) fn exec_request(
@@ -1361,6 +1363,6 @@ where
         let name = Refusal::name("name", &request.name)?;
         let label = Refusal::label("label", &request.label)?;
         let desktop = self.rollback(&name, &label, call)?;
-        Ok((&desktop).into())
+        Ok(daemon::LoginResult::in_micros(&desktop))
     }
 }

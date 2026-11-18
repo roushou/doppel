@@ -36,6 +36,7 @@ use doppel_machine::wait::{Condition, TextCondition, WaitOutcome, WaitSpec};
 use doppel_protocol::convert::{ParseError, RemoteError};
 use doppel_protocol::exchange::ExchangeError;
 use doppel_protocol::frame::{EncodeError, StreamError};
+use doppel_protocol::pb::agent::v1 as agent;
 use doppel_protocol::pb::daemon::v1 as daemon;
 use doppel_protocol::pb::vmm::v1 as vmm;
 use doppel_protocol::rpc::Rpc;
@@ -401,7 +402,7 @@ impl<C: Clock> Client<C> {
             .state
             .ok_or(ParseError::Missing("machine_started.state"))?;
         Ok((
-            <(RunState, Option<doppel_machine::vm::Window>)>::from(state).0,
+            state.state(),
             ParseError::next_start("machine_started.started_by", started.started_by)?,
         ))
     }
@@ -1003,7 +1004,7 @@ impl<C: Clock> Client<C> {
         let result = self.call(
             daemon::RunProgram {
                 name: name.to_string(),
-                exec: Some(request.into()),
+                exec: Some(agent::Exec::in_millis(request)),
             },
             call,
         )?;
