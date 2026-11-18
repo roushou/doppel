@@ -15,7 +15,7 @@ use crate::view;
 pub(crate) struct ViewCmd {
     names: Vec<MachineName>,
     /// Read each display as H.264 from its VMM rather than from the
-    /// memory it shares, as a viewer on another Mac must.
+    /// memory it shares, as a console on another Mac must.
     #[arg(long)]
     encoded: bool,
 }

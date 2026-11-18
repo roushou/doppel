@@ -15,6 +15,7 @@ path = "src/main.rs"
 anyhow.workspace = true
 clap.workspace = true
 doppel-client = { path = "../doppel-client" }
+doppel-console = { path = "../doppel-console" }
 doppel-daemon = { path = "../doppel-daemon" }
 doppel-desktop = { path = "../doppel-desktop" }
 doppel-gateway = { path = "../doppel-gateway" }
@@ -23,7 +24,6 @@ doppel-machine = { path = "../doppel-machine" }
 doppel-mcp = { path = "../doppel-mcp" }
 doppel-protocol = { path = "../doppel-protocol" }
 doppel-scene = { path = "../doppel-scene" }
-doppel-viewer = { path = "../doppel-viewer" }
 futures.workspace = true
 nix = { workspace = true, features = ["signal"] }
 prost.workspace = true

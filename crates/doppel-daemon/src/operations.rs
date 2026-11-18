@@ -114,7 +114,7 @@ where
     C: Clock + Clone,
     F: Filesystem,
 {
-    /// `machine`'s turn (see [`Call::turn`]). Viewers are told the call
+    /// `machine`'s turn (see [`Call::turn`]). Consoles are told the call
     /// started at its first.
     fn turn<'s>(&'s self, machine: &MachineName, call: &'s Call) -> Result<Turn<'s, C>, CallError> {
         let (turn, begun) = call
@@ -280,7 +280,7 @@ where
         Ok(())
     }
 
-    /// Input from a person at a viewer, through the VMM's virtual devices.
+    /// Input from a person at a console, through the VMM's virtual devices.
     /// It doesn't wait for the machine's queue: a person's clicks never
     /// wait behind an agent's call.
     pub(crate) fn host_input(&self, machine: &MachineName, input: &Input) -> Result<(), CallError> {

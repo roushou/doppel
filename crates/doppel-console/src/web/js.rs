@@ -1,4 +1,4 @@
-//! The browser APIs the viewer reaches, as `glue.js` exports them.
+//! The browser APIs the console reaches, as `glue.js` exports them.
 
 use js_sys::Uint8Array;
 use wasm_bindgen::prelude::*;

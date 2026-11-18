@@ -1,4 +1,4 @@
-//! `doppel daemon token`: a token for the browser viewer, from this
+//! `doppel daemon token`: a token for the web console, from this
 //! Mac's daemon. A token is made here, from the system's randomness,
 //! and shown once; the daemon is told only its digest.
 
@@ -47,7 +47,7 @@ pub(crate) fn issue(
             eprintln!("and check that the browser shows this certificate: SHA-256 {fingerprint}");
         }
         WebStatus::Off | WebStatus::Failed { .. } => {
-            eprintln!("the browser viewer is off: `doppel daemon web on` turns it on");
+            eprintln!("the web console is off: `doppel daemon web on` turns it on");
         }
     }
     Ok(())

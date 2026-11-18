@@ -47,7 +47,7 @@ expect_used = "deny"
 panic = "deny"
 self_named_module_files = "deny"
 
-# Dependencies optimized in debug builds too: the desktop viewer lays out
+# Dependencies optimized in debug builds too: the desktop console lays out
 # and draws its whole window (GPUI, taffy) on every frame of a screen, which
 # unoptimized took ~6 ms a frame instead of ~1.6. Our own crates stay
 # unoptimized, so they still build fast and debug well. The first build
@@ -55,7 +55,7 @@ self_named_module_files = "deny"
 [profile.dev.package."*"]
 opt-level = 3
 
-# The viewer built for the browser (scripts/build-web.sh): every byte is
+# The console built for the browser (scripts/build-web.sh): every byte is
 # downloaded, so it's built for size, in one unit, without debug info
 # (wasm-bindgen drops its names).
 [profile.web]

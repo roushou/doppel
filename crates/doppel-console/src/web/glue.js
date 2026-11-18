@@ -1,4 +1,4 @@
-// The browser APIs the viewer reaches from Rust, each as small as it can
+// The browser APIs the console reaches from Rust, each as small as it can
 // be: a screen's decoder (WebCodecs), a recording's player (a <video>),
 // the page's token, its local time, and the theme it keeps. Frames come
 // back as RGBA pixels, which the Rust side hands to GPUI.

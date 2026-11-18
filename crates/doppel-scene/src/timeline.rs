@@ -168,7 +168,7 @@ pub enum ActivityEvent {
         /// What it read off the screen, if it read it.
         read: Option<Arc<TextRead>>,
     },
-    /// A call from before the viewer began watching: how many
+    /// A call from before the console began watching: how many
     /// milliseconds before it started, and, unless it is still under way,
     /// how it ended.
     Recent {
@@ -184,7 +184,7 @@ pub enum ActivityEvent {
     },
 }
 
-/// How a call from before the viewer began watching ended.
+/// How a call from before the console began watching ended.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RecentEnd {
     pub ending: Ending,

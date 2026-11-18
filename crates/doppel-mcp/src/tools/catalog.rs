@@ -744,7 +744,7 @@ struct MarkArgs {
 
 impl Tool for Mark {
     const NAME: &'static str = "mark";
-    const DESCRIPTION: &'static str = "Point something out on the machine's screen to the people watching (the viewers draw it over the screen, and recordings keep it): a box, a dot or an arrow on an element by its ref, on a point, or on an area, with a short note. It changes nothing on the machine and the guest never sees it. Use it to show what you are about to act on, what you found, or what looks wrong. Give ref, or x and y (and width and height for an area), in display points.";
+    const DESCRIPTION: &'static str = "Point something out on the machine's screen to the people watching (the consoles draw it over the screen, and recordings keep it): a box, a dot or an arrow on an element by its ref, on a point, or on an area, with a short note. It changes nothing on the machine and the guest never sees it. Use it to show what you are about to act on, what you found, or what looks wrong. Give ref, or x and y (and width and height for an area), in display points.";
     type Args = MarkArgs;
 
     fn call(args: MarkArgs, at: &Parsing<'_>) -> Result<ToolCall, ArgumentError> {

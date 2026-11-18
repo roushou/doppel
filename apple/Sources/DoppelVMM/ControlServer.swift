@@ -179,7 +179,7 @@ public final class ControlServer: @unchecked Sendable {
 /// Sends encoded frames to one connection from a thread of its own, in
 /// order: each depends on the ones before it. A reader too far behind loses
 /// what is queued and gets nothing until the next key frame, which the feed
-/// asks for, so a slow viewer never stalls the VMM or grows its memory.
+/// asks for, so a slow console never stalls the VMM or grows its memory.
 final class EncodedFeed: @unchecked Sendable {
     /// About a second of a changing screen, or a few key frames.
     static let maxQueuedFrames = 60

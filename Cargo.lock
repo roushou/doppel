@@ -1359,6 +1359,7 @@ dependencies = [
  "base64 0.22.1",
  "clap",
  "doppel-client",
+ "doppel-console",
  "doppel-daemon",
  "doppel-desktop",
  "doppel-gateway",
@@ -1367,7 +1368,6 @@ dependencies = [
  "doppel-mcp",
  "doppel-protocol",
  "doppel-scene",
- "doppel-viewer",
  "futures",
  "insta",
  "nix",
@@ -1388,6 +1388,36 @@ dependencies = [
  "doppel-protocol",
  "nix",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "doppel-console"
+version = "0.2.1"
+dependencies = [
+ "core-foundation 0.10.0",
+ "core-video",
+ "doppel-desktop",
+ "doppel-machine",
+ "doppel-protocol",
+ "doppel-scene",
+ "futures",
+ "gpui-pre",
+ "gpui-pre-platform",
+ "image",
+ "js-sys",
+ "objc2 0.6.5",
+ "objc2-av-foundation",
+ "objc2-core-foundation",
+ "objc2-core-media",
+ "objc2-core-video",
+ "objc2-foundation 0.3.2",
+ "objc2-video-toolbox",
+ "prost",
+ "raw-window-handle",
+ "thiserror 2.0.21",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]
@@ -1500,36 +1530,6 @@ dependencies = [
  "doppel-desktop",
  "doppel-machine",
  "thiserror 2.0.21",
-]
-
-[[package]]
-name = "doppel-viewer"
-version = "0.2.1"
-dependencies = [
- "core-foundation 0.10.0",
- "core-video",
- "doppel-desktop",
- "doppel-machine",
- "doppel-protocol",
- "doppel-scene",
- "futures",
- "gpui-pre",
- "gpui-pre-platform",
- "image",
- "js-sys",
- "objc2 0.6.5",
- "objc2-av-foundation",
- "objc2-core-foundation",
- "objc2-core-media",
- "objc2-core-video",
- "objc2-foundation 0.3.2",
- "objc2-video-toolbox",
- "prost",
- "raw-window-handle",
- "thiserror 2.0.21",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
 ]
 
 [[package]]

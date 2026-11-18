@@ -1,7 +1,7 @@
 # doppeld: the control plane
 
 One long-lived process per user owns the machines, and every client (the CLI,
-MCP clients, the desktop viewer, the browser viewer) goes through it, locally
+MCP clients, the desktop console, the web console) goes through it, locally
 or from another computer.
 
 ## What it builds on
@@ -28,7 +28,7 @@ or from another computer.
 ## Shape
 
 ```
-CLI · doppel mcp (stdio relay) · desktop viewer · browser viewer   local or remote
+CLI · doppel mcp (stdio relay) · desktop console · web console   local or remote
                     │  doppel.daemon.v1 (protobuf frames)
                     │  unix socket locally · WebSocket over TLS remotely
 ┌───────────────────▼────────────────────────────────────────────┐
@@ -106,13 +106,13 @@ makes agents visible, recordable and interruptible from elsewhere.
 ### Sessions and takeover
 
 A session is one client driving machines: an agent through `doppel mcp`, or a
-person through a viewer. Other clients observe it, so it is an enum state
+person through a console. Other clients observe it, so it is an enum state
 machine with pure transitions:
 
 ```
 Active ──pause──▶ Paused ──resume──▶ Active
   │                 │
-  │      take control (viewer)
+  │      take control (console)
   │                 ▼
   │            HumanControl ──hand back──▶ Active
   ▼
@@ -121,7 +121,7 @@ Ended { Closed | Disconnected | DaemonStopped }
 
 - **Paused:** the session's next call waits in its machine's queue; a call
   already running finishes, or is cancelled.
-- **HumanControl:** the viewer's input goes to the machine, and the agents'
+- **HumanControl:** the console's input goes to the machine, and the agents'
   calls wait. On hand back, the agent's next result notes that a person had
   control, so it knows to look again before relying on an earlier snapshot.
 - **Ended:** recordings complete, and the trace is closed. A daemon that
@@ -147,20 +147,20 @@ tried again then.
 ### Display streams
 
 - **Local:** the daemon opens the VMM's display and passes the shared-memory
-  fd and the slot events to the viewer. No copy and no encode.
+  fd and the slot events to the console. No copy and no encode.
 - **Remote:** the VMM encodes with a low-latency `VTCompressionSession` (no
-  B-frames, real-time, a key frame whenever a viewer joins or falls behind),
-  and the daemon forwards the frames. The desktop viewer decodes with
+  B-frames, real-time, a key frame whenever a console joins or falls behind),
+  and the daemon forwards the frames. The desktop console decodes with
   `VTDecompressionSession`, the browser with WebCodecs. One encoder per VMM
-  feeds remote viewers and recordings alike.
+  feeds remote consoles and recordings alike.
 
-Input from a remote viewer is `doppel.daemon.v1` host input; viewer
+Input from a remote console is `doppel.daemon.v1` host input; console
 positions are fractions of the screen.
 
 ### Recordings and traces
 
 `doppel mcp --record` (or `fork-run --record`) records its session. Both
-viewers replay a recording beside its trace, the call under the playhead
+consoles replay a recording beside its trace, the call under the playhead
 highlighted. `doppel record start NAME FILE.mp4` records one machine's
 display to a file, outside any session.
 
@@ -196,7 +196,7 @@ second rather than jumping. `doppel_scene::film` decides what is drawn at
 each frame, as shapes in display points (`doppel_scene::attention` decides
 what was taken in, from the snapshots the recording kept); `doppel-vmm
 export` paints them on the frames and encodes the result, at `--fps` (30
-by default). The viewer draws the same shapes over the live screen and in
+by default). The console draws the same shapes over the live screen and in
 replay, with the agent's reason for its call beside its pointer
 (`film::Caption`); an agent that does nothing next lets go of what it took
 in after a few seconds. In a browser it is the same window, built for
@@ -225,7 +225,7 @@ absent, and names they don't know.
 
 - `start_ms`, `end_ms`: when the call ran on its machine.
 - `machine`: the machine it named, or `null`.
-- `call`: its caption, as the viewers show it.
+- `call`: its caption, as the consoles show it.
 - `outcome`: `done`, `failed`, `timed_out` (a wait that ran out of time) or
   `refused` (a request that was wrong); `error` says why, when there's a
   reason.
@@ -261,10 +261,10 @@ its pre-order. These are the fields of `doppel.daemon.v1.ElementRefs`.
 ## Remote access
 
 - **SSH:** `ssh -L` forwards the daemon's socket from another Mac, and the
-  CLI and the desktop viewer take `--host` to use it. SSH authenticates and
+  CLI and the desktop console take `--host` to use it. SSH authenticates and
   encrypts. Shared memory can't cross the link, so remote clients get the
   encoded display.
-- **The browser viewer:** `doppel daemon web on` serves it over HTTPS and a
+- **The web console:** `doppel daemon web on` serves it over HTTPS and a
   WebSocket, with a self-signed certificate (`doppel daemon web status`
   prints its fingerprint). Only holders of a token get in: `doppel daemon
   token` issues one, short-lived and revocable, printed once; the daemon
@@ -294,7 +294,7 @@ the protocol can change without changing bundles. The pure types are
   keeps it.
 - **Origin.** Written once, by what made the machine: `create` writes
   `Installed` as it makes the bundle; `import`, `fork` and fresh forks
-  (`fork-run`, a viewer's new copy) write `Imported` or `Forked { from,
+  (`fork-run`, a console's new copy) write `Imported` or `Forked { from,
   checkpoint }` into the staging directory before the rename that makes the
   bundle appear, so a machine never appears without it. A fork is a working
   machine whatever its source's role, except a temporary machine, whose
@@ -302,11 +302,11 @@ the protocol can change without changing bundles. The pure types are
   may since have been deleted.
 - **Unrecorded.** A bundle without the file reads as a working machine whose
   origin is `Unrecorded`: unknown, never guessed from its name or its spec.
-  `ls` and the viewers show nothing extra for it.
+  `ls` and the consoles show nothing extra for it.
 - **Unreadable.** A file that can't be read or decoded, or holds a role or
   origin this build doesn't know, doesn't hide the machine or pass for a
   working one: the list carries `lineage_unreadable` with why, `ls` prints
-  it, the viewers say "Lineage unreadable", and `golden mark`/`unmark`
+  it, the consoles say "Lineage unreadable", and `golden mark`/`unmark`
   refuse to overwrite it.
 - **Deleting a checkpoint.** `doppel forget-checkpoint NAME LABEL`
   (`DeleteCheckpoint`) removes one, running or not, after the calls on the
@@ -319,7 +319,7 @@ the protocol can change without changing bundles. The pure types are
   removes if a crash left it. It is not an MCP tool: an agent checkpoints to
   undo its own steps, while a machine's checkpoints are the person's to keep,
   and a deletion can't be undone.
-- **The viewers** list golden images in a group of their own, whatever their
+- **The consoles** list golden images in a group of their own, whatever their
   state. A stopped golden image's main action is "New machine from it" (a
   fresh fork, the new-copy dialog with its template chosen); Start is in its
   menu and asks first, since a started golden image drifts from its
@@ -339,7 +339,7 @@ the protocol can change without changing bundles. The pure types are
 2. **Sessions don't survive a daemon restart.** They end as `DaemonStopped`,
    and clients reconnect into a new session. Resuming one would need
    persisted refs and queues.
-3. **One viewer, two places.** The same window runs in a browser, on any
+3. **One console, two places.** The same window runs in a browser, on any
    device, which makes sharing a run a link, and on the desktop, the
    fastest view on the Mac itself, from shared memory.
 4. **Tokens, not client certificates,** for the browser: pinned client

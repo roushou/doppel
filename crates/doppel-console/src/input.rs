@@ -1,5 +1,5 @@
-//! Input for a screen, in the viewer's own terms: positions are fractions
-//! of the screen, so the viewer needn't know the guest's size, and keys are
+//! Input for a screen, in the console's own terms: positions are fractions
+//! of the screen, so the console needn't know the guest's size, and keys are
 //! parsed once from GPUI's keystrokes. [`GuestInput::on`] places it on the
 //! guest's display, as the host input the machine takes.
 

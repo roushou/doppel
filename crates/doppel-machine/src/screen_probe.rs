@@ -4,7 +4,7 @@
 //! a checkpoint), Virtualization.framework rebuilds its paravirtual
 //! graphics, and for a few seconds the host keeps showing the screen as it
 //! was saved while the guest draws on. Screenshots, text recognition and
-//! viewers all read the host's view, and a stale frame looks the same as a
+//! consoles all read the host's view, and a stale frame looks the same as a
 //! still screen. So the guest draws on purpose: its agent shows a small
 //! square of a colour the host's view doesn't have there (a [`Probe`]), the
 //! host samples its view until the square appears, then the agent hides it

@@ -124,8 +124,8 @@ impl ForkRun {
                 Err(failure) => eprintln!("{}: didn't start: {failure}", fork.name),
             }
         }
-        let viewer = match self.watch {
-            Watch::View if !ready.is_empty() => Some(self.viewer(&ready)?),
+        let console = match self.watch {
+            Watch::View if !ready.is_empty() => Some(self.console(&ready)?),
             Watch::View | Watch::Unwatched => None,
         };
 
@@ -178,10 +178,10 @@ impl ForkRun {
                 }
             })
             .collect();
-        if let Some(mut viewer) = viewer {
+        if let Some(mut console) = console {
             // The window would only show stopped machines now.
-            let _ = viewer.kill();
-            let _ = viewer.wait();
+            let _ = console.kill();
+            let _ = console.wait();
         }
         for report in &reports {
             println!("{}", report.line());
@@ -193,16 +193,16 @@ impl ForkRun {
         Ok(())
     }
 
-    fn viewer(&self, names: &[&MachineName]) -> Result<Child> {
+    fn console(&self, names: &[&MachineName]) -> Result<Child> {
         let Some((doppel, globals)) = self.doppel.split_first() else {
-            bail!("no doppel to run the viewer with");
+            bail!("no doppel to run the console with");
         };
         Command::new(doppel)
             .args(globals)
             .arg("view")
             .args(names.iter().map(|name| name.as_str()))
             .spawn()
-            .context("opening the viewer")
+            .context("opening the console")
     }
 
     /// Stops a fork as `mode` says, on a connection of its own. A fork

@@ -1,4 +1,4 @@
-//! Serves the browser viewer to holders of a token, over TLS.
+//! Serves the web console to holders of a token, over TLS.
 //!
 //! One listener, one origin: the page's files over HTTPS, and its WebSocket
 //! at `/socket`. A WebSocket's first message must be a token the daemon

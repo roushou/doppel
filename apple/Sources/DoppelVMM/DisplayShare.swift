@@ -120,7 +120,7 @@ final class DisplayShare {
             if encoding {
                 writer.streamer(publishingTo: server)?.encode(source.surface, at: seen, key: key)
             } else {
-                // No viewer left: the encoder's memory goes back.
+                // No console left: the encoder's memory goes back.
                 writer.streamer = nil
             }
             writer.recorder?.append(source.surface, at: seen)

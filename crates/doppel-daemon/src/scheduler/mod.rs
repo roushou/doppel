@@ -4,7 +4,7 @@
 //!
 //! A session is one connection that opened one (such as an agent's
 //! `doppel mcp`); it ends when that connection closes, and with the daemon.
-//! Its calls wait while it's paused, or while a person at a viewer has the
+//! Its calls wait while it's paused, or while a person at a console has the
 //! machine they name; when the person hands it back, each session that used
 //! the machine is owed a note.
 //!

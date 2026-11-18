@@ -26,7 +26,7 @@ pub(crate) enum GoldenCommand {
         checkpoint: CheckpointLabel,
     },
     /// Record a machine as a golden image: a template to fork from, whose
-    /// new machines start from one of its checkpoints. `ls` and the viewers
+    /// new machines start from one of its checkpoints. `ls` and the consoles
     /// show it apart from working machines.
     Mark {
         name: MachineName,

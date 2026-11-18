@@ -95,7 +95,7 @@ impl Assets {
         path: "/index.html",
         content_type: "text/html; charset=utf-8",
         body: b"<!doctype html>\n<meta charset=\"utf-8\">\n<title>doppel</title>\n\
-            <p>This doppel was built without its browser viewer: <code>scripts/build-web.sh</code> builds it.</p>\n",
+            <p>This doppel was built without its web console: <code>scripts/build-web.sh</code> builds it.</p>\n",
         etag: "\"placeholder\"",
         brotli: None,
         gzip: None,

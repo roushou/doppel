@@ -105,7 +105,7 @@ impl<'m, C: Clock, F: Filesystem> Machine<'m, C, F> {
     }
 
     /// A VMM connection of its own, timed by `clock` rather than borrowing
-    /// the machines: for a long-lived user such as a viewer.
+    /// the machines: for a long-lived user such as a console.
     ///
     /// # Errors
     /// [`MachineError::NotRunning`], or a failed connection.

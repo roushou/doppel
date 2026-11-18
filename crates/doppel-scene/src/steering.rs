@@ -1,4 +1,4 @@
-//! Who steers a screen's machine, as the viewer sees it: the person, once
+//! Who steers a screen's machine, as the console sees it: the person, once
 //! they've taken control, or not. Pure: the pane feeds it button presses and
 //! the answers to its requests, and does what it says.
 
@@ -50,7 +50,7 @@ impl Steering {
             (Self::Returning, SteerEvent::Answered) => (Self::START, None),
             (Self::Asking | Self::Returning, SteerEvent::Refused(why)) => {
                 // A failed hand back leaves control with the daemon's
-                // choice: closing the viewer hands it back for sure.
+                // choice: closing the console hands it back for sure.
                 (Self::Watching { refused: Some(why) }, None)
             }
             // Answers to nothing in flight are stale.

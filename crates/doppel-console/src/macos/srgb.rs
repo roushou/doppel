@@ -1,8 +1,8 @@
 //! Tags the window's drawing as sRGB. GPUI's Metal layer is made without a
 //! colour space, so macOS shows its colours in the display's own (Display P3
 //! on most Macs): the design's sRGB tokens come out more saturated than in
-//! the browser viewer, which colour-manages them. With the layer tagged,
-//! both viewers show the same colours, and a guest's sRGB screen shows true.
+//! the web console, which colour-manages them. With the layer tagged,
+//! both consoles show the same colours, and a guest's sRGB screen shows true.
 
 #![expect(
     unsafe_code,

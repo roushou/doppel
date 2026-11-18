@@ -1025,7 +1025,7 @@ impl Handle for daemon::NameElements {
     const TURN: Turn = Turn::Skips;
     const GUEST: Guest = Guest::Kept;
 
-    // Not a call: it names a snapshot's elements for viewers.
+    // Not a call: it names a snapshot's elements for consoles.
     fn machine(&self) -> Option<&str> {
         None
     }
@@ -1049,7 +1049,7 @@ impl Handle for daemon::ObserveElements {
     const TURN: Turn = Turn::Skips;
     const GUEST: Guest = Guest::Kept;
 
-    // A viewer looking: not a call on the machine, so not the session's.
+    // A console looking: not a call on the machine, so not the session's.
     fn machine(&self) -> Option<&str> {
         None
     }
@@ -1069,7 +1069,7 @@ impl Handle for daemon::ObserveText {
     const TURN: Turn = Turn::Skips;
     const GUEST: Guest = Guest::Kept;
 
-    // A viewer looking: not a call on the machine, so not the session's.
+    // A console looking: not a call on the machine, so not the session's.
     fn machine(&self) -> Option<&str> {
         None
     }

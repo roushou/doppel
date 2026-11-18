@@ -115,15 +115,15 @@ pub struct Daemon<C, F> {
     scheduler: std::sync::Arc<scheduler::Waiting>,
     /// Each machine's connection to its guest agent, while no turn holds it.
     agent_connections: scheduler::AgentConnections<C>,
-    /// Viewers watching what agents do.
+    /// Consoles watching what agents do.
     watchers: std::sync::Arc<activity::Watchers>,
     /// Where recent snapshots' elements are, for calls that act on one.
     elements: activity::Elements,
     /// Where fresh forks' MAC addresses come from.
     macs: Box<dyn MacSource>,
-    /// The browser viewer's tokens.
+    /// The web console's tokens.
     tokens: tokens::TokenFile,
-    /// The browser viewer's listener.
+    /// The web console's listener.
     web: web::Web,
     /// Whether it serves or is stopping, and the connections it has open.
     serving: serving::Serving,
@@ -245,7 +245,7 @@ where
             .set_nonblocking(true)
             .map_err(DaemonError::Accept)?;
         std::thread::scope(|scope| {
-            // The browser viewer's listener, while its setting is on.
+            // The web console's listener, while its setting is on.
             scope.spawn(|| self.web.supervise(self));
             // Those a daemon before this one made and didn't remove.
             scope.spawn(|| self.remove_leftover_temporary_machines());
@@ -395,7 +395,7 @@ where
             }
             read
         });
-        // A viewer that goes hands back what it controlled.
+        // A console that goes hands back what it controlled.
         self.scheduler
             .left(link.connection, self.machines.clock().now());
         if let Some(session) = *link.session() {

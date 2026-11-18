@@ -37,7 +37,7 @@ pub(crate) enum DaemonCommand {
         #[arg(long, default_value_t = 100)]
         lines: usize,
     },
-    /// Issue a token for the browser viewer. It's printed once, on stdout;
+    /// Issue a token for the web console. It's printed once, on stdout;
     /// the daemon keeps only its digest.
     Token {
         /// How long it lasts: `90m`, `12h`, `7d` (at most 30 days).
@@ -54,7 +54,7 @@ pub(crate) enum DaemonCommand {
         /// Its id, as `doppel daemon tokens` lists it.
         id: doppel_gateway::TokenId,
     },
-    /// The browser viewer's listener: HTTPS and its WebSocket, for holders
+    /// The web console's listener: HTTPS and its WebSocket, for holders
     /// of a token.
     #[command(subcommand)]
     Web(WebCommand),

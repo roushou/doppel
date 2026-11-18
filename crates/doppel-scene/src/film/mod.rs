@@ -1,5 +1,5 @@
 //! A recording's overlay as pictures to burn into its video: at each
-//! instant, the shapes the viewers would draw over the screen (the agent's
+//! instant, the shapes the consoles would draw over the screen (the agent's
 //! pointer gliding to where it acts, what it's doing beside it, the marks
 //! its calls leave, the marks it puts up for the people watching), in
 //! display points. A renderer draws them on the frames without deciding
@@ -27,7 +27,7 @@ impl Rgb {
     }
 }
 
-/// The sessions' colours, fill and ink, as the viewers have them. A
+/// The sessions' colours, fill and ink, as the consoles have them. A
 /// recording's one session (0) takes the first.
 const HUES: [(Rgb, Rgb); 4] = [
     (Rgb(0x22_e5ff), Rgb(0x0b_5d6b)),
@@ -441,7 +441,7 @@ const POINTER_FADE_MS: f64 = 400.0;
 const RIPPLE_MS: f64 = 900.0;
 const RIPPLE_RADIUS: f64 = 27.0;
 
-/// Fast at first, then settling, as the viewers' pointer does.
+/// Fast at first, then settling, as the consoles' pointer does.
 fn ease(f: f64) -> f64 {
     let f = f.clamp(0.0, 1.0);
     1.0 - (1.0 - f).powi(3)
@@ -455,7 +455,7 @@ fn between(from: Spot, to: Spot, f: f64) -> Spot {
 }
 
 /// Where a session's pointer is at `at`: gliding from where it was to
-/// where its latest call with a place acted. A viewer puts words beside it.
+/// where its latest call with a place acted. A console puts words beside it.
 #[must_use]
 pub fn pointer_at(moments: &[Moment], session: u64, at: f64) -> Option<Spot> {
     let mut placed = moments
@@ -471,7 +471,7 @@ pub fn pointer_at(moments: &[Moment], session: u64, at: f64) -> Option<Spot> {
     Some(between(before, last.1, ease((at - last.0) / GLIDE_MS)))
 }
 
-/// Words a viewer writes beside an agent's pointer, which a film doesn't
+/// Words a console writes beside an agent's pointer, which a film doesn't
 /// burn in: why it makes its call, and who it is when several act.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Caption {

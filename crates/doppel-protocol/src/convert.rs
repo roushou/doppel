@@ -3167,7 +3167,7 @@ mod activity_convert {
     }
 
     /// An event as the daemon sends it. Refused without a phase, with a
-    /// machine name that isn't one, or with names a viewer can't read.
+    /// machine name that isn't one, or with names a console can't read.
     impl TryFrom<daemon::Activity> for Activity {
         type Error = ParseError;
         fn try_from(activity: daemon::Activity) -> Result<Self, ParseError> {

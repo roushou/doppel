@@ -1,9 +1,9 @@
-//! What a viewer keeps about each machine it shows: its screen's state, the
+//! What a console keeps about each machine it shows: its screen's state, the
 //! action a person started on it, the overlay, the person's own looks at
 //! its elements and text, what agents did on it, when the person took
 //! control, and its report. One [`Panel`] per machine, in [`Panels`].
 //!
-//! Generic over what the viewer holds for an open screen (`S`) and for
+//! Generic over what the console holds for an open screen (`S`) and for
 //! the rest of a panel (`H`: its toolkit's handles), so this module stays
 //! free of any toolkit and its decisions can be tested with `()`.
 
@@ -16,7 +16,7 @@ use crate::model::Action;
 use crate::report::Report;
 use crate::timeline::{self, ActivityEvent, Look, Looked, Moment, TextLook, TextLooked, TextRead};
 
-/// A machine's screen, as the viewer has it.
+/// A machine's screen, as the console has it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Screen<S> {
     Closed,
@@ -54,7 +54,7 @@ pub enum Overlay {
     Hidden,
 }
 
-/// Everything a viewer keeps about one machine.
+/// Everything a console keeps about one machine.
 #[derive(Debug)]
 pub struct Panel<S, H> {
     /// The action a person started, until its verdict.
@@ -63,7 +63,7 @@ pub struct Panel<S, H> {
     overlay: Overlay,
     look: Option<Look>,
     text_look: Option<TextLook>,
-    /// What agents did on it since the viewer began watching.
+    /// What agents did on it since the console began watching.
     timeline: Vec<Moment>,
     /// When the person took control, for the timer on its frame.
     took: Option<f64>,
@@ -213,7 +213,7 @@ impl<S, H> Panel<S, H> {
     }
 }
 
-/// The viewer's panels, by machine. A machine has one once anything is
+/// The console's panels, by machine. A machine has one once anything is
 /// kept about it.
 #[derive(Debug)]
 pub struct Panels<S, H> {

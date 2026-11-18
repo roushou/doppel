@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Builds the viewer for the browser into target/viewer-web, which
-# doppel-gateway embeds: the viewer as WebAssembly, its JavaScript
+# Builds the console for the browser into target/console-web, which
+# doppel-gateway embeds: the console as WebAssembly, its JavaScript
 # bindings, and the page that runs it, each with compressed copies.
 #   scripts/build-web.sh            built for size (the `web` profile)
 #   scripts/build-web.sh --debug    debug: faster to build, slower to run
@@ -17,12 +17,12 @@ if [[ "$(wasm-bindgen --version 2>/dev/null)" != "wasm-bindgen $want" ]]; then
 fi
 
 cargo rustc --manifest-path "$root/Cargo.toml" ${cargo_flags[@]+"${cargo_flags[@]}"} \
-  -p doppel-viewer --lib --target wasm32-unknown-unknown --crate-type cdylib
-out="$root/target/viewer-web"
+  -p doppel-console --lib --target wasm32-unknown-unknown --crate-type cdylib
+out="$root/target/console-web"
 rm -rf "$out"
 wasm-bindgen --target web --no-typescript --remove-name-section --remove-producers-section --out-dir "$out" \
-  "$root/target/wasm32-unknown-unknown/$profile/doppel_viewer.wasm"
-cp "$root/crates/doppel-viewer/page/"* "$out/"
+  "$root/target/wasm32-unknown-unknown/$profile/doppel_console.wasm"
+cp "$root/crates/doppel-console/page/"* "$out/"
 # Compressed copies, which the gateway sends to browsers that take them.
 find "$out" -type f \( -name '*.wasm' -o -name '*.js' -o -name '*.html' -o -name '*.css' \) \
   -exec gzip -9 -k -n {} \;

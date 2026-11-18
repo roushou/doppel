@@ -1,12 +1,12 @@
-//! The daemon's recordings in the viewer's words, and where their videos
-//! are on this Mac. The client has already parsed the names; the viewer's
+//! The daemon's recordings in the console's words, and where their videos
+//! are on this Mac. The client has already parsed the names; the console's
 //! names coming back are parsed again here, on the way in, before they
 //! become a path.
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-use doppel_viewer::{DaemonError, RecordingId, RecordingSummary, VideoName, answers};
+use doppel_console::{DaemonError, RecordingId, RecordingSummary, VideoName, answers};
 
 use super::port::local;
 
@@ -15,7 +15,7 @@ use super::port::local;
 pub(crate) enum Videos {
     /// In the store of this Mac's daemon.
     Here,
-    /// On the Mac a forwarded daemon runs on: out of the viewer's reach.
+    /// On the Mac a forwarded daemon runs on: out of the console's reach.
     Elsewhere,
 }
 
@@ -41,7 +41,7 @@ impl Videos {
                 Ok(Self::under(&data_root()?, &id, &file))
             }
             Self::Elsewhere => Err(DaemonError::Refused(
-                "its video is on the Mac the daemon runs on: replay it in the browser viewer, or in `doppel view` there".into(),
+                "its video is on the Mac the daemon runs on: replay it in the web console, or in `doppel view` there".into(),
             )),
         }
     }

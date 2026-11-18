@@ -146,7 +146,7 @@ private final class Reader: @unchecked Sendable {
     #expect(reader.keyFramesWanted == 1)
 }
 
-/// Writes fixtures/h264/shades.avcc, which the viewer's decoder test reads:
+/// Writes fixtures/h264/shades.avcc, which the console's decoder test reads:
 /// three 64x64 frames of grey (shades 40, 120, 200), a key frame then two
 /// deltas. Encoders differ between Macs, so it's written only when asked:
 /// DOPPEL_UPDATE_H264=1 swift test --filter shadesFixture

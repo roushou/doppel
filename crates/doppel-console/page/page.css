@@ -1,4 +1,4 @@
-/* The viewer draws the whole page: its canvas fills it. */
+/* The console draws the whole page: its canvas fills it. */
 html,
 body {
   margin: 0;

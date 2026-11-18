@@ -579,7 +579,7 @@ impl Protocol for daemon::DaemonFrame {
     type Response = daemon::DaemonResponse;
     type Event = daemon::DaemonEvent;
 
-    /// Clients (the CLI, MCP relays, viewers) ship with the daemon, but a
+    /// Clients (the CLI, MCP relays, consoles) ship with the daemon, but a
     /// daemon started before an upgrade keeps running: bump on any change
     /// an older peer would misread, and clients say to restart it.
     const VERSION: u32 = 1;

@@ -1,8 +1,8 @@
-//! What agents do to the machines, as they do it, for viewers to draw over
+//! What agents do to the machines, as they do it, for consoles to draw over
 //! the screen. Pure where it can be: what a call does and where on the
 //! display ([`started`]) comes from the request and the elements recent
 //! snapshots saw; how it ended ([`ended`]) from its outcome. [`Watchers`]
-//! passes each [`daemon::Activity`] on to every viewer watching.
+//! passes each [`daemon::Activity`] on to every console watching.
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
@@ -29,8 +29,8 @@ use crate::recording::Traced;
 /// agent acts on the latest, or one just before it.
 const SNAPSHOTS_KEPT: usize = 4;
 
-/// How many events a viewer may fall behind before it misses some: the
-/// overlay only decorates the screen, so a slow viewer loses events rather
+/// How many events a console may fall behind before it misses some: the
+/// overlay only decorates the screen, so a slow console loses events rather
 /// than holding up the calls.
 const BACKLOG: usize = 256;
 
@@ -239,7 +239,7 @@ pub(crate) fn started(
     }
 }
 
-/// A mark as viewers draw it: parsed as the request is, its element found.
+/// A mark as consoles draw it: parsed as the request is, its element found.
 /// `None` for one that will be refused, so nothing is drawn for it.
 fn mark(
     request: &daemon::MarkScreen,
@@ -364,7 +364,7 @@ pub(crate) fn ended(
     }
 }
 
-/// A snapshot as viewers may see it: as the agent got it, but with no
+/// A snapshot as consoles may see it: as the agent got it, but with no
 /// password field's value. Other values stay: the screen shows them.
 pub(crate) fn shown(snapshot: &agent::AxSnapshot) -> agent::AxSnapshot {
     let mut shown = snapshot.clone();
@@ -385,10 +385,10 @@ pub(crate) fn shown(snapshot: &agent::AxSnapshot) -> agent::AxSnapshot {
     shown
 }
 
-/// How many calls of each machine a new viewer is told of first.
+/// How many calls of each machine a new console is told of first.
 const RECENT: usize = 64;
 
-/// A call as kept for a viewer that begins watching later: its start, and
+/// A call as kept for a console that begins watching later: its start, and
 /// its end once it has one.
 #[derive(Debug)]
 struct Past {
@@ -399,7 +399,7 @@ struct Past {
 }
 
 /// Each machine's latest calls, oldest first. Only the latest call that saw
-/// a snapshot keeps it: a new viewer is shown what the agent last saw, and
+/// a snapshot keeps it: a new console is shown what the agent last saw, and
 /// older snapshots would only cost memory.
 #[derive(Debug, Default)]
 struct History(HashMap<String, VecDeque<Past>>);
@@ -459,7 +459,7 @@ impl History {
         }
     }
 
-    /// Every machine's kept calls as a new viewer is told of them at `now`.
+    /// Every machine's kept calls as a new console is told of them at `now`.
     fn recent(&self, now: Instant) -> Vec<daemon::Activity> {
         let ago = |at: Instant| {
             u64::try_from(now.saturating_duration_since(at).as_millis()).unwrap_or(u64::MAX)
@@ -495,13 +495,13 @@ struct Watching {
     history: History,
 }
 
-/// One viewer watching.
+/// One console watching.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct WatcherId(u64);
 
-/// The viewers watching: each is told of every machine's recent calls
+/// The consoles watching: each is told of every machine's recent calls
 /// first, then gets every activity from when it began watching. One lock
-/// covers both, so no call falls between what a new viewer is told and
+/// covers both, so no call falls between what a new console is told and
 /// what it then gets.
 #[derive(Debug, Default)]
 pub(crate) struct Watchers(Mutex<Watching>);
@@ -540,7 +540,7 @@ impl Watchers {
             .retain(|(watcher, _)| *watcher != id);
     }
 
-    /// Tells the viewers what a session call does: that it started when it
+    /// Tells the consoles what a session call does: that it started when it
     /// gets its first turn (or as it ends, without one), how it ended, and
     /// what the session named. Calls without a machine aren't shown.
     pub(crate) fn on_call(&self, event: &CallEvent<'_>) {
@@ -608,7 +608,7 @@ impl Watchers {
         }
     }
 
-    /// Passes `activity`, which happened at `at`, to every viewer still
+    /// Passes `activity`, which happened at `at`, to every console still
     /// watching, and keeps it for those that begin later. One that has
     /// fallen [`BACKLOG`] behind misses it.
     pub(crate) fn publish(&self, activity: &daemon::Activity, at: Instant) {
@@ -882,7 +882,7 @@ mod tests {
     }
 
     #[test]
-    fn a_new_viewer_is_told_each_machine_s_recent_calls_first_with_only_the_latest_snapshot() {
+    fn a_new_console_is_told_each_machine_s_recent_calls_first_with_only_the_latest_snapshot() {
         use daemon::activity::Phase;
         use std::time::Duration;
         let watchers = Watchers::default();
@@ -933,12 +933,12 @@ mod tests {
         watchers.publish(&named(2), at(310));
         watchers.publish(&named(1), at(320));
         watchers.publish(&call(3, look()), at(400));
-        let (_, viewer) = watchers.watch(at(1000));
+        let (_, console) = watchers.watch(at(1000));
         watchers.publish(
             &call(3, Phase::Ended(ended(Traced::Done, None, None))),
             at(1100),
         );
-        let told: Vec<daemon::Activity> = viewer.try_iter().collect();
+        let told: Vec<daemon::Activity> = console.try_iter().collect();
         let recent: Vec<(u64, u64, Option<u64>, Option<u64>)> = told[..3]
             .iter()
             .map(|activity| {
@@ -985,7 +985,7 @@ mod tests {
     }
 
     #[test]
-    fn a_new_viewer_is_told_only_the_latest_calls_of_a_machine() {
+    fn a_new_console_is_told_only_the_latest_calls_of_a_machine() {
         let watchers = Watchers::default();
         let now = doppel_host::capabilities::SystemClock.now();
         for request in 0..RECENT as u64 + 10 {
@@ -1012,7 +1012,7 @@ mod tests {
     }
 
     #[test]
-    fn a_viewer_that_stops_watching_is_dropped_and_a_slow_one_misses_events() {
+    fn a_console_that_stops_watching_is_dropped_and_a_slow_one_misses_events() {
         let watchers = Watchers::default();
         let now = doppel_host::capabilities::SystemClock.now();
         let (_, gone) = watchers.watch(now);
@@ -1027,16 +1027,16 @@ mod tests {
     }
 
     #[test]
-    fn an_unwatched_viewer_gets_what_was_sent_then_its_stream_ends() {
+    fn an_unwatched_console_gets_what_was_sent_then_its_stream_ends() {
         let watchers = Watchers::default();
         let now = doppel_host::capabilities::SystemClock.now();
-        let (id, viewer) = watchers.watch(now);
+        let (id, console) = watchers.watch(now);
         let (_, other) = watchers.watch(now);
         watchers.publish(&daemon::Activity::default(), now);
         watchers.unwatch(id);
         watchers.publish(&daemon::Activity::default(), now);
-        assert!(viewer.recv().is_ok());
-        assert!(viewer.recv().is_err(), "nothing after unwatch");
+        assert!(console.recv().is_ok());
+        assert!(console.recv().is_err(), "nothing after unwatch");
         assert_eq!(other.try_iter().count(), 2);
     }
 
@@ -1112,8 +1112,8 @@ mod tests {
         }
     }
 
-    fn phases(viewer: &Receiver<daemon::Activity>) -> Vec<&'static str> {
-        viewer
+    fn phases(console: &Receiver<daemon::Activity>) -> Vec<&'static str> {
+        console
             .try_iter()
             .map(|activity| match activity.phase {
                 Some(daemon::activity::Phase::Started(_)) => "started",
@@ -1125,25 +1125,25 @@ mod tests {
             .collect()
     }
 
-    /// Viewers are told a call started at its first turn, or as it ends
+    /// Consoles are told a call started at its first turn, or as it ends
     /// without one; a call without a machine isn't shown.
     #[test]
-    fn viewers_are_told_a_call_starts_once_and_how_it_ended() {
+    fn consoles_are_told_a_call_starts_once_and_how_it_ended() {
         let watchers = Watchers::default();
         let now = doppel_host::capabilities::SystemClock.now();
-        let (_, viewer) = watchers.watch(now);
+        let (_, console) = watchers.watch(now);
         let call = session_call(Some(dev()), Guest::Kept);
         watchers.on_call(&CallEvent::Running { call: &call });
-        assert_eq!(phases(&viewer), Vec::<&str>::new());
+        assert_eq!(phases(&console), Vec::<&str>::new());
         watchers.on_call(&CallEvent::TurnBegan {
             call: &call,
             at: now,
         });
         watchers.on_call(&ended_event(&call, Some(now), None));
-        assert_eq!(phases(&viewer), ["started", "ended"]);
+        assert_eq!(phases(&console), ["started", "ended"]);
         watchers.on_call(&ended_event(&call, None, None));
         assert_eq!(
-            phases(&viewer),
+            phases(&console),
             ["started", "ended"],
             "no turn: told at its end"
         );
@@ -1153,7 +1153,7 @@ mod tests {
             at: now,
         });
         watchers.on_call(&ended_event(&nowhere, None, None));
-        assert_eq!(phases(&viewer), Vec::<&str>::new());
+        assert_eq!(phases(&console), Vec::<&str>::new());
     }
 
     #[test]

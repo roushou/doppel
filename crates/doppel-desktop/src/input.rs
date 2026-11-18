@@ -267,7 +267,7 @@ pub enum Input {
     Pointer(Pointer),
 }
 
-/// One pointer event as it happens, as an interactive viewer forwards it.
+/// One pointer event as it happens, as an interactive console forwards it.
 /// [`Input::Click`] and [`Input::Drag`] are gestures made of these.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Pointer {

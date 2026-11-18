@@ -165,7 +165,7 @@ impl Relay {
     /// bounds a daemon that hangs.
     const CALL_BUDGET: Duration = Duration::from_secs(15 * 60);
 
-    /// How long telling viewers a snapshot's refs may take: the daemon
+    /// How long telling consoles a snapshot's refs may take: the daemon
     /// answers at once, and the model's result waits on it.
     const NAME_BUDGET: Duration = Duration::from_secs(2);
 
@@ -375,7 +375,7 @@ impl Runner for Relay {
     }
 
     /// Short and blocking, from tokio's blocking pool; a failure only costs
-    /// viewers the names, so it is logged and dropped.
+    /// consoles the names, so it is logged and dropped.
     async fn name(&self, machine: MachineName, refs: SnapshotRefs) {
         let client = Arc::clone(&self.client);
         let named = tokio::task::spawn_blocking(move || {

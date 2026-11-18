@@ -143,7 +143,7 @@ pub enum TraceOutcome {
 pub enum Actor {
     /// One of the session's own requests.
     Session,
-    /// A person at a viewer, who had control.
+    /// A person at a console, who had control.
     Person,
     Unknown(i32),
 }
@@ -545,7 +545,7 @@ mod tests {
     }
 
     #[test]
-    fn times_read_as_the_browser_viewer_shows_them() {
+    fn times_read_as_the_web_console_shows_them() {
         assert_eq!(clock(0.0), "0:00.0");
         assert_eq!(clock(4017.0), "0:04.0");
         assert_eq!(clock(61_250.0), "1:01.3");

@@ -1,8 +1,8 @@
 //! `doppel view`: the desktop window, over the daemon. This is the one place
 //! that knows both sides: the daemon's display connections, doppel-host's
-//! shared frames and the client's host input on one, the viewer's frame
+//! shared frames and the client's host input on one, the console's frame
 //! sources and input sink on the other; `port` maps the rest of the
-//! viewer's `Daemon` port.
+//! console's `Daemon` port.
 
 use std::os::fd::OwnedFd;
 use std::path::Path;
@@ -11,14 +11,14 @@ use std::time::Duration;
 
 use anyhow::Result;
 use doppel_client::{Client, ClientError, Display, DisplayLayout, EncodedDisplay};
+use doppel_console::{
+    Console, EncodedSource, FrameRef, FrameSource, GuestInput, InputSink, Next, NextEncoded,
+    Screen, SourceError, Takeover,
+};
 use doppel_desktop::geometry::Size;
 use doppel_host::display::{Announcement, DisplayError, Nv12Frame, SharedFrames};
 use doppel_machine::machine::MachineName;
 use doppel_protocol::display::{RingLayout, SlotRead};
-use doppel_viewer::{
-    EncodedSource, FrameRef, FrameSource, GuestInput, InputSink, Next, NextEncoded, Screen,
-    SourceError, Takeover, Viewer,
-};
 
 use doppel_host::capabilities::SystemClock;
 
@@ -39,7 +39,7 @@ enum ViewError {
 }
 
 /// A machine's display, announced by the daemon and read from the memory
-/// its VMM shares, as a viewer source.
+/// its VMM shares, as a console source.
 struct DisplaySource {
     display: Display<SystemClock>,
     frames: SharedFrames,
@@ -107,7 +107,7 @@ impl FrameSource for DisplaySource {
 }
 
 /// A machine's display as the daemon streams it, H.264-encoded by its VMM,
-/// as a viewer source: the viewer decodes it.
+/// as a console source: the console decodes it.
 struct StreamSource {
     display: EncodedDisplay<SystemClock>,
 }
@@ -119,14 +119,14 @@ impl StreamSource {
         Ok((Self { display }, size.points))
     }
 
-    fn frame(frame: doppel_client::EncodedFrame) -> doppel_viewer::EncodedFrame {
-        doppel_viewer::EncodedFrame {
+    fn frame(frame: doppel_client::EncodedFrame) -> doppel_console::EncodedFrame {
+        doppel_console::EncodedFrame {
             sequence: frame.sequence,
             kind: match frame.kind {
                 doppel_client::FrameKind::Key { parameter_sets } => {
-                    doppel_viewer::FrameKind::Key { parameter_sets }
+                    doppel_console::FrameKind::Key { parameter_sets }
                 }
-                doppel_client::FrameKind::Delta => doppel_viewer::FrameKind::Delta,
+                doppel_client::FrameKind::Delta => doppel_console::FrameKind::Delta,
             },
             data: frame.data,
         }
@@ -146,13 +146,13 @@ impl EncodedSource for StreamSource {
 }
 
 /// A machine's host input, the VMM's virtual keyboard and pointer reached
-/// through the daemon, as a viewer sink. Works before login and without the
+/// through the daemon, as a console sink. Works before login and without the
 /// guest agent, and doesn't wait for the machine's queue; the daemon takes
 /// it only once this connection has control.
 struct HostInput {
     client: Arc<Client<SystemClock>>,
     name: MachineName,
-    /// The guest display's size in points: what the viewer's fractions of
+    /// The guest display's size in points: what the console's fractions of
     /// the screen scale to.
     display: Size,
 }
@@ -196,7 +196,7 @@ impl Takeover for MachineControl {
     }
 }
 
-/// How a viewer gets a display's frames.
+/// How a console gets a display's frames.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Frames {
     /// From the memory the VMM shares: on the VMM's own Mac only.
@@ -253,7 +253,7 @@ pub(crate) struct View {
 }
 
 impl View {
-    /// The viewer keeps what the person chooses (the theme) in `home`.
+    /// The console keeps what the person chooses (the theme) in `home`.
     pub(crate) fn new(
         names: Vec<MachineName>,
         frames: Frames,
@@ -272,7 +272,7 @@ impl View {
     /// the daemon listening on `socket`, which `client` is connected to.
     pub(crate) fn run(self, client: Client<SystemClock>, socket: &Path) -> Result<()> {
         let daemon = port::DaemonPort::new(socket.to_path_buf(), self.frames, self.videos, client);
-        Viewer::new(daemon, port::ViewerClock::new())
+        Console::new(daemon, port::ConsoleClock::new())
             .keeping(self.settings)
             .showing(self.names)
             .run();
@@ -295,9 +295,9 @@ mod tests {
         });
         assert_eq!(
             key,
-            doppel_viewer::EncodedFrame {
+            doppel_console::EncodedFrame {
                 sequence: 7,
-                kind: doppel_viewer::FrameKind::Key {
+                kind: doppel_console::FrameKind::Key {
                     parameter_sets: vec![vec![0x67], vec![0x68]],
                 },
                 data: vec![0, 0, 0, 1, 0x65],
@@ -308,7 +308,7 @@ mod tests {
             kind: doppel_client::FrameKind::Delta,
             data: vec![1],
         });
-        assert_eq!(delta.kind, doppel_viewer::FrameKind::Delta);
+        assert_eq!(delta.kind, doppel_console::FrameKind::Delta);
         assert_eq!((delta.sequence, delta.data), (8, vec![1]));
     }
 }
