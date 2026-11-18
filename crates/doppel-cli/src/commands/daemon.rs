@@ -6,6 +6,7 @@ use clap::Subcommand;
 use doppel_host::capabilities::{OsEntropy, SystemClock, WallClock as _};
 
 use crate::context::Context;
+use crate::program_file::ProgramFile;
 use crate::report::Report;
 use crate::{launchd, signals, tokens};
 
@@ -127,13 +128,22 @@ fn serve(ctx: Context, source: SocketSource) -> Result<Report> {
         ctx.into_machines(),
         Box::new(doppel_daemon::EntropyMacs::new(OsEntropy)),
     );
-    let listener = match source {
-        SocketSource::Bind => daemon.listen()?,
-        SocketSource::Launchd => daemon.adopt(launchd::activated_socket()?)?,
+    let (listener, program) = match source {
+        SocketSource::Bind => (daemon.listen()?, None),
+        // launchd starts the program anew for the next client, so a daemon
+        // whose program an upgrade replaced makes way once idle.
+        SocketSource::Launchd => (
+            daemon.adopt(launchd::activated_socket()?)?,
+            Some(ProgramFile::current()?),
+        ),
     };
     eprintln!("doppeld: listening on {}", listener.path().display());
     signals.stop(daemon.stopper())?;
-    daemon.serve(&listener)?;
+    let replaced = match &program {
+        Some(program) => doppel_daemon::WhenReplaced::StopWhenIdle(program),
+        None => doppel_daemon::WhenReplaced::KeepServing,
+    };
+    daemon.serve_until(&listener, replaced)?;
     eprintln!("doppeld: stopped");
     Ok(Report::Nothing)
 }

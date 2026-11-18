@@ -77,6 +77,21 @@ impl Serving {
         }
     }
 
+    /// Stops the daemon if no connection is open, and says whether it
+    /// did. Checked and done under one lock: no connection is admitted in
+    /// between.
+    pub(crate) fn stop_if_idle(&self) -> bool {
+        let mut state = self.lock();
+        match state.phase {
+            Phase::Serving if state.open.is_empty() => {
+                state.phase = Phase::Stopping;
+                true
+            }
+            Phase::Serving => false,
+            Phase::Stopping => true,
+        }
+    }
+
     /// Whether the daemon is stopping.
     pub(crate) fn stopping(&self) -> bool {
         match self.lock().phase {
@@ -142,6 +157,20 @@ mod tests {
 
     fn id() -> ConnectionId {
         crate::scheduler::Waiting::default().connection()
+    }
+
+    #[test]
+    fn stops_when_idle_only() {
+        let serving = Serving::default();
+        let (ours, _theirs) = UnixStream::pair().unwrap();
+        let admitted = serving.admit(id(), ours).unwrap();
+        assert!(!serving.stop_if_idle());
+        assert!(!serving.stopping());
+        drop(admitted);
+        assert!(serving.stop_if_idle());
+        assert!(serving.stopping());
+        let (late, _theirs) = UnixStream::pair().unwrap();
+        assert!(serving.admit(id(), late).is_none());
     }
 
     #[test]

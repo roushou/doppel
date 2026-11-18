@@ -1490,6 +1490,61 @@ fn a_stopped_daemon_closes_its_connections_and_returns() {
     assert!(Client::connect(&socket, SystemClock, soon()).is_err());
 }
 
+/// A program an upgrade replaces when the test says.
+#[derive(Default)]
+struct Upgradable(std::sync::atomic::AtomicBool);
+
+impl doppel_daemon::Program for Upgradable {
+    fn replaced(&self) -> bool {
+        self.0.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+#[test]
+fn a_replaced_daemon_serves_its_clients_then_stops_for_the_next() {
+    let scratch = Scratch::new("replaced");
+    let daemon = Arc::new(scratch.daemon());
+    let listener = daemon.listen().unwrap();
+    let socket = listener.path().to_path_buf();
+    let program = Arc::new(Upgradable::default());
+    let (returned, served) = std::sync::mpsc::channel();
+    std::thread::spawn({
+        let daemon = Arc::clone(&daemon);
+        let program = Arc::clone(&program);
+        move || {
+            returned.send(
+                daemon
+                    .serve_until(
+                        &listener,
+                        doppel_daemon::WhenReplaced::StopWhenIdle(&*program),
+                    )
+                    .is_ok(),
+            )
+        }
+    });
+    let first = Client::connect(&socket, SystemClock, soon()).unwrap();
+    program.0.store(true, std::sync::atomic::Ordering::SeqCst);
+    // Replaced but busy: it serves on, newcomers included.
+    let second = Client::connect(&socket, SystemClock, soon()).unwrap();
+    second.sessions(soon()).unwrap();
+    first.sessions(soon()).unwrap();
+    assert!(served.try_recv().is_err(), "still serving");
+    drop(first);
+    drop(second);
+    // Idle once their connections have wound down: the next client to come
+    // finds it gone (under launchd, the new program would answer it), and
+    // it returns. Each attempt makes it look again.
+    for _ in 0..50 {
+        if let Ok(ok) = served.try_recv() {
+            assert!(ok);
+            return;
+        }
+        let brief = Deadline::after(SystemClock.now(), Duration::from_millis(200));
+        drop(Client::connect(&socket, SystemClock, brief));
+    }
+    panic!("a replaced, idle daemon kept serving");
+}
+
 #[test]
 fn a_daemon_stopped_before_it_serves_returns_at_once() {
     let scratch = Scratch::new("stop0");

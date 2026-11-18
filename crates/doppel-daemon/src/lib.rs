@@ -22,8 +22,37 @@ mod web;
 pub use forks::{EntropyMacs, MacError, MacSource};
 pub use operations::{Acted, CallError};
 pub use recording::RecordingError;
-use scheduler::SessionId;
+use scheduler::{ConnectionId, SessionId};
 pub use serving::Stopper;
+
+/// The program a daemon runs from, as installed now: a port, so the shell
+/// decides what counts as replaced and tests can say so.
+pub trait Program: Sync {
+    /// Whether the installed program is no longer the one this daemon
+    /// runs: an upgrade (or a rebuild) replaced it.
+    fn replaced(&self) -> bool;
+}
+
+/// What a daemon does once its program is replaced.
+#[derive(Clone, Copy)]
+pub enum WhenReplaced<'a> {
+    /// Serve on: nothing would start the new program in its place.
+    KeepServing,
+    /// Stop as soon as no connection is open, so whatever started it starts
+    /// the new program for the next client (launchd, on its socket). A
+    /// client connecting meanwhile waits on the socket for the new one;
+    /// one already connected keeps this daemon until it leaves.
+    StopWhenIdle(&'a dyn Program),
+}
+
+impl std::fmt::Debug for WhenReplaced<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::KeepServing => "KeepServing",
+            Self::StopWhenIdle(_) => "StopWhenIdle",
+        })
+    }
+}
 
 use std::collections::HashMap;
 use std::io;
@@ -138,6 +167,9 @@ where
     /// A client that sends nothing for this long while the daemon writes
     /// to it is dropped.
     const WRITE_TIMEOUT: Duration = Duration::from_secs(10);
+    /// How often a daemon that stops when replaced looks at its program,
+    /// besides whenever a client connects.
+    const REPLACED_EVERY: Duration = Duration::from_secs(5);
 
     /// Binds the daemon's socket. A socket file left by a daemon that
     /// exited is replaced; one that a daemon still answers on is not.
@@ -194,6 +226,19 @@ where
     /// # Errors
     /// [`DaemonError::Accept`].
     pub fn serve(&self, listener: &Listener) -> Result<(), DaemonError> {
+        self.serve_until(listener, WhenReplaced::KeepServing)
+    }
+
+    /// As [`Self::serve`], and also stops, once idle, when `replaced` says
+    /// to (see [`WhenReplaced`]).
+    ///
+    /// # Errors
+    /// [`DaemonError::Accept`].
+    pub fn serve_until(
+        &self,
+        listener: &Listener,
+        replaced: WhenReplaced<'_>,
+    ) -> Result<(), DaemonError> {
         let (wake, woken) = UnixStream::pair().map_err(DaemonError::Accept)?;
         listener
             .listener
@@ -205,7 +250,7 @@ where
             // Those a daemon before this one made and didn't remove.
             scope.spawn(|| self.remove_leftover_temporary_machines());
             let accepted = if self.serving.wake_with(wake) {
-                self.accept(listener, &woken, scope)
+                self.accept(listener, &woken, replaced, scope)
             } else {
                 Ok(())
             };
@@ -216,20 +261,27 @@ where
     }
 
     /// Accepts connections, each served on a thread of its own, until the
-    /// daemon is stopping (`woken` says so) or accepting fails.
+    /// daemon is stopping (`woken` says so), its program was replaced and
+    /// it's idle, or accepting fails.
     fn accept<'scope>(
         &'scope self,
         listener: &Listener,
         woken: &UnixStream,
+        replaced: WhenReplaced<'_>,
         scope: &'scope std::thread::Scope<'scope, '_>,
     ) -> Result<(), DaemonError> {
         use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
+        let wait = match replaced {
+            WhenReplaced::KeepServing => PollTimeout::NONE,
+            WhenReplaced::StopWhenIdle(_) => PollTimeout::try_from(Self::REPLACED_EVERY)
+                .map_err(|_| DaemonError::Accept(io::ErrorKind::InvalidInput.into()))?,
+        };
         loop {
             let mut ready = [
                 PollFd::new(listener.listener.as_fd(), PollFlags::POLLIN),
                 PollFd::new(woken.as_fd(), PollFlags::POLLIN),
             ];
-            match poll(&mut ready, PollTimeout::NONE) {
+            match poll(&mut ready, wait) {
                 Ok(_) | Err(nix::errno::Errno::EINTR) => {}
                 Err(errno) => return Err(DaemonError::Accept(errno.into())),
             }
@@ -237,11 +289,31 @@ where
                 eprintln!("doppeld: stopping");
                 return Ok(());
             }
+            // Before accepting: a client waiting now is left on the socket
+            // for the new program.
+            if let WhenReplaced::StopWhenIdle(program) = replaced
+                && program.replaced()
+                && self.serving.stop_if_idle()
+            {
+                eprintln!("doppeld: its program was replaced; stopping for the new one");
+                return Ok(());
+            }
             match listener.listener.accept() {
                 Ok((stream, _)) => match stream.set_nonblocking(false) {
-                    Ok(()) => {
-                        scope.spawn(move || self.serve_connection(stream));
-                    }
+                    // Admitted here, before its thread starts, so an idle
+                    // check never misses it.
+                    Ok(()) => match self.admit(&stream) {
+                        Ok(Some(admission)) => {
+                            scope.spawn(move || {
+                                if let Err(error) = self.admitted(stream, Reach::Local, admission) {
+                                    eprintln!("doppeld: a connection ended: {error}");
+                                }
+                            });
+                        }
+                        // Stopping: it closes as it goes.
+                        Ok(None) => {}
+                        Err(error) => eprintln!("doppeld: a connection was dropped: {error}"),
+                    },
                     Err(error) => eprintln!("doppeld: a connection was dropped: {error}"),
                 },
                 // Taken by nothing, or interrupted: wait again.
@@ -279,12 +351,34 @@ where
     /// its own, until it closes the connection or the daemon stops. Its
     /// requests still running are then cancelled, and its session ends.
     fn connection(&self, stream: UnixStream, reach: Reach) -> Result<(), ChannelError> {
+        match self.admit(&stream)? {
+            Some(admission) => self.admitted(stream, reach, admission),
+            // Stopping: it closes as it goes.
+            None => Ok(()),
+        }
+    }
+
+    /// Lets the client on `stream` in, to be closed when the daemon stops;
+    /// `None` when it is stopping already.
+    fn admit(
+        &self,
+        stream: &UnixStream,
+    ) -> Result<Option<(ConnectionId, serving::Admitted<'_>)>, ChannelError> {
         let connection = self.scheduler.connection();
         let closer = stream.try_clone().map_err(ChannelError::Io)?;
-        let Some(admitted) = self.serving.admit(connection, closer) else {
-            // Stopping: it closes as it goes.
-            return Ok(());
-        };
+        Ok(self
+            .serving
+            .admit(connection, closer)
+            .map(|admitted| (connection, admitted)))
+    }
+
+    /// Serves a client already admitted.
+    fn admitted(
+        &self,
+        stream: UnixStream,
+        reach: Reach,
+        (connection, admitted): (ConnectionId, serving::Admitted<'_>),
+    ) -> Result<(), ChannelError> {
         let link = Link {
             reach,
             connection,

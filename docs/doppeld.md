@@ -47,6 +47,13 @@ CLI · doppel mcp (stdio relay) · desktop viewer · browser viewer   local or r
   activation: the first client to connect starts it. `doppel daemon
   install` sets it up once; `status`, `stop`, `logs` and `uninstall` manage
   it, and `doppel daemon run` runs it in the foreground.
+- It follows upgrades. Started by launchd, it looks at the file it was
+  started from (Homebrew's `bin/doppel` link, say) whenever a client
+  connects and every 5 s. Once that path leads to another file, or none,
+  it stops as soon as no connection is open, without accepting the client
+  that woke it; launchd starts the new `doppel` for that client. A
+  connection open across the upgrade, such as an MCP session, keeps the old
+  daemon until it closes. A rebuild in place counts too.
 - Its socket is `doppeld.socket` in the data root, mode 0600: the user's own
   processes only.
 - It holds no state that can't be rebuilt from disk and the running VMMs,
@@ -67,7 +74,7 @@ in doppel-protocol, `WireVersion` in Swift), and a peer refuses another:
 | Channel         | Ends                 | When it changes                                                                                                     |
 | --------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | `doppel.vmm`    | host and VMM         | Any incompatible change: both ship together. A VM started before an upgrade is refused until restarted.             |
-| `doppel.daemon` | clients and daemon   | Any incompatible change. A daemon started before an upgrade is refused until restarted.                             |
+| `doppel.daemon` | clients and daemon   | Any incompatible change. A daemon started before an upgrade makes way for the new one once idle.                    |
 | `doppel.agent`  | host and guest agent | Never if it can help it: golden images keep the agent they were prepared with. It grows by fields and capabilities. |
 
 | Group      | Requests                                                                                                                     | Events                                           |
