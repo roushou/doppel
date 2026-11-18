@@ -37,13 +37,25 @@ enum Command {
     Seek(f64),
 }
 
-/// Where the playhead is: moving from `media` seconds at `since`, or held.
+/// Media `media` seconds were on the clock at `since` ms.
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct Head {
+struct Anchor {
     media: f64,
-    /// On the clock, in ms.
     since: f64,
-    playing: bool,
+}
+
+impl Anchor {
+    /// The media's time at `now` on the clock (ms), had it kept playing.
+    fn at(self, now: f64) -> f64 {
+        self.media + seconds_since(self.since, now)
+    }
+}
+
+/// Where the playhead is: moving from an anchor, or held at media seconds.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Head {
+    Moving(Anchor),
+    Held(f64),
 }
 
 /// What the player thread leaves for the window.
@@ -92,11 +104,7 @@ impl Player {
     ) -> Self {
         let (commands, received) = std::sync::mpsc::channel();
         let shared = Arc::new(Mutex::new(Shared {
-            head: Head {
-                media: seconds,
-                since: clock.millis(),
-                playing: false,
-            },
+            head: Head::Held(seconds),
             duration: None,
             frame: None,
             ended: false,
@@ -146,17 +154,15 @@ impl Player {
     /// Where the playhead is now, in seconds.
     pub(crate) fn position(&self) -> f64 {
         let shared = self.shared();
-        let head = shared.head;
-        let at = if head.playing {
-            head.media + seconds_since(head.since, self.clock.millis())
-        } else {
-            head.media
+        let at = match shared.head {
+            Head::Moving(anchor) => anchor.at(self.clock.millis()),
+            Head::Held(media) => media,
         };
         shared.duration.map_or(at, |duration| at.min(duration))
     }
 
     pub(crate) fn playing(&self) -> bool {
-        self.shared().head.playing
+        matches!(self.shared().head, Head::Moving(_))
     }
 
     pub(crate) fn duration(&self) -> Option<f64> {
@@ -197,8 +203,8 @@ struct Reading {
     output: Retained<AVAssetReaderTrackOutput>,
     /// The frame read and not yet due.
     next: Option<(f64, Buffer)>,
-    /// Media seconds, and when they were on the clock, in ms.
-    anchor: (f64, f64),
+    /// Where it started reading.
+    anchor: Anchor,
 }
 
 impl Playback {
@@ -230,11 +236,7 @@ impl Playback {
                             position = duration;
                             self.update(|shared| {
                                 shared.ended = true;
-                                shared.head = Head {
-                                    media: duration,
-                                    since: shared.head.since,
-                                    playing: false,
-                                };
+                                shared.head = Head::Held(duration);
                             });
                             None
                         }
@@ -246,11 +248,7 @@ impl Playback {
                             let anchor = started.anchor;
                             reading = Some(started);
                             self.update(|shared| {
-                                shared.head = Head {
-                                    media: anchor.0,
-                                    since: anchor.1,
-                                    playing: true,
-                                };
+                                shared.head = Head::Moving(anchor);
                             });
                             continue;
                         }
@@ -280,17 +278,12 @@ impl Playback {
                 }
                 Command::Pause => {
                     if let Some(reading) = &reading {
-                        let (media, at) = reading.anchor;
-                        position = (media + seconds_since(at, self.clock.millis())).min(duration);
+                        position = reading.anchor.at(self.clock.millis()).min(duration);
                     }
                     playing = false;
                     reading = None;
                     self.update(|shared| {
-                        shared.head = Head {
-                            media: position,
-                            since: shared.head.since,
-                            playing: false,
-                        };
+                        shared.head = Head::Held(position);
                     });
                 }
                 Command::Seek(seconds) => {
@@ -311,11 +304,7 @@ impl Playback {
                             Err(error) => return self.fail(error.to_string()),
                         }
                         self.update(|shared| {
-                            shared.head = Head {
-                                media: position,
-                                since: shared.head.since,
-                                playing: false,
-                            };
+                            shared.head = Head::Held(position);
                         });
                     }
                 }
@@ -379,7 +368,10 @@ impl Playback {
                 _reader: reader,
                 output,
                 next: None,
-                anchor: (seconds, clock.millis()),
+                anchor: Anchor {
+                    media: seconds,
+                    since: clock.millis(),
+                },
             })
         }
     }
@@ -418,8 +410,8 @@ impl Playback {
                 None => return Step::Done,
             },
         };
-        let (media, at) = reading.anchor;
-        let due = at + (next.0 - media).max(0.0) * 1000.0;
+        let anchor = reading.anchor;
+        let due = anchor.since + (next.0 - anchor.media).max(0.0) * 1000.0;
         let now = clock.millis();
         if due <= now {
             Step::Show(next.0, next.1)
@@ -437,7 +429,10 @@ impl Playback {
     fn fail(&mut self, why: String) {
         self.update(|shared| {
             shared.failed = Some(why);
-            shared.head.playing = false;
+            shared.head = match shared.head {
+                Head::Moving(anchor) => Head::Held(anchor.media),
+                held @ Head::Held(_) => held,
+            };
         });
     }
 

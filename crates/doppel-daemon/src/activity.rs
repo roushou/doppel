@@ -13,6 +13,7 @@ use doppel_desktop::ax::tree::Subrole;
 use doppel_desktop::mark::{Lasts, Mark, MarkAt, Shape};
 use doppel_desktop::screen_text::{ScreenText, TextQuery};
 use doppel_machine::machine::MachineName;
+use doppel_protocol::convert::Millis;
 use doppel_protocol::pb::agent::v1 as agent;
 use doppel_protocol::pb::common::v1 as common;
 use doppel_protocol::pb::daemon::v1 as daemon;
@@ -255,7 +256,6 @@ fn mark(
             daemon::screen_mark::At::Area(find(element.snapshot.get(), element.node.get())?)
         }
     };
-    let millis = |time: std::time::Duration| u32::try_from(time.as_millis()).unwrap_or(u32::MAX);
     Some(daemon::ScreenMark {
         shape: request.shape,
         at: Some(at),
@@ -268,8 +268,10 @@ fn mark(
             .map(|note| note.as_str().to_owned())
             .unwrap_or_default(),
         lasts: Some(match mark.lasts() {
-            Lasts::For(time) => daemon::screen_mark::Lasts::ForMs(millis(time)),
-            Lasts::UntilActed(time) => daemon::screen_mark::Lasts::UntilActedMs(millis(time)),
+            Lasts::For(time) => daemon::screen_mark::Lasts::ForMs(Millis::saturating(time).get()),
+            Lasts::UntilActed(time) => {
+                daemon::screen_mark::Lasts::UntilActedMs(Millis::saturating(time).get())
+            }
         }),
     })
 }

@@ -92,10 +92,45 @@ impl PumpReplies {
 pub(crate) struct Feed {
     /// The display's size in points, when known.
     pub(crate) points: Option<Size>,
-    /// Whether input waits for the person to take control.
-    pub(crate) takes_control: bool,
-    /// Where pumped input goes; `None` for a view-only screen.
-    pub(crate) input: Option<mpsc::UnboundedSender<Pumped>>,
+    pub(crate) control: Control,
+}
+
+/// How a feed takes input, and where pumped input goes.
+#[derive(Debug)]
+#[cfg_attr(
+    target_arch = "wasm32",
+    expect(dead_code, reason = "a browser's feed is always steered")
+)]
+pub(crate) enum Control {
+    /// It takes none.
+    ViewOnly,
+    /// Input goes straight to the machine.
+    Direct(mpsc::UnboundedSender<Pumped>),
+    /// Input waits for the person to take control.
+    Steered(mpsc::UnboundedSender<Pumped>),
+}
+
+/// A view's input: where it goes, and, when taking control is how it's
+/// sent, who steers.
+enum Input {
+    ViewOnly,
+    Direct(mpsc::UnboundedSender<Pumped>),
+    Steered {
+        sender: mpsc::UnboundedSender<Pumped>,
+        steering: Steering,
+    },
+}
+
+impl Input {
+    /// Where input goes now: nowhere for a view-only screen, or for a
+    /// steered one the person isn't driving.
+    fn sender_now(&self) -> Option<&mpsc::UnboundedSender<Pumped>> {
+        match self {
+            Self::ViewOnly => None,
+            Self::Direct(sender) => Some(sender),
+            Self::Steered { sender, steering } => steering.sends_input().then_some(sender),
+        }
+    }
 }
 
 /// A move followed by another move of the same kind: only the last counts.
@@ -166,11 +201,8 @@ pub(crate) struct ScreenView {
     focus: FocusHandle,
     /// The display's size in points, when known.
     points: Option<Size>,
-    /// `None` for a view-only screen.
-    input: Option<mpsc::UnboundedSender<Pumped>>,
+    input: Input,
     input_failure: Arc<Mutex<Option<String>>>,
-    /// `None` when the screen's input needs no control.
-    steering: Option<Steering>,
     /// Waiting for the request in flight to be answered.
     waiters: Vec<oneshot::Sender<()>>,
     /// The picture's box as last laid out.
@@ -184,7 +216,7 @@ impl std::fmt::Debug for ScreenView {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ScreenView")
             .field("state", &self.state)
-            .field("steering", &self.steering)
+            .field("steering", &self.steering())
             .finish_non_exhaustive()
     }
 }
@@ -209,8 +241,14 @@ impl ScreenView {
                 wake,
             },
         );
-        let steering = feed.takes_control.then_some(Steering::START);
-        let input = feed.input;
+        let input = match feed.control {
+            Control::ViewOnly => Input::ViewOnly,
+            Control::Direct(sender) => Input::Direct(sender),
+            Control::Steered(sender) => Input::Steered {
+                sender,
+                steering: Steering::START,
+            },
+        };
         let listen = cx.spawn(async move |this, cx| {
             while woken.next().await.is_some() {
                 let update = latest.lock().unwrap_or_else(PoisonError::into_inner).take();
@@ -244,7 +282,6 @@ impl ScreenView {
             points: feed.points,
             input,
             input_failure,
-            steering,
             waiters: Vec::new(),
             bounds: Rc::new(Cell::new(None)),
             pressed: None,
@@ -293,12 +330,15 @@ impl ScreenView {
 
     /// Who steers it, when taking control is how input is sent.
     pub(crate) const fn steering(&self) -> Option<&Steering> {
-        self.steering.as_ref()
+        match &self.input {
+            Input::Steered { steering, .. } => Some(steering),
+            Input::ViewOnly | Input::Direct(_) => None,
+        }
     }
 
     /// Whether the person has control of it.
     pub(crate) fn driving(&self) -> bool {
-        self.steering.as_ref().is_some_and(Steering::sends_input)
+        self.steering().is_some_and(Steering::sends_input)
     }
 
     /// Takes control, or hands it back: the header's button.
@@ -384,10 +424,7 @@ impl ScreenView {
     }
 
     fn send(&self, input: GuestInput) {
-        if !self.steering.as_ref().is_none_or(Steering::sends_input) {
-            return;
-        }
-        if let Some(input_sender) = &self.input {
+        if let Some(input_sender) = self.input.sender_now() {
             // The feed is gone only if it couldn't start.
             let _ = input_sender.unbounded_send(Pumped::Input(input));
         }
@@ -395,7 +432,7 @@ impl ScreenView {
 
     /// Moves the steering on, and sends the request it makes, if any.
     fn steer(&mut self, event: SteerEvent, cx: &mut Context<Self>) {
-        let Some(steering) = self.steering.take() else {
+        let Input::Steered { sender, steering } = &mut self.input else {
             return;
         };
         let answered = matches!(
@@ -403,10 +440,10 @@ impl ScreenView {
             SteerEvent::Answered | SteerEvent::Refused(_) | SteerEvent::Ended
         );
         let (next, request) = steering.clone().on(event);
-        let changed = steering != next;
-        self.steering = Some(next);
-        if let (Some(request), Some(input_sender)) = (request, &self.input) {
-            let _ = input_sender.unbounded_send(Pumped::Steer(request));
+        let changed = *steering != next;
+        *steering = next;
+        if let Some(request) = request {
+            let _ = sender.unbounded_send(Pumped::Steer(request));
         }
         if answered {
             for waiter in self.waiters.drain(..) {
@@ -503,7 +540,7 @@ impl ScreenView {
     fn key(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
         // Keys go to the machine only while the person drives it; otherwise
         // they're the window's (its shortcuts).
-        if self.placement().is_none() || !self.steering.as_ref().is_none_or(Steering::sends_input) {
+        if self.placement().is_none() || self.input.sender_now().is_none() {
             return;
         }
         if let Ok(key) = Key::try_from(&event.keystroke) {
@@ -560,7 +597,7 @@ impl Render for ScreenView {
                             .child(problem),
                     )
             }));
-        if self.input.is_none() {
+        if matches!(self.input, Input::ViewOnly) {
             return body;
         }
         body.on_mouse_down(

@@ -18,7 +18,7 @@ use doppel_console::{
 use doppel_desktop::geometry::Size;
 use doppel_host::vmm::display::{Announcement, DisplayError, Nv12Frame, SharedFrames};
 use doppel_machine::machine::MachineName;
-use doppel_protocol::display::{RingLayout, SlotRead};
+use doppel_protocol::display::SlotRead;
 
 use doppel_host::capabilities::SystemClock;
 
@@ -61,17 +61,7 @@ impl DisplaySource {
     }
 
     fn map(layout: DisplayLayout, memory: &OwnedFd) -> Result<SharedFrames, DisplayError> {
-        let ring = RingLayout {
-            width_pixels: layout.width_pixels,
-            height_pixels: layout.height_pixels,
-            slot_count: layout.slot_count,
-            slot_stride: layout.slot_stride,
-            luma_offset: layout.luma_offset,
-            luma_bytes_per_row: layout.luma_bytes_per_row,
-            chroma_offset: layout.chroma_offset,
-            chroma_bytes_per_row: layout.chroma_bytes_per_row,
-        };
-        SharedFrames::map(ring, layout.points, memory)
+        SharedFrames::map(layout.ring, layout.points, memory)
     }
 }
 

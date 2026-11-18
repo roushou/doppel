@@ -13,6 +13,7 @@ use doppel_desktop::deadline::Deadline;
 use doppel_desktop::geometry::Size;
 use doppel_machine::machine::MachineName;
 use doppel_protocol::convert::RemoteError;
+use doppel_protocol::display::RingLayout;
 use doppel_protocol::exchange::{DaemonCall, ExchangeConfig, Unrecognized};
 use doppel_protocol::pb::daemon::v1 as daemon;
 use doppel_protocol::pb::daemon::v1::daemon_response::Outcome;
@@ -26,14 +27,7 @@ use crate::{ClientError, Clock, MachineFailure};
 /// out (see `DisplayLayout` in vmm.proto).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DisplayLayout {
-    pub width_pixels: u32,
-    pub height_pixels: u32,
-    pub slot_count: u32,
-    pub slot_stride: u64,
-    pub luma_offset: u64,
-    pub luma_bytes_per_row: u32,
-    pub chroma_offset: u64,
-    pub chroma_bytes_per_row: u32,
+    pub ring: RingLayout,
     /// The display's size in points, the coordinate space of input, when
     /// the daemon said.
     pub points: Option<Size>,
@@ -96,14 +90,7 @@ impl<C: Clock> Display<C> {
             .display_points
             .and_then(|size| Size::try_from(size).ok());
         let layout = DisplayLayout {
-            width_pixels: layout.width_pixels,
-            height_pixels: layout.height_pixels,
-            slot_count: layout.slot_count,
-            slot_stride: layout.slot_stride,
-            luma_offset: layout.luma_offset,
-            luma_bytes_per_row: layout.luma_bytes_per_row,
-            chroma_offset: layout.chroma_offset,
-            chroma_bytes_per_row: layout.chroma_bytes_per_row,
+            ring: RingLayout::from(&layout),
             points,
         };
         Ok((Self { channel }, layout, memory))

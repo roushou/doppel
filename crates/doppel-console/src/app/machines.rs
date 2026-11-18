@@ -1425,31 +1425,33 @@ impl MachinesPage {
                         Some(timeline::TextLooked::Read(_) | timeline::TextLooked::Failed(_))
                         | None => Looking::Ready,
                     };
-                    let (drawn, whose, stale) = match &shown {
-                        timeline::Reading::Agent(read) => (
-                            reading::Drawn::Read(&read.read),
-                            SharedString::from(format!("agent · {}", ago(now - read.since_ms))),
-                            read.acted_since,
-                        ),
-                        timeline::Reading::Person { look, acted_since } => (
-                            match &look.outcome {
-                                timeline::TextLooked::Loading => reading::Drawn::Loading,
-                                timeline::TextLooked::Read(read) => reading::Drawn::Read(read),
-                                timeline::TextLooked::Failed(why) => reading::Drawn::Failed(why),
+                    let drawn = match &shown {
+                        timeline::Reading::Agent(read) => reading::Drawn::Read {
+                            read: &read.read,
+                            whose: SharedString::from(format!(
+                                "agent · {}",
+                                ago(now - read.since_ms)
+                            )),
+                            acted_since: read.acted_since,
+                        },
+                        timeline::Reading::Person { look, acted_since } => match &look.outcome {
+                            timeline::TextLooked::Loading => reading::Drawn::Loading,
+                            timeline::TextLooked::Read(read) => reading::Drawn::Read {
+                                read,
+                                whose: SharedString::from(format!(
+                                    "you · {}",
+                                    ago(now - look.at_ms)
+                                )),
+                                acted_since: *acted_since,
                             },
-                            SharedString::from(format!("you · {}", ago(now - look.at_ms))),
-                            *acted_since,
-                        ),
-                        timeline::Reading::Nothing => {
-                            (reading::Drawn::Nothing, SharedString::default(), false)
-                        }
+                            timeline::TextLooked::Failed(why) => reading::Drawn::Failed(why),
+                        },
+                        timeline::Reading::Nothing => reading::Drawn::Nothing,
                     };
                     frame = frame.child(reading::layer(
                         &format!("text-{name}"),
                         drawn,
                         picture,
-                        whose,
-                        stale,
                         Some(looking),
                         theme,
                         &read_now,

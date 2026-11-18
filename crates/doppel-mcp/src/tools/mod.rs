@@ -364,14 +364,11 @@ impl<E: std::fmt::Display> ToolOutcome<E> {
                 machine,
                 snapshot,
                 policy,
-            } => Self::text(&refs.show(&machine, &snapshot, policy).text, false),
-            Self::Acted { r, target, act } => Self::text(
-                &format!(
-                    "{} {r} ({target}). The effect is asynchronous: wait_for or snapshot to see it.",
-                    act.action
-                ),
-                false,
-            ),
+            } => Self::ok(&refs.show(&machine, &snapshot, policy).text),
+            Self::Acted { r, target, act } => Self::ok(&format!(
+                "{} {r} ({target}). The effect is asynchronous: wait_for or snapshot to see it.",
+                act.action
+            )),
             Self::Waited {
                 machine,
                 condition,
@@ -409,7 +406,7 @@ impl<E: std::fmt::Display> ToolOutcome<E> {
                     }
                 })
             }
-            Self::Status(report) => Self::text(&report.render(), false),
+            Self::Status(report) => Self::ok(&report.render()),
             Self::Screenshot { shot, via } => CallToolResult::success(vec![
                 ContentBlock::image(
                     base64::engine::general_purpose::STANDARD.encode(&shot.data),
@@ -417,15 +414,16 @@ impl<E: std::fmt::Display> ToolOutcome<E> {
                 ),
                 ContentBlock::text(format!("via {}: {}", via.as_str(), shot.coordinate_note())),
             ]),
-            Self::TextFound { text, query } => Self::text(&text.render(query.as_ref()), false),
-            Self::Sent { input, via } => Self::text(
-                &format!("{} via {}", Self::describe(&input), via.as_str()),
-                false,
-            ),
-            Self::Executed(output) => Self::text(
-                &Self::render_exec(&output),
-                output.termination == Termination::TimedOut,
-            ),
+            Self::TextFound { text, query } => Self::ok(&text.render(query.as_ref())),
+            Self::Sent { input, via } => {
+                Self::ok(&format!("{} via {}", Self::describe(&input), via.as_str()))
+            }
+            Self::Executed(output) => match output.termination {
+                Termination::TimedOut => Self::error(&Self::render_exec(&output)),
+                Termination::Exited(_) | Termination::Signaled(_) => {
+                    Self::ok(&Self::render_exec(&output))
+                }
+            },
             Self::FileRead { path, data } => {
                 let text = match String::from_utf8(data) {
                     Ok(text) => format!("{path} ({} bytes, UTF-8):\n{text}", text.len()),
@@ -438,7 +436,7 @@ impl<E: std::fmt::Display> ToolOutcome<E> {
                         )
                     }
                 };
-                Self::text(&text, false)
+                Self::ok(&text)
             }
             Self::FileWritten {
                 path,
@@ -449,7 +447,7 @@ impl<E: std::fmt::Display> ToolOutcome<E> {
                     WritePolicy::CreateNew => "created",
                     WritePolicy::Replace => "wrote",
                 };
-                Self::text(&format!("{how} {path} ({bytes} bytes)"), false)
+                Self::ok(&format!("{how} {path} ({bytes} bytes)"))
             }
             Self::Checkpointed {
                 machine,
@@ -461,12 +459,9 @@ impl<E: std::fmt::Display> ToolOutcome<E> {
                 source,
                 checkpoint,
                 into,
-            } => Self::text(
-                &format!(
-                    "created {into} from {source}/{checkpoint}; it is stopped. start it to resume exactly at the checkpoint (stop {source} and any other fork of it first)."
-                ),
-                false,
-            ),
+            } => Self::ok(&format!(
+                "created {into} from {source}/{checkpoint}; it is stopped. start it to resume exactly at the checkpoint (stop {source} and any other fork of it first)."
+            )),
             Self::Started {
                 machine,
                 from,
@@ -478,7 +473,7 @@ impl<E: std::fmt::Display> ToolOutcome<E> {
                 };
                 Self::desktop(&format!("{machine} {how}"), &desktop)
             }
-            Self::Stopped { machine } => Self::text(&format!("{machine} is powered off"), false),
+            Self::Stopped { machine } => Self::ok(&format!("{machine} is powered off")),
             Self::Marked { mark, on } => {
                 let what = match &on {
                     Some((r, target)) => format!("{r} ({target})"),
@@ -493,12 +488,9 @@ impl<E: std::fmt::Display> ToolOutcome<E> {
                         )
                     }
                 };
-                Self::text(
-                    &format!(
-                        "marked {what} {how_long}. The people watching see it; the machine doesn't."
-                    ),
-                    false,
-                )
+                Self::ok(&format!(
+                    "marked {what} {how_long}. The people watching see it; the machine doesn't."
+                ))
             }
             Self::RolledBack {
                 machine,
@@ -510,13 +502,10 @@ impl<E: std::fmt::Display> ToolOutcome<E> {
                 ),
                 &desktop,
             ),
-            Self::Failed(Unconfirmed::Failed(error)) => Self::text(&error.to_string(), true),
-            Self::Failed(Unconfirmed::Unknown(error)) => Self::text(
-                &format!(
-                    "{error}. The outcome is unknown: it may have taken effect. Check (status, snapshot or screenshot) before retrying."
-                ),
-                true,
-            ),
+            Self::Failed(Unconfirmed::Failed(error)) => Self::error(&error.to_string()),
+            Self::Failed(Unconfirmed::Unknown(error)) => Self::error(&format!(
+                "{error}. The outcome is unknown: it may have taken effect. Check (status, snapshot or screenshot) before retrying."
+            )),
         }
     }
 
@@ -524,14 +513,11 @@ impl<E: std::fmt::Display> ToolOutcome<E> {
     /// without a usable desktop is an error the model must see.
     fn desktop(started: &str, desktop: &Desktop) -> CallToolResult {
         if desktop.is_ready() {
-            Self::text(&format!("{started}; desktop ready ({desktop})."), false)
+            Self::ok(&format!("{started}; desktop ready ({desktop})."))
         } else {
-            Self::text(
-                &format!(
-                    "{started}, but the desktop isn't ready: {desktop}. via=\"host\" screenshot and input still work."
-                ),
-                true,
-            )
+            Self::error(&format!(
+                "{started}, but the desktop isn't ready: {desktop}. via=\"host\" screenshot and input still work."
+            ))
         }
     }
 
@@ -559,24 +545,15 @@ impl<E: std::fmt::Display> ToolOutcome<E> {
                     .as_ref()
                     .map_or_else(String::new, |screen| format!("; {screen}"));
                 match left_paused {
-                    None => Self::text(
-                        &format!(
-                            "checkpoint {machine}/{label} saved ({size}){paused}{caveat}; the machine keeps running{screen}."
-                        ),
-                        false,
-                    ),
-                    Some(Unconfirmed::Failed(error)) => Self::text(
-                        &format!(
-                            "checkpoint {machine}/{label} saved ({size}), but the guest is still paused: {error}"
-                        ),
-                        true,
-                    ),
-                    Some(Unconfirmed::Unknown(error)) => Self::text(
-                        &format!(
-                            "checkpoint {machine}/{label} saved ({size}), but the guest may still be paused ({error}); check status"
-                        ),
-                        true,
-                    ),
+                    None => Self::ok(&format!(
+                        "checkpoint {machine}/{label} saved ({size}){paused}{caveat}; the machine keeps running{screen}."
+                    )),
+                    Some(Unconfirmed::Failed(error)) => Self::error(&format!(
+                        "checkpoint {machine}/{label} saved ({size}), but the guest is still paused: {error}"
+                    )),
+                    Some(Unconfirmed::Unknown(error)) => Self::error(&format!(
+                        "checkpoint {machine}/{label} saved ({size}), but the guest may still be paused ({error}); check status"
+                    )),
                 }
             }
             CheckpointEnd::Failed { at, error, guest } => {
@@ -584,23 +561,16 @@ impl<E: std::fmt::Display> ToolOutcome<E> {
                     GuestAfterFailure::Untouched => "the guest was never paused",
                     GuestAfterFailure::ResumeRequested => "a resume of the guest was requested",
                 };
-                Self::text(
-                    &format!(
-                        "checkpoint {machine}/{label} failed while {at:?}: {error}; {guest}. No checkpoint was kept."
-                    ),
-                    true,
-                )
+                Self::error(&format!(
+                    "checkpoint {machine}/{label} failed while {at:?}: {error}; {guest}. No checkpoint was kept."
+                ))
             }
-            CheckpointEnd::Unknown { at, error } => Self::text(
-                &format!(
-                    "checkpoint {machine}/{label}: outcome UNKNOWN, the VMM stopped answering while {at:?} ({error}). Check status before relying on it."
-                ),
-                true,
-            ),
-            CheckpointEnd::InProgress => Self::text(
-                &format!("checkpoint {machine}/{label}: the procedure ended without a result"),
-                true,
-            ),
+            CheckpointEnd::Unknown { at, error } => Self::error(&format!(
+                "checkpoint {machine}/{label}: outcome UNKNOWN, the VMM stopped answering while {at:?} ({error}). Check status before relying on it."
+            )),
+            CheckpointEnd::InProgress => Self::error(&format!(
+                "checkpoint {machine}/{label}: the procedure ended without a result"
+            )),
         }
     }
 
@@ -644,14 +614,11 @@ impl<E: std::fmt::Display> ToolOutcome<E> {
                 seen,
                 elapsed,
                 polls,
-            } => Self::text(
-                &format!(
-                    "{what} after {} ms ({polls} polls).\n{}",
-                    elapsed.as_millis(),
-                    show(seen, WaitMoment::Satisfied)
-                ),
-                false,
-            ),
+            } => Self::ok(&format!(
+                "{what} after {} ms ({polls} polls).\n{}",
+                elapsed.as_millis(),
+                show(seen, WaitMoment::Satisfied)
+            )),
             WaitOutcome::TimedOut {
                 last,
                 last_error,
@@ -668,26 +635,26 @@ impl<E: std::fmt::Display> ToolOutcome<E> {
                 if let Some(seen) = last {
                     text.push_str(&show(seen, WaitMoment::TimedOut));
                 }
-                Self::text(&text, true)
+                Self::error(&text)
             }
-            WaitOutcome::Failed { reason, polls } => Self::text(
-                &format!("wait_for failed after {polls} polls: {reason}"),
-                true,
-            ),
+            WaitOutcome::Failed { reason, polls } => {
+                Self::error(&format!("wait_for failed after {polls} polls: {reason}"))
+            }
         }
     }
 
     pub(crate) fn rejected(error: &ArgumentError) -> CallToolResult {
-        Self::text(&error.to_string(), true)
+        Self::error(&error.to_string())
     }
 
-    fn text(text: &str, is_error: bool) -> CallToolResult {
-        let content = vec![ContentBlock::text(text)];
-        if is_error {
-            CallToolResult::error(content)
-        } else {
-            CallToolResult::success(content)
-        }
+    /// A result the model reads as success.
+    fn ok(text: &str) -> CallToolResult {
+        CallToolResult::success(vec![ContentBlock::text(text)])
+    }
+
+    /// A result the model reads as a failure.
+    fn error(text: &str) -> CallToolResult {
+        CallToolResult::error(vec![ContentBlock::text(text)])
     }
 
     fn describe(input: &Input) -> String {

@@ -146,20 +146,13 @@ use super::ParseError;
 impl TryFrom<common::Point> for Point {
     type Error = ParseError;
     fn try_from(p: common::Point) -> Result<Self, ParseError> {
-        Self::new(p.x, p.y).map_err(|error| ParseError::input("point", &error))
+        Self::new(p.x, p.y).map_err(|error| ParseError::invalid("point", error))
     }
 }
 
 impl ParseError {
-    fn input(field: &'static str, error: &dyn std::fmt::Display) -> Self {
-        Self::Invalid {
-            field,
-            reason: error.to_string(),
-        }
-    }
-
     fn count(field: &'static str, raw: u32) -> Result<ClickCount, Self> {
-        raw.try_into().map_err(|error| Self::input(field, &error))
+        raw.try_into().map_err(|error| Self::invalid(field, error))
     }
 
     fn point(field: &'static str, point: Option<common::Point>) -> Result<Point, Self> {

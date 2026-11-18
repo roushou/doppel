@@ -98,21 +98,6 @@ impl SharedFrames {
         })
     }
 
-    /// The layout the VMM describes, in the ring's terms.
-    #[must_use]
-    pub fn layout(layout: &vmm::DisplayLayout) -> RingLayout {
-        RingLayout {
-            width_pixels: layout.width_pixels,
-            height_pixels: layout.height_pixels,
-            slot_count: layout.slot_count,
-            slot_stride: layout.slot_stride,
-            luma_offset: layout.luma_offset,
-            luma_bytes_per_row: layout.luma_bytes_per_row,
-            chroma_offset: layout.chroma_offset,
-            chroma_bytes_per_row: layout.chroma_bytes_per_row,
-        }
-    }
-
     /// Frame size in pixels.
     #[must_use]
     pub const fn pixels(&self) -> (u32, u32) {
@@ -187,7 +172,7 @@ impl<'c, C: Clock> DisplayStream<'c, C> {
         let points = layout
             .display_points
             .and_then(|size| Size::try_from(size).ok());
-        let frames = SharedFrames::map(SharedFrames::layout(&layout), points, &fd)?;
+        let frames = SharedFrames::map(RingLayout::from(&layout), points, &fd)?;
         Ok(Self { client, frames })
     }
 

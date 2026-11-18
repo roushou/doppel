@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use doppel_desktop::exec::{Completeness, ExecOutput, ExecRequest, Termination};
 
-use super::ParseError;
+use super::{Millis, ParseError};
 use crate::pb::agent::v1 as agent;
 
 impl agent::Exec {
@@ -14,7 +14,7 @@ impl agent::Exec {
             program: request.program().as_str().to_owned(),
             arguments: request.arguments().to_vec(),
             stdin: request.stdin().to_vec().into(),
-            timeout_ms: u32::try_from(request.timeout().as_millis()).unwrap_or(u32::MAX),
+            timeout_ms: Millis::saturating(request.timeout()).get(),
             max_output_bytes: request.max_output(),
             working_directory: request
                 .working_directory()
@@ -72,19 +72,15 @@ impl From<&ExecOutput> for agent::ExecResult {
 impl TryFrom<agent::Exec> for ExecRequest {
     type Error = ParseError;
     fn try_from(wire: agent::Exec) -> Result<Self, ParseError> {
-        let invalid = |field, error: &dyn std::fmt::Display| ParseError::Invalid {
-            field,
-            reason: error.to_string(),
-        };
         let request = Self::new(
             wire.program
                 .parse()
-                .map_err(|error| invalid("program", &error))?,
+                .map_err(|error| ParseError::invalid("program", error))?,
             wire.arguments,
             Duration::from_millis(u64::from(wire.timeout_ms)),
             wire.max_output_bytes,
         )
-        .map_err(|error| invalid("exec", &error))?
+        .map_err(|error| ParseError::invalid("exec", error))?
         .with_stdin(wire.stdin.to_vec());
         Ok(if wire.working_directory.is_empty() {
             request
@@ -92,7 +88,7 @@ impl TryFrom<agent::Exec> for ExecRequest {
             request.in_directory(
                 wire.working_directory
                     .parse()
-                    .map_err(|error| invalid("working_directory", &error))?,
+                    .map_err(|error| ParseError::invalid("working_directory", error))?,
             )
         })
     }

@@ -22,7 +22,7 @@ use super::connection::{Connection, Events};
 use super::frame::Frame;
 use super::js;
 use crate::resync::{Resync, Step};
-use crate::screen::{Feed, Mailbox, PumpReplies, Pumped, Update, superseded};
+use crate::screen::{Control, Feed, Mailbox, PumpReplies, Pumped, Update, superseded};
 use crate::steering::{SteerEvent, SteerRequest};
 
 /// A running machine's screen, as the daemon streams it.
@@ -66,8 +66,7 @@ pub(crate) fn start(screen: Screen, mailbox: Mailbox, replies: PumpReplies) -> F
     );
     Feed {
         points,
-        takes_control: true,
-        input: Some(sender),
+        control: Control::Steered(sender),
     }
 }
 

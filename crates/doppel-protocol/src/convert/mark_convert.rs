@@ -4,7 +4,7 @@ use doppel_desktop::ax::tree::{ElementTarget, NodeIndex, SnapshotId};
 use doppel_desktop::geometry::Point;
 use doppel_desktop::mark::{Area, Lasts, Mark, MarkAt, Note, Shape};
 
-use super::ParseError;
+use super::{Millis, ParseError};
 use crate::pb::common::v1 as common;
 use crate::pb::daemon::v1 as daemon;
 
@@ -34,15 +34,15 @@ impl daemon::MarkScreen {
                 .map(|note| note.as_str().to_owned())
                 .unwrap_or_default(),
             lasts: Some(match mark.lasts() {
-                Lasts::For(time) => daemon::mark_screen::Lasts::ForMs(millis(time)),
-                Lasts::UntilActed(time) => daemon::mark_screen::Lasts::UntilActedMs(millis(time)),
+                Lasts::For(time) => {
+                    daemon::mark_screen::Lasts::ForMs(Millis::saturating(time).get())
+                }
+                Lasts::UntilActed(time) => {
+                    daemon::mark_screen::Lasts::UntilActedMs(Millis::saturating(time).get())
+                }
             }),
         }
     }
-}
-
-fn millis(time: Duration) -> u32 {
-    u32::try_from(time.as_millis()).unwrap_or(u32::MAX)
 }
 
 fn rect(area: Area) -> common::Rect {
