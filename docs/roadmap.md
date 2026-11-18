@@ -42,22 +42,27 @@ files. People watch and take over from a desktop or browser viewer.
 
 ### 1. A fresh install reaches agent-ready with no person
 
-Today the guest agent's Accessibility and Screen Recording permissions are
-granted by hand once, on a golden image, and its forks inherit them. A new
-install from an IPSW still needs a person to type the account password into
-two macOS prompts.
+`doppel agent grant` gives the guest agent Accessibility and Screen
+Recording with no person: on a shut-down machine it writes the guest's own
+records of both into its Data volume (the system TCC database, held to the
+agent's code requirement, and replayd's capture approvals, so the "bypass
+the private window picker" alert never comes up). It refuses a TCC layout it
+doesn't know. Checked on a fork of a hand-made golden image: grants removed
+offline are gone at the next boot, and written by `grant` they're all there,
+with no alert.
 
-- Run `doppel agent bootstrap` live on a newly created machine: it installs
-  the agent over SSH, and has only been unit-tested.
-- Find a way to grant both permissions without a person, or to make the one
-  remaining step a single documented command. Investigate before building:
-  what macOS 27 allows for a VM guest (configuration profiles, the
-  provisioning options, the guest's TCC database while it isn't running)
-  decides the approach.
+- Run the whole path live on a machine new from an IPSW: `doppel create
+  NAME --ipsw … --user U`, `doppel agent bootstrap`, `doppel stop`, `doppel
+  agent grant`, `doppel start`, `doppel golden prepare`. `bootstrap` has only
+  been unit-tested.
+- Files `grant` creates in the guest take the host user's uid. They match the
+  guest's first account (501) only when the host user's uid is 501 too;
+  otherwise replayd can't read the approvals it writes. Write them as the
+  guest's uid, or say so and refuse.
 
-Done when: `doppel create NAME --ipsw … --user U`, then `doppel agent
-bootstrap`, then `doppel golden prepare` gives a golden image whose forks
-pass `status` with every permission granted, with nothing typed by a person.
+Done when: that path gives a golden image whose forks pass `status` with
+every permission granted and no alert on screen, with nothing typed by a
+person.
 
 ### 2. Close the known gaps
 
