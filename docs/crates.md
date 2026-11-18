@@ -10,18 +10,19 @@ A crate depends only on crates in rows above it. Pure crates list only pure
 dependencies, so the compiler holds their purity; a pure module inside a crate
 that does I/O keeps a source test forbidding I/O and runtime imports.
 
-| Layer | Crate             | Job                                                                                                                     | Pure |
-| ----- | ----------------- | ----------------------------------------------------------------------------------------------------------------------- | ---- |
-| 0     | `doppel-machine`  | Model a machine and its guest: spec, files, lineage, the procedures that change it, and what is seen and done inside it | yes  |
-| 1     | `doppel-scene`    | What a viewer shows, decided without drawing: timelines, elements, panels, stage, recordings, streams, films            | yes  |
-| 1     | `doppel-gateway`  | Serve the browser viewer to token holders                                                                               | no   |
-| 2     | `doppel-protocol` | Doppel's wire: generated types, framing, conversions; `transport` carries it (unix only)                                | no   |
-| 2     | `doppel-mcp`      | The MCP tool surface, over a `Runner` port                                                                              | no   |
-| 3     | `doppel-host`     | Run machines on this Mac: store, VMM and agent clients, provisioning                                                    | no   |
-| 3     | `doppel-client`   | Talk to doppeld                                                                                                         | no   |
-| 3     | `doppel-viewer`   | The viewer window (GPUI), on the desktop and in a browser, over a `Daemon` port                                         | no   |
-| 4     | `doppel-daemon`   | doppeld: owns a user's machines and serves them                                                                         | no   |
-| 5     | `doppel-cli`      | The `doppel` command, and the composition root                                                                          | no   |
+| Layer | Crate             | Job                                                                                                                | Pure |
+| ----- | ----------------- | ------------------------------------------------------------------------------------------------------------------ | ---- |
+| 0     | `doppel-desktop`  | Model what is seen and done on a Mac's desktop: screen and text, accessibility tree, input, files, programs, waits | yes  |
+| 1     | `doppel-machine`  | Model a machine: spec, files, lineage, and the procedures that change it                                           | yes  |
+| 2     | `doppel-scene`    | What a viewer shows, decided without drawing: timelines, elements, panels, stage, recordings, streams, films       | yes  |
+| 2     | `doppel-gateway`  | Serve the browser viewer to token holders                                                                          | no   |
+| 3     | `doppel-protocol` | Doppel's wire: generated types, framing, conversions; `transport` carries it (unix only)                           | no   |
+| 3     | `doppel-mcp`      | The MCP tool surface, over a `Runner` port                                                                         | no   |
+| 4     | `doppel-host`     | Run machines on this Mac: store, VMM and agent clients, provisioning                                               | no   |
+| 4     | `doppel-client`   | Talk to doppeld                                                                                                    | no   |
+| 4     | `doppel-viewer`   | The viewer window (GPUI), on the desktop and in a browser, over a `Daemon` port                                    | no   |
+| 5     | `doppel-daemon`   | doppeld: owns a user's machines and serves them                                                                    | no   |
+| 6     | `doppel-cli`      | The `doppel` command, and the composition root                                                                     | no   |
 
 `doppel-protocol` builds for WebAssembly but for its `transport`, so the
 viewer in a browser reads the same wire. It sits above `doppel-scene`
@@ -44,7 +45,7 @@ viewer's own (`web/daemon.rs`), since no other crate runs there.
 
 ## Geometry
 
-`doppel_machine::geometry` has one `Point` (finite, on the display), one
+`doppel_desktop::geometry` has one `Point` (finite, on the display), one
 `Size` (finite, non-negative) and one `Rect` (a finite origin that may
 overhang an edge, and a `Size`), all in display points. A mark's `Area` is a
 `Rect` that must start on the display and have area. The viewer's `Position`
@@ -56,10 +57,10 @@ view-only, since a person's input can't be placed on it.
 
 ## Shared vocabulary
 
-What the client, daemon, MCP server and scene all speak has one owner in
-`doppel-machine`: input's `Via`, a screenshot's `ScreenshotSize`, a
-snapshot's `SnapshotSpec`, and a machine's `MachineReport` with its
-`AgentReport`. `doppel-protocol` converts the wire forms (`convert.rs`).
+What the client, daemon, MCP server and scene all speak has one owner:
+`doppel-desktop` for input's `Via`, a screenshot's `ScreenshotSize`, a
+snapshot's `SnapshotSpec` and the agent's `AgentReport`, and
+`doppel-machine` for a machine's `MachineReport`. `doppel-protocol` converts the wire forms (`convert.rs`).
 
 Activity has two vocabularies. `doppel_machine::activity` and
 `::recording` are the stream and a recording's trace as parsed (by
