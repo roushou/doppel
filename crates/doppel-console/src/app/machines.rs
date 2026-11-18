@@ -21,24 +21,24 @@ use super::{
     FACTS, FACTS_NARROW, HEAD, HEADER, NARROW, RAIL, RIM, Segment, ToastTone, dot, end_cell, id,
     ink, segment,
 };
-use crate::ask::{Choice, Question};
+use crate::app::ask::{Choice, Question};
 use crate::elements::Named;
-use crate::icons::Icon;
-use crate::inspect::{self, Act, Empty, Inspect, Looking, Pointing};
 use crate::model::{
     Action, Bay, Group, Hold, Machine, MachineState, Order, Provenance, Run, Session,
     SessionActivity, Verdict, forks_of,
 };
-use crate::overlay;
 use crate::panel::{Overlay, Panels};
-use crate::reading;
 use crate::report::{self, Guest, Login, Report};
 use crate::route::Route;
+use crate::screen::inspect::{self, Act, Empty, Inspect, Looking, Pointing};
+use crate::screen::overlay;
+use crate::screen::reading;
 use crate::screen::{self, ScreenEvent, ScreenView};
 use crate::stage::{Split, Stage, Unstaged};
 use crate::steering::Steering;
-use crate::theme::{Hue, MONO, Theme};
 use crate::timeline;
+use crate::ui::icons::Icon;
+use crate::ui::theme::{Hue, MONO, Theme};
 use crate::ui::{self, Button, Enabled, Look};
 use crate::{Daemon, LocalClock};
 

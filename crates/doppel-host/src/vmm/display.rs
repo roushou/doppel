@@ -10,7 +10,7 @@ use doppel_protocol::display::{FrameRing, Plane, RingError, RingLayout, Slot, Sl
 use doppel_protocol::pb::vmm::v1 as vmm;
 
 use crate::capabilities::Clock;
-use crate::shared_memory::SharedMemory;
+use crate::vmm::shared_memory::SharedMemory;
 use crate::vmm::{VmmClient, VmmError};
 
 /// Why the display can't be streamed.

@@ -12,5 +12,17 @@ consoles for the people watching.
 - **Checks:** every change passes `scripts/check.sh`. To check on a live
   machine, rebuild with `scripts/build.sh`, restart the daemon with
   `launchctl kickstart -k gui/$(id -u)/dev.doppel.doppeld`, and drive one.
+- **Structure:** the codebase is organised by component, not by feature.
+  See [ARCHITECTURE.md](ARCHITECTURE.md).
+  - A new feature usually touches several components; it does not get its
+    own file holding all of them.
+  - Never add a top-level module or crate without saying so explicitly,
+    with a one-line justification.
+  - No `utils.rs`, `helpers.rs` or `common.rs`. Shared code belongs to the
+    component that owns the concept.
+  - Respect dependency direction: lower components never import from
+    higher ones.
+  - If a file passes ~800 lines or a module mixes components, flag it
+    instead of appending to it.
 - **Docs describe Doppel as it is.** No dated logs, milestone results or
   "we used to" in docs or comments; git keeps the history.

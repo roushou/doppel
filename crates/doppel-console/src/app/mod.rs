@@ -20,16 +20,17 @@ use gpui::{
     prelude::FluentBuilder, px, relative, size,
 };
 
+mod ask;
 mod machines;
 mod recordings;
 mod replay;
 
-use crate::address::Entry;
-use crate::ask::{Ask, AskEvent, Question};
-use crate::icons::Icon;
+use crate::app::ask::{Ask, AskEvent, Question};
 use crate::model::{Machine, Session, Tone};
+use crate::route::Entry;
 use crate::route::Route;
-use crate::theme::{FONTS, MONO, SANS, Theme};
+use crate::ui::icons::Icon;
+use crate::ui::theme::{FONTS, MONO, SANS, Theme};
 use crate::ui::{self, Button, Look};
 use crate::{Daemon, DaemonError, LocalClock, Settings, ThemeChoice};
 use machines::{MachinesEvent, MachinesPage};

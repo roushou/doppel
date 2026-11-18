@@ -16,20 +16,11 @@
 //! draws with GPUI's surface element, which takes NV12 directly. In a
 //! browser the daemon's H.264 frames are decoded by the browser.
 
-mod address;
 pub mod answers;
 mod app;
-mod ask;
-mod field;
-mod icons;
 mod input;
-mod inspect;
-mod overlay;
-mod reading;
 mod route;
 mod screen;
-mod shapes;
-mod theme;
 mod ui;
 
 // What differs between the desktop and the browser: where frames come

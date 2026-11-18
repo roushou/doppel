@@ -29,7 +29,7 @@ macro_rules! icons {
             fn load(&self, path: &str) -> gpui::Result<Option<Cow<'static, [u8]>>> {
                 Ok(match path {
                     $(concat!("icons/", $file, ".svg") => Some(Cow::Borrowed(
-                        include_bytes!(concat!("../assets/icons/", $file, ".svg")).as_slice(),
+                        include_bytes!(concat!("../../assets/icons/", $file, ".svg")).as_slice(),
                     )),)*
                     _ => None,
                 })

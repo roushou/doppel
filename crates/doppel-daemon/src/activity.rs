@@ -22,8 +22,7 @@ use doppel_protocol::pb::daemon::v1::daemon_request::Operation;
 use doppel_protocol::pb::vmm::v1 as vmm;
 
 use crate::call_events::{CallEvent, SessionCall};
-use crate::handle::Guest;
-use crate::recording::Traced;
+use crate::call_events::{Guest, Traced};
 
 /// How many snapshots of each machine are kept for their elements: an
 /// agent acts on the latest, or one just before it.

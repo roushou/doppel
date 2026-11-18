@@ -20,9 +20,9 @@ use std::time::Duration;
 use doppel_desktop::outcome::Unconfirmed;
 use doppel_host::capabilities::SystemClock;
 use doppel_host::files::{FileOpError, Filesystem, LocalFilesystem};
-use doppel_host::launcher::VmmBinary;
 use doppel_host::machines::{ImportSource, MachineError, Machines};
 use doppel_host::store::{Store, StoreError};
+use doppel_host::vmm::launcher::VmmBinary;
 use doppel_machine::bundle::{DataRoot, FileOp, RuntimeDir};
 use doppel_machine::lineage::{Lineage, Origin, RecordedLineage, Role, TemplateAgent};
 use doppel_machine::machine::{

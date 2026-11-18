@@ -13,8 +13,9 @@ use doppel_protocol::pb::daemon::v1::daemon_request::Operation;
 use doppel_protocol::rpc::Rpc;
 use doppel_protocol::with_operation;
 
-use crate::display::Opens;
+use crate::call_events::Guest;
 use crate::requests::Refusal;
+use crate::requests::display::Opens;
 use crate::scheduler::Call;
 use crate::{Daemon, Link};
 
@@ -35,14 +36,6 @@ pub(crate) enum Turn {
     /// It only looks, skips the line on purpose (a person's input,
     /// control, displays), or names no machine.
     Skips,
-}
-
-/// What a request may do to its machine's guest process.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Guest {
-    Kept,
-    /// It may start a new VMM, which a recording follows from its start.
-    MayRestart,
 }
 
 /// How the daemon serves one kind of request.

@@ -12,9 +12,9 @@ use gpui::{
 };
 
 use crate::screen::Picture;
-use crate::theme::{Hue, MONO, Theme};
 use crate::timeline::{Family, Moment};
 use crate::ui;
+use crate::ui::theme::{Hue, MONO, Theme};
 
 /// The widest a caption gets.
 const CAPTION_MAX: f32 = 300.;
@@ -61,7 +61,7 @@ fn chip(fill: Hsla, ink: Hsla) -> Div {
 /// does what it does (named by its client when several act).
 pub(crate) fn layer(moments: &[Moment], picture: Picture, now: f64) -> impl IntoElement {
     let drawn = film::Picture::at(moments, picture.points, now);
-    let mut layer = crate::shapes::layer(drawn.shapes, picture);
+    let mut layer = crate::screen::shapes::layer(drawn.shapes, picture);
     for caption in film::Caption::at(moments, now) {
         let words = match (caption.why, caption.client) {
             (Some(why), Some(client)) => format!("{} · {why}", ui::upper(&client)),

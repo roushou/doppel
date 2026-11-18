@@ -11,11 +11,11 @@ use gpui::{
     StatefulInteractiveElement, Styled, Window, div, px, rgb,
 };
 
-use crate::icons::Icon;
-use crate::inspect::Looking;
 use crate::screen::Picture;
-use crate::theme::Theme;
+use crate::screen::inspect::Looking;
 use crate::timeline::TextRead;
+use crate::ui::icons::Icon;
+use crate::ui::theme::Theme;
 use doppel_desktop::geometry::Rect;
 
 /// What the layer draws: a read, or why there is none to draw.

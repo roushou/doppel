@@ -7,7 +7,7 @@ use gpui::{
     KeyDownEvent, ParentElement, Render, SharedString, Styled, Window, div, px,
 };
 
-use crate::theme::{SANS, Theme};
+use crate::ui::theme::{SANS, Theme};
 
 /// What the field tells its owner.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

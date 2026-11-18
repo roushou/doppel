@@ -17,7 +17,7 @@ pub(crate) use srgb::tag as tag_window;
 
 use gpui::App;
 
-use crate::icons::Assets;
+use crate::ui::icons::Assets;
 
 /// Launches the app, and opens the window with `open`: the app quits when
 /// it's closed, or when it can't be opened.

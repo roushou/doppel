@@ -9,10 +9,10 @@ use clap::Args;
 use doppel_client::{StopMode, Window};
 use doppel_host::capabilities::OsEntropy;
 use doppel_host::golden::plan::GuestUserName;
-use doppel_host::launcher::VmmBinary;
 use doppel_host::machines::CLAIM_TIMEOUT;
 use doppel_host::provision::{Account, Setup};
 use doppel_host::restore_image::plan::Downloaded;
+use doppel_host::vmm::launcher::VmmBinary;
 use doppel_machine::login::LoginPassword;
 use doppel_machine::machine::{Hardware, MachineName};
 

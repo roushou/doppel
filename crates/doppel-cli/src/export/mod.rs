@@ -2,6 +2,8 @@
 //! did burned in. The scene decides what is drawn when ([`Reel`]); the
 //! VMM binary paints it on the frames and encodes them.
 
+mod reel;
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
@@ -10,11 +12,10 @@ use anyhow::{Context as _, Result, bail};
 use doppel_desktop::ax::tree::AxSnapshot;
 use doppel_desktop::geometry::Size;
 use doppel_scene::film::{POINTER_MS, Reel};
+use doppel_scene::recordings::from_trace;
 use doppel_scene::recordings::{Recording, Video};
-use doppel_scene::timeline::{Seen, from_trace};
+use doppel_scene::timeline::Seen;
 use prost::Message as _;
-
-use crate::reel;
 
 /// What an export made.
 #[derive(Debug, Clone, PartialEq)]

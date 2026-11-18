@@ -13,10 +13,10 @@ use gpui::{
     px,
 };
 
-use crate::field::{FieldEvent, TextField};
-use crate::icons::Icon;
 use crate::model::{Action, Machine, Order};
-use crate::theme::{MONO, Theme};
+use crate::ui::field::{FieldEvent, TextField};
+use crate::ui::icons::Icon;
+use crate::ui::theme::{MONO, Theme};
 use crate::ui::{self, Button, Enabled, Look};
 use crate::{Daemon, LocalTime};
 

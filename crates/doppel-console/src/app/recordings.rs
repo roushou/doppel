@@ -10,9 +10,9 @@ use gpui::{
     prelude::FluentBuilder, px, relative,
 };
 
-use crate::icons::Icon;
 use crate::recordings::{self, RecordingId, RecordingSummary};
-use crate::theme::{Hue, MONO, Theme};
+use crate::ui::icons::Icon;
+use crate::ui::theme::{Hue, MONO, Theme};
 use crate::ui::{Button, Look};
 use crate::{Daemon, LocalClock};
 

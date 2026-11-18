@@ -3,6 +3,10 @@
 //! Chrome labels are small, monospaced and upper case; GPUI has no
 //! text-transform, so the strings are upper-cased where they are built.
 
+pub(crate) mod field;
+pub(crate) mod icons;
+pub(crate) mod theme;
+
 use std::time::Duration;
 
 use gpui::prelude::FluentBuilder as _;
@@ -12,8 +16,8 @@ use gpui::{
     percentage, px,
 };
 
-use crate::icons::Icon;
-use crate::theme::{MONO, Theme};
+use crate::ui::icons::Icon;
+use crate::ui::theme::{MONO, Theme};
 
 /// The group a button's icon follows on hover.
 const BUTTON: &str = "doppel-button";

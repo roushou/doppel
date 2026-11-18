@@ -41,11 +41,11 @@ use crate::agent::{AgentClient, AgentError};
 use crate::agent_grant::plan::AgentGrant;
 use crate::agent_grant::{AgentGrantError, DiskImage};
 use crate::capabilities::Clock;
-use crate::display::DisplayError;
 use crate::files::{FileOpError, Filesystem};
-use crate::launcher::{Boot, LaunchError, VmmBinary, Window};
 use crate::login::{AwaitDesktopError, PasswordFile, PasswordFileError};
 use crate::store::{Listed, Store, StoreError};
+use crate::vmm::display::DisplayError;
+use crate::vmm::launcher::{Boot, LaunchError, VmmBinary, Window};
 use crate::vmm::{StopMode, VmmClient, VmmError};
 use doppel_protocol::transport::Cancel;
 

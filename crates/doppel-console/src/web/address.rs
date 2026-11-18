@@ -10,7 +10,7 @@ use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::Closure;
 
 use super::js;
-use crate::address::Entry;
+use crate::route::Entry;
 
 /// The path the page was opened at, or moved to.
 pub(crate) fn current() -> Option<String> {

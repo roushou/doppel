@@ -3,6 +3,8 @@
 //! of the daemon's applies the setting; requests change it and wait for it
 //! to apply.
 
+pub(crate) mod tokens;
+
 use std::fs::{self, OpenOptions};
 use std::io::Write as _;
 use std::net::{Ipv6Addr, SocketAddr};

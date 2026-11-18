@@ -232,14 +232,14 @@ pub(crate) const MONO: &str = "Geist Mono";
 
 /// The fonts' files, for the text system to load before the window opens.
 pub(crate) const FONTS: [&[u8]; 8] = [
-    include_bytes!("../assets/fonts/Geist-400.ttf"),
-    include_bytes!("../assets/fonts/Geist-500.ttf"),
-    include_bytes!("../assets/fonts/Geist-600.ttf"),
-    include_bytes!("../assets/fonts/Geist-700.ttf"),
-    include_bytes!("../assets/fonts/GeistMono-400.ttf"),
-    include_bytes!("../assets/fonts/GeistMono-500.ttf"),
-    include_bytes!("../assets/fonts/GeistMono-600.ttf"),
-    include_bytes!("../assets/fonts/GeistMono-700.ttf"),
+    include_bytes!("../../assets/fonts/Geist-400.ttf"),
+    include_bytes!("../../assets/fonts/Geist-500.ttf"),
+    include_bytes!("../../assets/fonts/Geist-600.ttf"),
+    include_bytes!("../../assets/fonts/Geist-700.ttf"),
+    include_bytes!("../../assets/fonts/GeistMono-400.ttf"),
+    include_bytes!("../../assets/fonts/GeistMono-500.ttf"),
+    include_bytes!("../../assets/fonts/GeistMono-600.ttf"),
+    include_bytes!("../../assets/fonts/GeistMono-700.ttf"),
 ];
 
 #[cfg(test)]

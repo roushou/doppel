@@ -60,7 +60,7 @@ view-only, since a person's input can't be placed on it.
 What the client, daemon, MCP server and scene all speak has one owner:
 `doppel-desktop` for input's `Via`, a screenshot's `ScreenshotSize`, a
 snapshot's `SnapshotSpec` and the agent's `AgentReport`, and
-`doppel-machine` for a machine's `MachineReport`. `doppel-protocol` converts the wire forms (`convert.rs`).
+`doppel-machine` for a machine's `MachineReport`. `doppel-protocol` converts the wire forms (`convert/`).
 
 Activity has two vocabularies. `doppel_machine::activity` and
 `::recording` are the stream and a recording's trace as parsed (by

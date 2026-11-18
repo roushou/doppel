@@ -3,7 +3,7 @@
 
 use futures::stream::{self, Empty};
 
-use crate::address::Entry;
+use crate::route::Entry;
 
 /// None: the window opens where `doppel view` says.
 pub(crate) const fn current() -> Option<String> {

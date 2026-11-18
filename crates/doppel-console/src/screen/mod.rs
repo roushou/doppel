@@ -4,6 +4,11 @@
 //! update in the view's mailbox, and sends the input the view pumps, in
 //! order. Dropping the view ends both.
 
+pub(crate) mod inspect;
+pub(crate) mod overlay;
+pub(crate) mod reading;
+pub(crate) mod shapes;
+
 use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -19,7 +24,7 @@ use gpui::{
 use crate::input::Placement;
 use crate::platform::{self, Frame};
 use crate::steering::{SteerEvent, SteerRequest, Steering};
-use crate::theme::Theme;
+use crate::ui::theme::Theme;
 use crate::{Button, GuestInput, Key, Modifier, PointerPhase, Screen};
 use doppel_desktop::geometry::Size;
 
