@@ -14,4 +14,5 @@ pub(crate) mod machines;
 pub(crate) mod mcp;
 pub(crate) mod record;
 pub(crate) mod sessions;
+pub(crate) mod setup;
 pub(crate) mod view;

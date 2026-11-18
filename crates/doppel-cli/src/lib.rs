@@ -20,6 +20,7 @@ mod launchd;
 mod mcp;
 mod reel;
 mod report;
+mod setup;
 mod signals;
 mod tokens;
 mod view;
@@ -63,6 +64,7 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    Setup(commands::setup::SetupCmd),
     Ls(machines::LsCmd),
     Create(machines::CreateCmd),
     Import(machines::ImportCmd),
@@ -136,7 +138,8 @@ impl Command {
             | Self::ForgetCheckpoint(_)
             | Self::Sessions(_)
             | Self::Mcp(_) => Reach::Daemon,
-            Self::Create(_)
+            Self::Setup(_)
+            | Self::Create(_)
             | Self::Import(_)
             | Self::SetPassword(_)
             | Self::ForgetPassword(_)
@@ -156,6 +159,7 @@ impl Command {
 
     fn run(self, ctx: Context) -> Result<Report> {
         match self {
+            Self::Setup(cmd) => cmd.run(&ctx),
             Self::Ls(cmd) => cmd.run(&ctx),
             Self::Create(cmd) => cmd.run(&ctx),
             Self::Import(cmd) => cmd.run(&ctx),

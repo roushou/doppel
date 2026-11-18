@@ -44,13 +44,34 @@ It's early: the [roadmap](docs/roadmap.md) says what works.
 
 ## Get started
 
-You need an Apple silicon Mac on macOS 27, and a macOS restore image
-(`.ipsw`).
+You need an Apple silicon Mac on macOS 27, with about 60 GB free while
+setup runs (macOS is a 26 GB download, removed once installed).
 
-- Install Doppel, and have launchd start its daemon when needed:
+```sh
+brew install roushou/doppel/doppel
+doppel setup
+claude mcp add doppel -- doppel mcp --from golden
+```
+
+`doppel setup` installs the daemon, downloads the newest macOS this Mac
+supports, installs it into a new machine, puts the guest agent in with its
+permissions granted, and makes the machine a golden image, `golden`. Each
+agent session then gets a fresh fork of it, deleted when the session ends.
+It takes a while; run it again after an interruption and it carries on.
+`--ipsw` installs from a restore image you have, and `--json` reports for
+programs that set Doppel up.
+
+`doppel doctor` checks that an agent can be given a machine, and says what
+to fix if not; `--json` is the same for programs. `doppel --help` lists
+every command.
+
+### Step by step
+
+What `setup` does, to make a machine your own way:
+
+- Have launchd start the daemon when needed:
 
   ```sh
-  brew install roushou/doppel/doppel
   doppel daemon install
   ```
 
@@ -79,11 +100,6 @@ You need an Apple silicon Mac on macOS 27, and a macOS restore image
   doppel golden prepare dev
   claude mcp add doppel -- doppel mcp --from dev
   ```
-
-- `doppel doctor` checks that an agent can be given a machine, and says
-  what to fix if not; `--json` is the same for programs that set Doppel up.
-
-- `doppel --help` lists every command.
 
 ### From source
 

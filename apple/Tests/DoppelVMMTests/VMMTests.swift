@@ -9,6 +9,14 @@ import DoppelWire
 @Suite struct CommandParsing {
     let files = ["--spec", "/m/spec.pb", "--disk", "/m/disk.img", "--aux", "/m/aux.bin"]
 
+    @Test func latestImageTakesNoOptions() throws {
+        guard case .latestImage = try Command(arguments: ["latest-image"]) else {
+            Issue.record("expected latest-image"); return
+        }
+        let image = LatestImage(build: "27A123", url: URL(string: "https://updates.example/a.ipsw")!)
+        #expect(image.line == "27A123 https://updates.example/a.ipsw")
+    }
+
     @Test func serveWithStateAndWindow() throws {
         let command = try Command(arguments: ["serve"] + files + ["--socket", "/tmp/d/m.sock", "--consume-state", "/m/s.vzsave", "--window"])
         guard case .serve(let f, let socket, .consumeState(let state), .shown) = command else { Issue.record("\(command)"); return }
@@ -41,6 +49,7 @@ import DoppelWire
         ["serve", "--spec", "/a", "--disk", "/d", "--aux", "/a", "--socket", "/s", "--bogus", "x"],
         ["serve", "--spec", "/a", "--spec", "/b"],
         ["frobnicate"],
+        ["latest-image", "--spec", "/a"],
         [],
     ])
     func rejectsBadArguments(arguments: [String]) {

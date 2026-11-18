@@ -87,6 +87,20 @@ impl DataRoot {
         }
     }
 
+    /// Downloaded macOS restore images, kept until a machine is installed
+    /// from them.
+    #[must_use]
+    pub fn restore_images_dir(&self) -> PathBuf {
+        self.0.join("restore-images")
+    }
+
+    /// `doppel setup`'s record of the golden image it is making, so a
+    /// second run carries on with that machine and leaves others alone.
+    #[must_use]
+    pub fn setup_record(&self) -> PathBuf {
+        self.0.join("setup.json")
+    }
+
     /// Where a machine goes while it is deleted: out of `machines/`, so it
     /// leaves the list whole, and into `deleting/`, where nothing reads.
     #[must_use]

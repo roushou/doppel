@@ -89,9 +89,8 @@ class Doppel < Formula
 
   def caveats
     <<~EOS
-      Start the daemon at login, then check what's missing:
-        doppel daemon install
-        doppel doctor
+      Make a golden image for agents (downloads macOS; takes a while):
+        doppel setup
     EOS
   end
 

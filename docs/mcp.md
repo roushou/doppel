@@ -24,6 +24,10 @@ claude mcp add doppel -- /path/to/doppel mcp --from ready
   another.
 - `--record` (or `DOPPEL_RECORD=1`) records the session: videos, captions and
   a trace of every call. The format is in [doppeld.md](doppeld.md#recordings-and-traces).
+- `doppel setup` makes a golden image from nothing: the daemon, the newest
+  macOS, a machine with the agent granted, prepared. `--json` prints
+  `ready`, then the `golden_image` and its `mcp_command`, or why setup is
+  `blocked` (exit 1).
 - `doppel doctor` checks, before any session, that `--from` can work: the
   VMM, the daemon, a golden image with its template, and room for one more
   VM. It exits 1 unless ready. A tool that sets Doppel up reads `doppel

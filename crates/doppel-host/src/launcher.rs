@@ -11,6 +11,7 @@ use std::process::{Child, Command, Stdio};
 
 use crate::golden::plan::GuestUserName;
 use crate::provision::FullName;
+use crate::restore_image::plan::{LatestImage, RestoreImageError};
 use doppel_machine::bundle::{ImageFiles, SocketPath};
 use doppel_protocol::convert::RemoteError;
 use doppel_protocol::frame::{FrameDecoder, MaxFrameLen, Received, StreamError};
@@ -36,6 +37,10 @@ pub enum LaunchError {
     NoOutcome(String),
     #[error("installation failed: {0}")]
     Failed(#[from] RemoteError),
+    #[error("couldn't find the latest restore image ({status}): {why}")]
+    LatestImage { status: String, why: String },
+    #[error(transparent)]
+    LatestImageLine(#[from] RestoreImageError),
 }
 
 /// How the VM comes up.
@@ -144,6 +149,26 @@ impl VmmBinary {
             .process_group(0)
             .spawn()
             .map_err(LaunchError::Spawn)
+    }
+
+    /// The newest restore image Apple's catalog has for this Mac.
+    ///
+    /// # Errors
+    /// The VMM couldn't ask (offline, say), or printed something else.
+    pub fn latest_image(&self) -> Result<LatestImage, LaunchError> {
+        let output = self
+            .command()?
+            .arg("latest-image")
+            .stdin(Stdio::null())
+            .output()
+            .map_err(LaunchError::Spawn)?;
+        if !output.status.success() {
+            return Err(LaunchError::LatestImage {
+                status: output.status.to_string(),
+                why: String::from_utf8_lossy(&output.stderr).trim().to_owned(),
+            });
+        }
+        Ok(String::from_utf8_lossy(&output.stdout).parse()?)
     }
 
     /// Installs macOS from a restore image, reporting progress as it goes.

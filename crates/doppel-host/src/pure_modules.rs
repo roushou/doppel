@@ -2,7 +2,7 @@
 //! parse text, and the shell modules beside them perform what they say.
 
 /// Each pure module, outside its own tests.
-const PURE: [(&str, &str); 6] = [
+const PURE: [(&str, &str); 7] = [
     ("agent_grant/plan.rs", include_str!("agent_grant/plan.rs")),
     ("golden/plan.rs", include_str!("golden/plan.rs")),
     (
@@ -12,16 +12,21 @@ const PURE: [(&str, &str); 6] = [
     ("bootstrap/plan.rs", include_str!("bootstrap/plan.rs")),
     ("provision.rs", include_str!("provision.rs")),
     ("dhcp_leases.rs", include_str!("dhcp_leases.rs")),
+    (
+        "restore_image/plan.rs",
+        include_str!("restore_image/plan.rs"),
+    ),
 ];
 
 /// The only modules of this crate a pure module may use.
-const PURE_PATHS: [&str; 6] = [
+const PURE_PATHS: [&str; 7] = [
     "crate::agent_grant::plan",
     "crate::golden::plan",
     "crate::agent_install::plan",
     "crate::bootstrap::plan",
     "crate::provision",
     "crate::dhcp_leases",
+    "crate::restore_image::plan",
 ];
 
 const FORBIDDEN: [&str; 11] = [
