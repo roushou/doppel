@@ -44,23 +44,20 @@ It's early: the [roadmap](docs/roadmap.md) says what works.
 
 ## Get started
 
-You need:
+You need an Apple silicon Mac on macOS 27, and a macOS restore image
+(`.ipsw`).
 
-- An Apple silicon Mac on macOS 27, with Xcode 27
-- Rust (pinned in `rust-toolchain.toml`), Node.js with pnpm, and
-  [`buf`](https://buf.build/docs/installation)
-- A macOS restore image (`.ipsw`)
-- An Apple Development signing identity (recommended: the guest's permission
-  grants follow the agent's signature)
-
-Then:
-
-- Build, and make a machine:
+- Install Doppel, and have launchd start its daemon when needed:
 
   ```sh
-  scripts/build.sh
-  export PATH="$PWD/target/debug:$PATH"
+  brew install roushou/doppel/doppel
   doppel daemon install
+  ```
+
+- Make a machine. macOS makes the account itself on its first boot; then
+  the guest agent goes in:
+
+  ```sh
   doppel create dev --ipsw path/to/macOS.ipsw --user doppel
   doppel agent bootstrap dev --user doppel
   ```
@@ -80,13 +77,26 @@ Then:
 
   ```sh
   doppel golden prepare dev
-  claude mcp add doppel -- "$PWD/target/debug/doppel" mcp --from dev
+  claude mcp add doppel -- doppel mcp --from dev
   ```
 
 - `doppel doctor` checks that an agent can be given a machine, and says
   what to fix if not; `--json` is the same for programs that set Doppel up.
 
 - `doppel --help` lists every command.
+
+### From source
+
+To work on Doppel, build it instead: Xcode 27, Rust (pinned in
+`rust-toolchain.toml`), Node.js with pnpm, and
+[`buf`](https://buf.build/docs/installation). Builds are signed with your
+Developer ID Application or Apple Development identity if you have one: the
+guest's permission grants follow the agent's signature.
+
+```sh
+scripts/build.sh
+export PATH="$PWD/target/debug:$PATH"
+```
 
 ## Screenshots
 
