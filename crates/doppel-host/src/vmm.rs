@@ -197,7 +197,7 @@ impl<'c, C: Clock> VmmClient<'c, C> {
 
     fn state_and_window(&mut self, by: Deadline) -> Result<(RunState, Option<Window>), VmmError> {
         match self.call_outcome(vmm::vmm_request::Operation::GetState(vmm::GetState {}), by)? {
-            vmm::vmm_response::Outcome::State(state) => Ok(state.into()),
+            vmm::vmm_response::Outcome::State(state) => Ok((state.state(), state.window_shown())),
             vmm::vmm_response::Outcome::Error(_)
             | vmm::vmm_response::Outcome::Done(_)
             | vmm::vmm_response::Outcome::StateSaved(_)

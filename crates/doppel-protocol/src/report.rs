@@ -66,7 +66,7 @@ impl MachineFailure {
     pub fn from_wire(failure: daemon::MachineFailure) -> Self {
         Self {
             certainty: daemon::Certainty::try_from(failure.certainty)
-                .map_or(Certainty::MaybeDone, Certainty::from),
+                .map_or(Certainty::MaybeDone, daemon::Certainty::or_maybe_done),
             message: failure.message,
             cause: Cause::chain(failure.causes),
         }

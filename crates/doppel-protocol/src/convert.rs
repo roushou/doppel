@@ -92,16 +92,24 @@ impl TryFrom<daemon::MachineReport> for MachineReport {
 
 // --- Run state ------------------------------------------------------------------
 
-/// What a VMM says about its VM: how it runs, and how it's shown when it
-/// says (`None` from a VMM that doesn't, or with a value unknown here).
-impl From<vmm::VmState> for (RunState, Option<Window>) {
-    fn from(state: vmm::VmState) -> Self {
-        let window = match vmm::WindowMode::try_from(state.window) {
+/// What a VMM says about its VM.
+impl vmm::VmState {
+    /// How it runs. A value this build doesn't know is kept, as
+    /// [`RunState::Unrecognized`].
+    #[must_use]
+    pub fn state(&self) -> RunState {
+        run_state(self.run_state)
+    }
+
+    /// How it's shown, when the VMM says: `None` from a VMM that doesn't,
+    /// and for a value unknown here, whose number isn't kept.
+    #[must_use]
+    pub fn window_shown(&self) -> Option<Window> {
+        match vmm::WindowMode::try_from(self.window) {
             Ok(vmm::WindowMode::Hidden) => Some(Window::Hidden),
             Ok(vmm::WindowMode::Shown) => Some(Window::Shown),
             Ok(vmm::WindowMode::Unspecified) | Err(_) => None,
-        };
-        (run_state(state.run_state), window)
+        }
     }
 }
 
@@ -292,13 +300,15 @@ impl From<Certainty> for daemon::Certainty {
     }
 }
 
-impl From<daemon::Certainty> for Certainty {
-    /// Infallible: a value this build doesn't know may have taken effect,
-    /// never the reverse.
-    fn from(certainty: daemon::Certainty) -> Self {
-        match certainty {
-            daemon::Certainty::NotDone => Self::NotDone,
-            daemon::Certainty::MaybeDone | daemon::Certainty::Unspecified => Self::MaybeDone,
+impl daemon::Certainty {
+    /// Whether a failed call may have taken effect. Unset, or a value this
+    /// build doesn't know, reads as [`Certainty::MaybeDone`]: an unknown
+    /// outcome is never rounded up to "not done".
+    #[must_use]
+    pub const fn or_maybe_done(self) -> Certainty {
+        match self {
+            Self::NotDone => Certainty::NotDone,
+            Self::MaybeDone | Self::Unspecified => Certainty::MaybeDone,
         }
     }
 }
@@ -416,8 +426,11 @@ impl Micros {
     }
 }
 
-impl From<&LoginOutcome> for daemon::LoginResult {
-    fn from(outcome: &LoginOutcome) -> Self {
+impl daemon::LoginResult {
+    /// The outcome, its durations in whole microseconds: below one is
+    /// dropped, and past `u64::MAX` saturates.
+    #[must_use]
+    pub fn in_micros(outcome: &LoginOutcome) -> Self {
         use daemon::login_result::Outcome;
         let outcome = match outcome {
             LoginOutcome::AlreadyActive { after } => {
@@ -632,11 +645,11 @@ mod tests {
     #[test]
     fn a_vmm_state_says_its_window_when_the_vmm_does() {
         let state = |window: i32| -> (RunState, Option<Window>) {
-            vmm::VmState {
+            let state = vmm::VmState {
                 run_state: vmm::VmRunState::Running as i32,
                 window,
-            }
-            .into()
+            };
+            (state.state(), state.window_shown())
         };
         assert_eq!(
             state(vmm::WindowMode::Shown as i32),
@@ -690,7 +703,7 @@ mod tests {
             },
         ] {
             assert_eq!(
-                LoginOutcome::try_from(daemon::LoginResult::from(&outcome)),
+                LoginOutcome::try_from(daemon::LoginResult::in_micros(&outcome)),
                 Ok(outcome)
             );
         }
@@ -699,13 +712,15 @@ mod tests {
     #[test]
     fn a_certainty_this_build_doesn_t_know_may_have_taken_effect() {
         assert_eq!(
-            Certainty::from(daemon::Certainty::Unspecified),
+            daemon::Certainty::Unspecified.or_maybe_done(),
             Certainty::MaybeDone
         );
-        assert_eq!(
-            Certainty::from(daemon::Certainty::from(Certainty::NotDone)),
-            Certainty::NotDone
-        );
+        for certainty in [Certainty::NotDone, Certainty::MaybeDone] {
+            assert_eq!(
+                daemon::Certainty::from(certainty).or_maybe_done(),
+                certainty
+            );
+        }
     }
 
     #[test]
@@ -751,7 +766,8 @@ mod tests {
 mod input_convert {
     use doppel_machine::geometry::Point;
     use doppel_machine::input::{
-        Button, ClickCount, Input, Key, KeyChord, Modifier, NamedKey, Pointer, PointerPhase,
+        Button, ClickCount, FunctionKey, Input, Key, KeyChord, Modifier, NamedKey, Pointer,
+        PointerPhase,
     };
 
     use crate::pb::common::v1 as common;
@@ -779,9 +795,20 @@ mod input_convert {
                 NamedKey::End => common::NamedKey::End,
                 NamedKey::PageUp => common::NamedKey::PageUp,
                 NamedKey::PageDown => common::NamedKey::PageDown,
-                // F1..F12 are contiguous on the wire (21..=32); the core guarantees 1..=12.
-                NamedKey::F(n) => common::NamedKey::try_from(20 + i32::from(n))
-                    .unwrap_or(common::NamedKey::Unspecified),
+                NamedKey::F(key) => match key {
+                    FunctionKey::F1 => common::NamedKey::F1,
+                    FunctionKey::F2 => common::NamedKey::F2,
+                    FunctionKey::F3 => common::NamedKey::F3,
+                    FunctionKey::F4 => common::NamedKey::F4,
+                    FunctionKey::F5 => common::NamedKey::F5,
+                    FunctionKey::F6 => common::NamedKey::F6,
+                    FunctionKey::F7 => common::NamedKey::F7,
+                    FunctionKey::F8 => common::NamedKey::F8,
+                    FunctionKey::F9 => common::NamedKey::F9,
+                    FunctionKey::F10 => common::NamedKey::F10,
+                    FunctionKey::F11 => common::NamedKey::F11,
+                    FunctionKey::F12 => common::NamedKey::F12,
+                },
             }
         }
     }
@@ -926,21 +953,18 @@ mod input_convert {
                     common::NamedKey::End => NamedKey::End,
                     common::NamedKey::PageUp => NamedKey::PageUp,
                     common::NamedKey::PageDown => NamedKey::PageDown,
-                    f @ (common::NamedKey::F1
-                    | common::NamedKey::F2
-                    | common::NamedKey::F3
-                    | common::NamedKey::F4
-                    | common::NamedKey::F5
-                    | common::NamedKey::F6
-                    | common::NamedKey::F7
-                    | common::NamedKey::F8
-                    | common::NamedKey::F9
-                    | common::NamedKey::F10
-                    | common::NamedKey::F11
-                    | common::NamedKey::F12) => {
-                        // Contiguous on the wire (21..=32).
-                        NamedKey::F(u8::try_from(f as i32 - 20).map_err(|_| unknown)?)
-                    }
+                    common::NamedKey::F1 => NamedKey::F(FunctionKey::F1),
+                    common::NamedKey::F2 => NamedKey::F(FunctionKey::F2),
+                    common::NamedKey::F3 => NamedKey::F(FunctionKey::F3),
+                    common::NamedKey::F4 => NamedKey::F(FunctionKey::F4),
+                    common::NamedKey::F5 => NamedKey::F(FunctionKey::F5),
+                    common::NamedKey::F6 => NamedKey::F(FunctionKey::F6),
+                    common::NamedKey::F7 => NamedKey::F(FunctionKey::F7),
+                    common::NamedKey::F8 => NamedKey::F(FunctionKey::F8),
+                    common::NamedKey::F9 => NamedKey::F(FunctionKey::F9),
+                    common::NamedKey::F10 => NamedKey::F(FunctionKey::F10),
+                    common::NamedKey::F11 => NamedKey::F(FunctionKey::F11),
+                    common::NamedKey::F12 => NamedKey::F(FunctionKey::F12),
                     common::NamedKey::Unspecified => return Err(unknown),
                 },
             )
@@ -1180,9 +1204,9 @@ mod input_convert {
                 NamedKey::End,
                 NamedKey::PageUp,
                 NamedKey::PageDown,
-                NamedKey::F(1),
-                NamedKey::F(12),
-            ];
+            ]
+            .into_iter()
+            .chain(FunctionKey::ALL.map(NamedKey::F));
             for key in keys {
                 let wire = common::NamedKey::from(key) as i32;
                 assert_eq!(ParseError::named_key(wire), Ok(key), "{key:?}");
@@ -1190,17 +1214,15 @@ mod input_convert {
         }
 
         #[test]
-        fn function_keys_map_onto_the_wire_range() {
-            for n in 1..=12u8 {
-                assert_ne!(
-                    common::NamedKey::from(NamedKey::F(n)),
-                    common::NamedKey::Unspecified,
-                    "F{n}"
-                );
-            }
-            assert_eq!(common::NamedKey::from(NamedKey::F(1)), common::NamedKey::F1);
+        fn each_function_key_has_its_own_wire_key() {
+            let wire: std::collections::BTreeSet<i32> = FunctionKey::ALL
+                .map(|key| common::NamedKey::from(NamedKey::F(key)) as i32)
+                .into_iter()
+                .collect();
+            assert_eq!(wire.len(), 12);
+            assert!(!wire.contains(&(common::NamedKey::Unspecified as i32)));
             assert_eq!(
-                common::NamedKey::from(NamedKey::F(12)),
+                common::NamedKey::from(NamedKey::F(FunctionKey::F12)),
                 common::NamedKey::F12
             );
         }
@@ -1901,8 +1923,11 @@ mod ax_convert {
         }
     }
 
-    impl From<&SnapshotRequest> for agent::TakeAxSnapshot {
-        fn from(request: &SnapshotRequest) -> Self {
+    impl agent::TakeAxSnapshot {
+        /// The request, its deadline in whole milliseconds: below one is
+        /// dropped, and past `u32::MAX` saturates.
+        #[must_use]
+        pub fn in_millis(request: &SnapshotRequest) -> Self {
             Self {
                 scope: Some(match request.scope {
                     Scope::FocusedWindow => {
@@ -2132,8 +2157,11 @@ mod exec_convert {
     use super::ParseError;
     use crate::pb::agent::v1 as agent;
 
-    impl From<&ExecRequest> for agent::Exec {
-        fn from(request: &ExecRequest) -> Self {
+    impl agent::Exec {
+        /// The request, its timeout in whole milliseconds: below one is
+        /// dropped ([`ExecRequest`] bounds it above).
+        #[must_use]
+        pub fn in_millis(request: &ExecRequest) -> Self {
             Self {
                 program: request.program().as_str().to_owned(),
                 arguments: request.arguments().to_vec(),
@@ -2237,12 +2265,12 @@ mod exec_convert {
             .unwrap()
             .with_stdin(b"in".to_vec());
             assert_eq!(
-                ExecRequest::try_from(agent::Exec::from(&request)),
+                ExecRequest::try_from(agent::Exec::in_millis(&request)),
                 Ok(request.clone())
             );
             let elsewhere = request.in_directory("/tmp".parse().unwrap());
             assert_eq!(
-                ExecRequest::try_from(agent::Exec::from(&elsewhere)),
+                ExecRequest::try_from(agent::Exec::in_millis(&elsewhere)),
                 Ok(elsewhere)
             );
             for output in [
@@ -2277,7 +2305,7 @@ mod exec_convert {
             .unwrap()
             .with_stdin(b"in".to_vec())
             .in_directory("/tmp".parse().unwrap());
-            let wire = agent::Exec::from(&request);
+            let wire = agent::Exec::in_millis(&request);
             assert_eq!(
                 (
                     wire.program.as_str(),
@@ -2530,8 +2558,11 @@ mod wait_convert {
         }
     }
 
-    impl From<&WaitOutcome<AxSnapshot>> for daemon::ElementWaitResult {
-        fn from(outcome: &WaitOutcome<AxSnapshot>) -> Self {
+    impl daemon::ElementWaitResult {
+        /// The outcome, its elapsed time in whole microseconds: below one is
+        /// dropped, and past `u64::MAX` saturates.
+        #[must_use]
+        pub fn in_micros(outcome: &WaitOutcome<AxSnapshot>) -> Self {
             use daemon::element_wait_result::End as Wire;
             let (end, seen) = End::of(outcome);
             Self {
@@ -2558,8 +2589,11 @@ mod wait_convert {
         }
     }
 
-    impl From<&WaitOutcome<ScreenText>> for daemon::TextWaitResult {
-        fn from(outcome: &WaitOutcome<ScreenText>) -> Self {
+    impl daemon::TextWaitResult {
+        /// The outcome, its elapsed time in whole microseconds: below one is
+        /// dropped, and past `u64::MAX` saturates.
+        #[must_use]
+        pub fn in_micros(outcome: &WaitOutcome<ScreenText>) -> Self {
             use daemon::text_wait_result::End as Wire;
             let (end, seen) = End::of(outcome);
             Self {
@@ -2679,7 +2713,7 @@ mod wait_convert {
                 },
             ];
             for outcome in outcomes {
-                let wire = daemon::ElementWaitResult::from(&outcome);
+                let wire = daemon::ElementWaitResult::in_micros(&outcome);
                 assert_eq!(WaitOutcome::try_from(wire), Ok(outcome));
             }
             let unseen = daemon::ElementWaitResult {

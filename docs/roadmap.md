@@ -71,10 +71,13 @@ person.
   restart, and the fast one keeps working. Decide whether `find_text` and
   text waits fall back to the fast recognizer and say so in the result.
   Done when: the decision is made and, if it's a fallback, a test covers it.
-- **Conversions that drop information.** Check `doppel-protocol`'s
-  `convert.rs` for `From` impls that lose values; each becomes lossless, a
-  `TryFrom`, or a named method. Done when: every remaining `From` there is
-  lossless.
+- **Unrecognized values that can pass for known ones.** `RunState`,
+  `Session`, `Permission`, `Truncation` and `Completeness` keep a value this
+  build doesn't know as a public raw number, which `convert.rs` writes back
+  as received. Nothing stops building one with a known number (an
+  `Unrecognized(2)` that encodes as `Running`), so those five `From`s are
+  lossless only for values the parsers make. Done when: such a value can't
+  be built, or the encoding says what it does with one.
 - **The screen lags after a resume from saved memory.** After a `start`
   that resumes, a `rollback` or a `checkpoint`, the guest's drawing stalls
   for 1–10 s while Virtualization.framework rebuilds its paravirtual

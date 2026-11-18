@@ -40,6 +40,8 @@ impl fmt::Debug for ExecRequest {
 }
 
 impl ExecRequest {
+    /// The agent counts timeouts in whole milliseconds.
+    pub const MIN_TIMEOUT: Duration = Duration::from_millis(1);
     pub const MAX_TIMEOUT: Duration = Duration::from_secs(600);
     pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
     /// Per stream. Frames are at most 64 MiB; leave room for both streams.
@@ -54,7 +56,7 @@ impl ExecRequest {
         timeout: Duration,
         max_output: u32,
     ) -> Result<Self, ExecError> {
-        if timeout.is_zero() || timeout > Self::MAX_TIMEOUT {
+        if timeout < Self::MIN_TIMEOUT || timeout > Self::MAX_TIMEOUT {
             return Err(ExecError::Timeout(timeout));
         }
         if max_output == 0 || max_output > Self::MAX_OUTPUT {
@@ -165,6 +167,9 @@ mod tests {
     #[test]
     fn limits_are_checked() {
         assert!(ExecRequest::new(sw_vers(), vec![], Duration::ZERO, 1).is_err());
+        // The agent counts whole milliseconds: less would be sent as none.
+        assert!(ExecRequest::new(sw_vers(), vec![], Duration::from_micros(500), 1).is_err());
+        assert!(ExecRequest::new(sw_vers(), vec![], ExecRequest::MIN_TIMEOUT, 1).is_ok());
         assert!(ExecRequest::new(sw_vers(), vec![], Duration::from_secs(601), 1).is_err());
         assert!(ExecRequest::new(sw_vers(), vec![], Duration::from_secs(1), 0).is_err());
         assert!(

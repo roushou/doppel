@@ -83,8 +83,7 @@ pub enum NamedKey {
     End,
     PageUp,
     PageDown,
-    /// F1 to F12.
-    F(u8),
+    F(host::FunctionKey),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -155,10 +154,12 @@ impl TryFrom<&gpui::Keystroke> for Key {
             "pageup" => NamedKey::PageUp,
             "pagedown" => NamedKey::PageDown,
             other => {
-                if let Some(n) = other.strip_prefix('f').and_then(|n| n.parse::<u8>().ok())
-                    && (1..=12).contains(&n)
+                if let Some(key) = other
+                    .strip_prefix('f')
+                    .and_then(|n| n.parse::<u8>().ok())
+                    .and_then(host::FunctionKey::numbered)
                 {
-                    return Ok(Self::Named(NamedKey::F(n)));
+                    return Ok(Self::Named(NamedKey::F(key)));
                 }
                 let mut chars = other.chars();
                 return match (chars.next(), chars.next()) {
@@ -389,7 +390,7 @@ mod tests {
             }
         );
         let key = GuestInput::Key {
-            key: Key::Named(NamedKey::F(5)),
+            key: Key::Named(NamedKey::F(host::FunctionKey::F5)),
             modifiers: Vec::new(),
         }
         .on(display())
@@ -398,7 +399,7 @@ mod tests {
             key,
             host::Input::Key(host::KeyChord {
                 modifiers: Vec::new(),
-                key: host::Key::Named(host::NamedKey::F(5)),
+                key: host::Key::Named(host::NamedKey::F(host::FunctionKey::F5)),
             })
         );
     }
@@ -465,7 +466,7 @@ mod tests {
         );
         assert_eq!(
             Key::try_from(&keystroke("f12")),
-            Ok(Key::Named(NamedKey::F(12)))
+            Ok(Key::Named(NamedKey::F(host::FunctionKey::F12)))
         );
         assert_eq!(Key::try_from(&keystroke("f13")), Err(()));
         assert_eq!(

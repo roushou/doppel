@@ -354,7 +354,10 @@ impl<C: Clock> AgentClient<C> {
             (Retention::Observation, Observes::Supported)
             | (Retention::KeptForActions, Observes::Supported | Observes::Unsupported) => {}
         }
-        match self.call(Operation::TakeAxSnapshot(request.into()), by)? {
+        match self.call(
+            Operation::TakeAxSnapshot(agent::TakeAxSnapshot::in_millis(request)),
+            by,
+        )? {
             Outcome::AxSnapshot(snapshot) => Ok(snapshot),
             Outcome::Error(_)
             | Outcome::Status(_)
@@ -392,7 +395,7 @@ impl<C: Clock> AgentClient<C> {
         let by = Deadline::after(self.channel.clock().now(), request.timeout() + EXEC_GRACE);
         let hang_up = self.channel.interrupter()?;
         let _hang_up = cancel.on_cancel(move || hang_up.interrupt());
-        let reply = match self.call(Operation::Exec(request.into()), by) {
+        let reply = match self.call(Operation::Exec(agent::Exec::in_millis(request)), by) {
             Err(_) if cancel.is_cancelled() => return Err(AgentError::Cancelled),
             reply => reply?,
         };
