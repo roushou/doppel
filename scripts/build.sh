@@ -24,18 +24,20 @@ cp "$root/apple/.build/$swift_config/doppel-vmm" "$out"
 # Sign with a stable identity so the guest agent keeps its Accessibility and
 # Screen Recording grants across rebuilds: TCC matches an ad-hoc build by its
 # cdhash, which every rebuild changes. DOPPEL_SIGNING_IDENTITY wins; otherwise
-# the keychain's Apple Development identity is used when there is exactly one.
+# the keychain's Developer ID Application identity, then its Apple Development
+# one, each when there is exactly one. Developer ID first: releases are signed
+# with it, so a dev build's agent keeps the grants a release's was given.
 # Ad-hoc signing still builds and runs, but each new agent needs its
 # grants again.
 identity="${DOPPEL_SIGNING_IDENTITY:-}"
+for kind in "Developer ID Application" "Apple Development"; do
+  if [[ -n "$identity" ]]; then break; fi
+  found="$(security find-identity -v -p codesigning | awk -v kind="\"$kind: " 'index($0, kind) {print $2}')"
+  if [[ -n "$found" && "$(wc -l <<<"$found")" -eq 1 ]]; then identity="$found"; fi
+done
 if [[ -z "$identity" ]]; then
-  found="$(security find-identity -v -p codesigning | awk '/"Apple Development: /{print $2}')"
-  if [[ -n "$found" && "$(wc -l <<<"$found")" -eq 1 ]]; then
-    identity="$found"
-  else
-    identity="-"
-    echo "warning: ad-hoc signing (set DOPPEL_SIGNING_IDENTITY): a rebuilt agent loses its guest grants" >&2
-  fi
+  identity="-"
+  echo "warning: ad-hoc signing (set DOPPEL_SIGNING_IDENTITY): a rebuilt agent loses its guest grants" >&2
 fi
 sign_flags=()
 if [[ "$profile" == release ]]; then
