@@ -11,6 +11,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-protobuf.git", from: "1.28.0"),
+        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
     ],
     targets: [
         // Generated types (from the shared /proto via a symlink) and the frame codec.
@@ -30,7 +31,8 @@ let package = Package(
         // Must be signed with com.apple.security.virtualization (scripts/build.sh).
         .target(
             name: "DoppelVMM",
-            dependencies: ["DoppelWire", "DoppelKeys", "DoppelShm"],
+            dependencies: ["DoppelWire", "DoppelKeys", "DoppelShm",
+                           .product(name: "ArgumentParser", package: "swift-argument-parser")],
             linkerSettings: [.linkedFramework("Virtualization"), .linkedFramework("AppKit"),
                             .linkedFramework("VideoToolbox"), .linkedFramework("CoreVideo")]
         ),
@@ -41,7 +43,8 @@ let package = Package(
         // Screen Recording (capture) in that session.
         .target(
             name: "DoppelAgent",
-            dependencies: ["DoppelWire", "DoppelKeys"],
+            dependencies: ["DoppelWire", "DoppelKeys",
+                           .product(name: "ArgumentParser", package: "swift-argument-parser")],
             linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("ScreenCaptureKit")]
         ),
         .executableTarget(name: "doppel-agent", dependencies: ["DoppelAgent"]),

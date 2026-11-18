@@ -1,5 +1,6 @@
 // Command-line parsing for doppel-vmm: argv becomes a typed command once.
 
+import ArgumentParser
 import Foundation
 
 public enum Command: Sendable {
@@ -11,71 +12,113 @@ public enum Command: Sendable {
     case latestImage
 }
 
-public enum UsageError: Error, Equatable, CustomStringConvertible {
-    case usage(String)
-    public var description: String {
-        switch self { case .usage(let detail): "\(detail)\nusage: doppel-vmm serve|install --spec S --disk D --aux A ... | export --reel R --out O | latest-image" }
-    }
-}
-
 extension Command {
-    /// Parses argv once into a typed command.
+    /// Parses argv (without the program name) once into a typed command.
+    /// A request for help is thrown too; `exit(withError:)` prints it.
     public init(arguments: [String]) throws {
-        guard let verb = arguments.first else { throw UsageError.usage("missing command") }
-        var options: [String: String] = [:]
-        var flags: Set<String> = []
-        var rest = arguments.dropFirst()
-        while let argument = rest.popFirst() {
-            guard argument.hasPrefix("--") else { throw UsageError.usage("unexpected \(argument)") }
-            let name = String(argument.dropFirst(2))
-            if name == "window" { flags.insert(name); continue }
-            guard let value = rest.popFirst() else { throw UsageError.usage("\(argument) needs a value") }
-            guard options.updateValue(value, forKey: name) == nil else { throw UsageError.usage("\(argument) given twice") }
-        }
-        func path(_ name: String) throws -> URL {
-            guard let value = options.removeValue(forKey: name) else { throw UsageError.usage("missing --\(name)") }
-            guard value.hasPrefix("/") else { throw UsageError.usage("--\(name) must be an absolute path") }
-            return URL(fileURLWithPath: value)
-        }
-        if verb == "latest-image" {
-            guard arguments.count == 1 else { throw UsageError.usage("latest-image takes no options") }
-            self = .latestImage
-            return
-        }
-        if verb == "export" {
-            self = .export(reel: try path("reel"), out: try path("out"))
-            guard options.isEmpty, flags.isEmpty else { throw UsageError.usage("export takes --reel and --out only") }
-            return
-        }
-        let files = MachineFiles(spec: try path("spec"), disk: try path("disk"), aux: try path("aux"))
-        switch verb {
-        case "serve":
-            let socket = try path("socket").path
-            let provision = (
-                options.removeValue(forKey: "provision-user"),
-                options.removeValue(forKey: "provision-full-name"),
-                options["provision-password-file"] != nil ? try path("provision-password-file") : nil
-            )
-            let boot: Boot
-            switch (options["consume-state"] != nil, provision) {
-            case (true, (nil, nil, nil)):
-                boot = .consumeState(try path("consume-state"))
-            case (false, (nil, nil, nil)):
-                boot = .coldBoot
-            case (false, (let user?, let fullName?, let passwordFile?)):
-                boot = .provision(Provisioning(fullName: fullName, username: user, passwordFile: passwordFile))
-            case (true, _):
-                throw UsageError.usage("--consume-state and --provision-* exclude each other")
-            case (false, _):
-                throw UsageError.usage("--provision-user, --provision-full-name and --provision-password-file go together")
-            }
-            self = .serve(files, socket: socket, boot: boot, window: flags.contains("window") ? .shown : .hidden)
-        case "install":
-            self = .install(files, ipsw: try path("ipsw"))
+        var parsed = try VMMArguments.parseAsRoot(arguments)
+        switch parsed {
+        case let subcommand as any CommandArguments:
+            self = try subcommand.command()
+        case is VMMArguments:
+            throw ValidationError("missing command")
         default:
-            throw UsageError.usage("unknown command \(verb)")
+            // ArgumentParser's own commands (help): running one throws the
+            // request it stands for.
+            try parsed.run()
+            throw ValidationError("missing command")
         }
-        guard options.isEmpty else { throw UsageError.usage("unknown option --\(options.keys.sorted()[0])") }
+    }
+
+    /// Prints what parsing threw (help, or an error with the usage) and
+    /// exits: 0 for help, 64 for a usage error.
+    public static func exit(withError error: any Error) -> Never {
+        VMMArguments.exit(withError: error)
     }
 }
 
+/// A subcommand's arguments, which name one `Command`.
+private protocol CommandArguments: ParsableCommand {
+    func command() throws -> Command
+}
+
+/// doppel-vmm's command line. Parsing yields one of its subcommands.
+struct VMMArguments: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "doppel-vmm",
+        abstract: "Runs one macOS VM. Started by doppel, never by hand.",
+        subcommands: [Serve.self, Install.self, Export.self, LatestImage.self]
+    )
+
+    /// The files that make up an installed machine.
+    struct Files: ParsableArguments {
+        @Option(help: "The machine's spec.", transform: absolutePath) var spec: URL
+        @Option(help: "The machine's disk image.", transform: absolutePath) var disk: URL
+        @Option(help: "The machine's auxiliary storage.", transform: absolutePath) var aux: URL
+
+        var machineFiles: MachineFiles { MachineFiles(spec: spec, disk: disk, aux: aux) }
+    }
+
+    struct Serve: CommandArguments {
+        static let configuration = CommandConfiguration(abstract: "Boots the machine and serves its control socket.")
+
+        @OptionGroup var files: Files
+        @Option(help: "Where to serve the control socket.", transform: absolutePath) var socket: URL
+        @Option(help: "A saved state to resume from instead of booting.", transform: absolutePath) var consumeState: URL?
+        @Flag(help: "Show the machine's display in a window.") var window = false
+        @Option(help: "The account to create on first boot.") var provisionUser: String?
+        @Option(help: "That account's full name.") var provisionFullName: String?
+        @Option(help: "A file holding that account's password.", transform: absolutePath) var provisionPasswordFile: URL?
+
+        func validate() throws { _ = try boot() }
+
+        func command() throws -> Command {
+            .serve(files.machineFiles, socket: socket.path, boot: try boot(), window: window ? .shown : .hidden)
+        }
+
+        private func boot() throws -> Boot {
+            switch (consumeState, provisionUser, provisionFullName, provisionPasswordFile) {
+            case (let state?, nil, nil, nil):
+                .consumeState(state)
+            case (nil, nil, nil, nil):
+                .coldBoot
+            case (nil, let user?, let fullName?, let passwordFile?):
+                .provision(Provisioning(fullName: fullName, username: user, passwordFile: passwordFile))
+            case (.some, _, _, _):
+                throw ValidationError("--consume-state and --provision-* exclude each other")
+            case (nil, _, _, _):
+                throw ValidationError("--provision-user, --provision-full-name and --provision-password-file go together")
+            }
+        }
+    }
+
+    struct Install: CommandArguments {
+        static let configuration = CommandConfiguration(abstract: "Installs macOS from a restore image onto the machine's files.")
+
+        @OptionGroup var files: Files
+        @Option(help: "The restore image (.ipsw).", transform: absolutePath) var ipsw: URL
+
+        func command() -> Command { .install(files.machineFiles, ipsw: ipsw) }
+    }
+
+    struct Export: CommandArguments {
+        static let configuration = CommandConfiguration(abstract: "Burns a reel's overlay into its recorded video.")
+
+        @Option(help: "The reel to export.", transform: absolutePath) var reel: URL
+        @Option(help: "Where to write the video.", transform: absolutePath) var out: URL
+
+        func command() -> Command { .export(reel: reel, out: out) }
+    }
+
+    struct LatestImage: CommandArguments {
+        static let configuration = CommandConfiguration(abstract: "Prints the newest restore image this Mac can install: its build and URL.")
+
+        func command() -> Command { .latestImage }
+    }
+}
+
+/// A path option's value, which must be absolute.
+private func absolutePath(_ value: String) throws -> URL {
+    guard value.hasPrefix("/") else { throw ValidationError("must be an absolute path") }
+    return URL(fileURLWithPath: value)
+}

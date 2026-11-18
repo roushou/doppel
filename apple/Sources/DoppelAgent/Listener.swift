@@ -1,6 +1,7 @@
 // Where the agent listens for doppeld: a vsock port inside a VM's guest, or
 // a unix socket when the agent runs on the Mac doppeld runs on.
 
+import ArgumentParser
 import Darwin
 import Foundation
 
@@ -23,26 +24,41 @@ public enum Listener: Sendable, Equatable, CustomStringConvertible {
     }
 
     /// The listener the command line names: `--port N` or `--socket PATH`,
-    /// and the default vsock port when it names neither.
-    public static func parse(arguments: [String]) throws(ListenerArgumentError) -> Listener {
-        var listener: Listener?
-        var remaining = arguments[...]
-        while let argument = remaining.popFirst() {
-            let next: Listener
-            switch argument {
-            case "--port":
-                guard let raw = remaining.popFirst(), let port = UInt32(raw) else { throw .portNotANumber }
-                next = .vsock(port: port)
-            case "--socket":
-                guard let raw = remaining.popFirst() else { throw .socketMissingPath }
-                do { next = .unix(try UnixSocketPath(raw)) } catch { throw .socketPath(error) }
-            default:
-                throw .unknown(argument)
-            }
-            guard listener == nil else { throw .twoListeners }
-            listener = next
+    /// and the default vsock port when it names neither. A request for
+    /// help is thrown too; `exit(withError:)` prints it.
+    public static func parse(arguments: [String]) throws -> Listener {
+        try AgentArguments.parse(arguments).listener
+    }
+
+    /// Prints what parsing threw (help, or an error with the usage) and
+    /// exits: 0 for help, 64 for a usage error.
+    public static func exit(withError error: any Error) -> Never {
+        AgentArguments.exit(withError: error)
+    }
+}
+
+/// doppel-agent's command line.
+struct AgentArguments: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "doppel-agent",
+        abstract: "Serves the agent channel in a GUI session."
+    )
+
+    @Option(help: "Listen on this vsock port, in a VM's guest (default: \(Listener.defaultPort)).")
+    var port: UInt32?
+    @Option(help: "Listen on a unix socket at this absolute path, on this Mac.", transform: { try UnixSocketPath($0) })
+    var socket: UnixSocketPath?
+
+    func validate() throws {
+        guard port == nil || socket == nil else { throw ValidationError("give one of --port and --socket") }
+    }
+
+    var listener: Listener {
+        switch (port, socket) {
+        case (_, let path?): .unix(path)
+        case (let port?, nil): .vsock(port: port)
+        case (nil, nil): .vsock(port: Listener.defaultPort)
         }
-        return listener ?? .vsock(port: defaultPort)
     }
 }
 
@@ -84,26 +100,6 @@ public enum UnixSocketPathError: Error, Equatable, CustomStringConvertible {
         case .containsNul: "a socket path can't contain a NUL byte"
         }
     }
-}
-
-public enum ListenerArgumentError: Error, Equatable, CustomStringConvertible {
-    case portNotANumber
-    case socketMissingPath
-    case socketPath(UnixSocketPathError)
-    case twoListeners
-    case unknown(String)
-
-    public var description: String {
-        switch self {
-        case .portNotANumber: "--port expects a number"
-        case .socketMissingPath: "--socket expects a path"
-        case .socketPath(let error): "--socket: \(error)"
-        case .twoListeners: "give one of --port and --socket"
-        case .unknown(let argument): "unknown argument \(argument)"
-        }
-    }
-
-    public static let usage = "usage: doppel-agent [--port N | --socket PATH]"
 }
 
 extension Listener {

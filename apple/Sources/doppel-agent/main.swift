@@ -3,7 +3,7 @@
 // guest as `Doppel Agent.app` with a LaunchAgent (`doppel agent install`),
 // or run as a bare binary from Terminal.
 //
-//   doppel-agent [--port 7400 | --socket PATH]
+// `doppel-agent --help` lists its options; Listener.swift parses them.
 
 import AppKit
 import DoppelAgent
@@ -11,7 +11,7 @@ import DoppelWire
 
 let listener: Listener
 do { listener = try Listener.parse(arguments: Array(CommandLine.arguments.dropFirst())) } catch {
-    FileHandle.standardError.write(Data("doppel-agent: \(error)\n\(ListenerArgumentError.usage)\n".utf8)); exit(64)
+    Listener.exit(withError: error)
 }
 
 // A write to a closed socket or pipe must fail with EPIPE, never kill the agent:
