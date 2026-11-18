@@ -76,7 +76,7 @@ if [[ "$package_only" == no ]]; then
   # release commits themselves.
   last="$(git -C "$root" tag -l 'v[0-9]*' | sed 's/^v//' | grep -vx "$version" | sort -V | tail -1 || true)"
   range="${last:+v$last..}HEAD"
-  subjects="$(git -C "$root" log --format=%s "$range" | grep -v "^build: release " || true)"
+  subjects="$(git -C "$root" log --format=%s "$range" | grep -vE '^build: release [0-9]+\.[0-9]+\.[0-9]+$' || true)"
   if [[ "$(current_version)" != "$version" ]]; then
     [[ -z "$(git -C "$root" tag -l "$tag")" ]] || die "$tag exists already"
     if [[ -n "$last" ]]; then
@@ -116,6 +116,15 @@ fi
 published=no
 if [[ "$package_only" == no ]] && gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
   published=yes
+fi
+
+if [[ "$published" == no && "$package_only" == no ]]; then
+  # What was built is what gets tagged: the version commit itself, even
+  # when a first run stopped and main moved on since.
+  release_commit="$(git -C "$root" log -1 --format=%H --fixed-strings --grep="build: release $version" HEAD)"
+  if [[ -n "$release_commit" && "$release_commit" != "$(git -C "$root" rev-parse HEAD)" ]]; then
+    die "main has moved past \"build: release $version\" ($release_commit) and it isn't published: release the next version instead"
+  fi
 fi
 
 if [[ "$published" == no ]]; then
