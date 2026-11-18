@@ -20,7 +20,6 @@ use doppel_desktop::wait::{
 use doppel_host::agent::{AgentClient, AgentError};
 use doppel_host::capabilities::Clock;
 use doppel_host::files::Filesystem;
-use doppel_host::launcher::Window;
 use doppel_host::login::AwaitDesktopError;
 use doppel_host::machines::{
     AgentConnection, AgentConnectionError, CHECKPOINT_TIMEOUT, CLAIM_TIMEOUT, CheckpointReport,
@@ -28,6 +27,7 @@ use doppel_host::machines::{
     StopOutcome, StopReport,
 };
 use doppel_host::store::{Listed, StoreError};
+use doppel_host::vmm::launcher::Window;
 use doppel_host::vmm::{StopMode, VmmError};
 use doppel_machine::bundle::CheckpointLabel;
 use doppel_machine::checkpoint::AfterCheckpoint;
@@ -41,7 +41,7 @@ use doppel_protocol::transport::Cancel;
 
 use crate::Daemon;
 use crate::call_events::CallEvent;
-use crate::forks::{ForkPlan, MacError, PlanError};
+use crate::requests::forks::{ForkPlan, MacError, PlanError};
 use crate::scheduler::Cancelled;
 use crate::scheduler::{Begun, Call, Turn};
 
@@ -738,8 +738,8 @@ mod tests {
 
     use doppel_host::capabilities::SystemClock;
     use doppel_host::files::LocalFilesystem;
-    use doppel_host::launcher::VmmBinary;
     use doppel_host::store::Store;
+    use doppel_host::vmm::launcher::VmmBinary;
     use doppel_machine::bundle::{DataRoot, RuntimeDir};
 
     use super::*;

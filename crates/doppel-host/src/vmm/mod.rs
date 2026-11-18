@@ -4,6 +4,10 @@
 //! (`SCM_RIGHTS`, for the display's memory and agent channels) come with the
 //! response they were sent with. Every request carries a [`Deadline`].
 
+pub mod display;
+pub mod launcher;
+mod shared_memory;
+
 use std::io;
 use std::os::fd::OwnedFd;
 use std::os::unix::net::UnixStream;

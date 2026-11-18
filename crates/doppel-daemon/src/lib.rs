@@ -7,21 +7,15 @@
 
 mod activity;
 mod call_events;
-mod display;
-mod forks;
-mod handle;
-mod library;
-mod operations;
 mod recording;
 mod requests;
 mod scheduler;
 mod serving;
-mod tokens;
 mod web;
 
-pub use forks::{EntropyMacs, MacError, MacSource};
-pub use operations::{Acted, CallError};
 pub use recording::RecordingError;
+pub use requests::forks::{EntropyMacs, MacError, MacSource};
+pub use requests::operations::{Acted, CallError};
 use scheduler::{ConnectionId, SessionId};
 pub use serving::Stopper;
 
@@ -74,7 +68,7 @@ use doppel_protocol::transport::{Cancel, ChannelError, Replies, Requests};
 
 /// Apple's limit on VMs running at once on a Mac: the daemon starts no
 /// fork, temporary machine included, beyond it.
-pub const MAX_RUNNING_VMS: usize = forks::ForkPlan::MAX_RUNNING;
+pub const MAX_RUNNING_VMS: usize = requests::forks::ForkPlan::MAX_RUNNING;
 
 #[derive(Debug, thiserror::Error)]
 pub enum DaemonError {
@@ -122,7 +116,7 @@ pub struct Daemon<C, F> {
     /// Where fresh forks' MAC addresses come from.
     macs: Box<dyn MacSource>,
     /// The web console's tokens.
-    tokens: tokens::TokenFile,
+    tokens: web::tokens::TokenFile,
     /// The web console's listener.
     web: web::Web,
     /// Whether it serves or is stopping, and the connections it has open.
@@ -131,7 +125,7 @@ pub struct Daemon<C, F> {
 
 impl<C: WallClock, F: Filesystem> Daemon<C, F> {
     pub fn new(machines: Machines<C, F>, macs: Box<dyn MacSource>) -> Self {
-        let tokens = tokens::TokenFile::in_root(machines.store().root().path());
+        let tokens = web::tokens::TokenFile::in_root(machines.store().root().path());
         let web = web::Web::in_root(machines.store().root().path());
         Self {
             machines,
@@ -448,10 +442,10 @@ where
         let askers = request
             .operation
             .as_ref()
-            .map_or(handle::Askers::Anyone, |operation| {
-                handle::Traits::of(operation).askers
+            .map_or(requests::handle::Askers::Anyone, |operation| {
+                requests::handle::Traits::of(operation).askers
             });
-        if let (Reach::Remote(_), handle::Askers::ThisMac) = (&link.reach, askers) {
+        if let (Reach::Remote(_), requests::handle::Askers::ThisMac) = (&link.reach, askers) {
             let refused = daemon::daemon_response::Outcome::Error(common::Error {
                 kind: Some(common::error::Kind::Unsupported(common::Unsupported {
                     what: "only on this Mac's daemon socket, not from a browser".into(),
@@ -476,7 +470,7 @@ where
             let opens = request
                 .operation
                 .as_ref()
-                .and_then(|operation| handle::Traits::of(operation).opens);
+                .and_then(|operation| requests::handle::Traits::of(operation).opens);
             if let Some(display) = opens {
                 drop(call);
                 self.serve_opened(id, display, &cancel, link);
@@ -543,9 +537,11 @@ where
         path: &doppel_gateway::VideoPath,
     ) -> Result<(std::fs::File, u64), doppel_gateway::NoVideo> {
         let no = |error: &dyn std::fmt::Display| doppel_gateway::NoVideo(error.to_string());
-        let id: library::RecordingId = path.folder().parse().map_err(|error| no(&error))?;
-        let file: library::VideoFile = path.file().parse().map_err(|error| no(&error))?;
-        library::Library::in_root(self.machines.store().root().path())
+        let id: recording::library::RecordingId =
+            path.folder().parse().map_err(|error| no(&error))?;
+        let file: recording::library::VideoFile =
+            path.file().parse().map_err(|error| no(&error))?;
+        recording::library::Library::in_root(self.machines.store().root().path())
             .video(id, &file)
             .map_err(|error| no(&error))
     }
@@ -628,8 +624,8 @@ mod tests {
 
     use doppel_host::capabilities::{Clock as _, OsEntropy, SystemClock};
     use doppel_host::files::LocalFilesystem;
-    use doppel_host::launcher::VmmBinary;
     use doppel_host::store::Store;
+    use doppel_host::vmm::launcher::VmmBinary;
     use doppel_machine::bundle::{DataRoot, RuntimeDir};
 
     use super::*;

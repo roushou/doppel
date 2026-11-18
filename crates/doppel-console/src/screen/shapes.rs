@@ -9,9 +9,9 @@ use gpui::{
     Window, canvas, div, point, px, quad, size,
 };
 
-use crate::icons::Icon;
 use crate::screen::Picture;
-use crate::theme::MONO;
+use crate::ui::icons::Icon;
+use crate::ui::theme::MONO;
 
 /// `rgb` at `alpha`, 0 to 1.
 fn colour(rgb: Rgb, alpha: f64) -> Hsla {

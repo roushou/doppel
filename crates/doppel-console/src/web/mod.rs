@@ -21,7 +21,7 @@ pub use feed::Screen;
 pub(crate) use frame::Frame;
 pub(crate) use player::Player;
 
-use crate::icons::Assets;
+use crate::ui::icons::Assets;
 use crate::{Console, LocalClock, LocalTime, Settings, SettingsError, ThemeChoice};
 
 thread_local! {

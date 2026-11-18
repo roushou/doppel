@@ -15,7 +15,7 @@
 //!   exchange over a unix socket, with deadlines and passed descriptors.
 //!   Unix only: the rest builds anywhere, WebAssembly included.
 
-pub mod bundle;
+mod bundle;
 pub mod convert;
 pub mod display;
 pub mod exchange;

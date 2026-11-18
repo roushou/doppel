@@ -1,6 +1,11 @@
 //! One request against the machines. Every request has an outcome the
 //! client sees: a failure is an outcome too, never an error of the daemon.
 
+mod display;
+pub(crate) mod forks;
+pub(crate) mod handle;
+pub(crate) mod operations;
+
 use std::os::unix::ffi::OsStrExt;
 use std::sync::Arc;
 
@@ -13,12 +18,12 @@ use doppel_desktop::outcome::{Failure, Unconfirmed};
 use doppel_desktop::screen::ScreenshotSize;
 use doppel_host::capabilities::WallClock;
 use doppel_host::files::Filesystem;
-use doppel_host::launcher::Window;
 use doppel_host::login::AwaitDesktopError;
 use doppel_host::machines::{
     CheckpointReport, Listing, MachineError, Resumed, StopOutcome, StopReport, StopRequest,
 };
 use doppel_host::vmm::StopMode;
+use doppel_host::vmm::launcher::Window;
 use doppel_machine::bundle::CheckpointLabel;
 use doppel_machine::checkpoint::{Aftermath, Checkpoint, GuestSync};
 use doppel_machine::machine::MachineName;
@@ -36,15 +41,16 @@ use doppel_gateway::{ChangeError, Token, TokenDigest, TokenId, TokenLabel, Ttl};
 
 use crate::activity;
 use crate::call_events::{Answered, CallEvent, SessionCall};
-use crate::forks::PlanError;
-use crate::handle::{Guest, Handle, Traits, Turn};
-use crate::library::{self, Library, LibraryError, RecordingId, TraceLine};
-use crate::operations::{ForkStart, ForksError, TemporaryMachineError};
-use crate::recording::{Recordings, Traced};
+use crate::call_events::{Guest, Traced};
+use crate::recording::Recordings;
+use crate::recording::library::{self, Library, LibraryError, RecordingId, TraceLine};
+use crate::requests::forks::PlanError;
+use crate::requests::handle::{Handle, Traits, Turn};
+use crate::requests::operations::{ForkStart, ForksError, TemporaryMachineError};
 use crate::scheduler::Call;
 use crate::scheduler::session::SessionState;
 use crate::scheduler::{Cancelled, Cleared, HandedBack, HeldUp};
-use crate::tokens::TokenFileError;
+use crate::web::tokens::TokenFileError;
 use crate::web::{WebPort, WebSetting, WebStatus};
 use crate::{Acted, CallError, Daemon, Link};
 

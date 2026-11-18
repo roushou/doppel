@@ -19,9 +19,9 @@ use gpui::{
 };
 
 use crate::elements::{self, Kind, Named, Row, Wrappers};
-use crate::icons::Icon;
 use crate::screen::Picture;
-use crate::theme::{MONO, Theme};
+use crate::ui::icons::Icon;
+use crate::ui::theme::{MONO, Theme};
 
 /// What a person did in the tree or over the screen.
 #[derive(Debug, Clone, PartialEq, Eq)]

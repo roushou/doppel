@@ -12,6 +12,8 @@
 //! trace line that kept it. `segments.jsonl` may be missing, as may a trace
 //! line's gesture and a segment's points.
 
+pub(crate) mod library;
+
 use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
 use std::io::Write as _;
@@ -36,8 +38,8 @@ use prost::Message as _;
 
 use crate::activity;
 use crate::call_events::CallEvent;
-use crate::handle::Guest;
-use crate::library::{Library, RecordingId};
+use crate::call_events::{Guest, Traced};
+use crate::recording::library::{Library, RecordingId};
 
 /// One segment being recorded: its files, the host time its video starts
 /// at, and its display's size in points, when the machine's spec says.
@@ -108,18 +110,6 @@ pub(crate) struct Recordings {
 struct Traces {
     lines: u32,
     seen: HashMap<(MachineName, u64), u32>,
-}
-
-/// How a traced request ended.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Traced {
-    Done,
-    /// It ran and failed on the host, or a wait failed.
-    Failed(String),
-    /// A wait ran out of time, with the last poll's error if it failed.
-    TimedOut(Option<String>),
-    /// The request itself was wrong.
-    Refused(String),
 }
 
 /// One request, for the trace.
@@ -884,7 +874,7 @@ mod tests {
 
     #[test]
     fn a_trace_line_keeps_the_snapshot_a_call_saw_exactly() {
-        use crate::library::TraceLine;
+        use crate::recording::library::TraceLine;
         let origin = doppel_host::capabilities::SystemClock.now();
         let dev: MachineName = "dev".parse().unwrap();
         let seen = agent::AxSnapshot {

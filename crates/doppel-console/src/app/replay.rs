@@ -20,17 +20,17 @@ use gpui::{
 };
 
 use crate::elements::Named;
-use crate::icons::Icon;
 use crate::input::Placement;
-use crate::inspect::{self, Act, Empty, Inspect, Pointing};
-use crate::overlay;
 use crate::platform::{Frame, Player};
-use crate::reading;
 use crate::recordings::{self, Actor, Recording, RecordingId, Seek, TraceCall, TraceLine};
 use crate::screen::Picture;
-use crate::theme::{MONO, Theme};
+use crate::screen::inspect::{self, Act, Empty, Inspect, Pointing};
+use crate::screen::overlay;
+use crate::screen::reading;
 use crate::timeline::{self, Moment};
 use crate::transport::{Follow, Transport};
+use crate::ui::icons::Icon;
+use crate::ui::theme::{MONO, Theme};
 use crate::ui::{Button, Look};
 use crate::{Daemon, LocalClock};
 
@@ -255,7 +255,7 @@ impl Replay {
         self.current = index;
         self.playing = None;
         self.unplayable = None;
-        self.moments = timeline::from_trace(&self.recording, &video.machine);
+        self.moments = recordings::from_trace(&self.recording, &video.machine);
         let located = self.daemon.video(&self.recording.id, &video.file);
         self._locate = Some(cx.spawn(async move |replay, cx| {
             let located = located.await;

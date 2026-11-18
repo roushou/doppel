@@ -17,11 +17,11 @@ use super::{MachineError, Machines};
 use crate::agent_install::{AgentInstallError, Installed};
 use crate::bootstrap::{AgentArchive, BootstrapError, Bootstrapped, Progress};
 use crate::capabilities::Clock;
-use crate::display::DisplayStream;
 use crate::files::Filesystem;
 use crate::golden::GoldenPrepareError;
 use crate::login::AwaitDesktopError;
 use crate::vmm::VmmClient;
+use crate::vmm::display::DisplayStream;
 use doppel_protocol::transport::Cancel;
 
 /// A machine, named: nothing about it is checked until asked. Changing it

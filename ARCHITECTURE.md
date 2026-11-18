@@ -1,0 +1,36 @@
+# Architecture
+
+Doppel is organised by component: each crate has one job, and inside a crate
+each top-level module is one component. [docs/crates.md](docs/crates.md) has
+the layering table and the reasons behind each boundary.
+
+## Crates
+
+- `doppel-desktop`: what is seen and done on a Mac's desktop (pure)
+- `doppel-machine`: a machine, its files, lineage and procedures (pure)
+- `doppel-scene`: what a console shows, decided without drawing (pure)
+- `doppel-gateway`: serves the web console to token holders
+- `doppel-protocol`: the wire: generated types, framing, `convert/`, transport
+- `doppel-mcp`: the MCP tool surface, over a `Runner` port
+- `doppel-host`: runs machines on this Mac: store, `vmm/`, agent, provisioning
+- `doppel-client`: talks to doppeld
+- `doppel-console`: the console window, desktop and browser
+- `doppel-daemon`: doppeld, which owns a user's machines and serves them
+- `doppel-cli`: the `doppel` command, and the composition root
+
+## Dependency direction
+
+`A → B` means A may import B; never the reverse.
+
+- cli → daemon → {host, client, console} → {protocol, mcp}
+- {protocol, mcp} → {scene, gateway} → machine → desktop
+
+Inside the larger crates:
+
+- daemon: `lib` → `requests` → {`activity`, `recording`, `web`, `serving`}
+  → `call_events` → `scheduler`
+- console: `app` → {`screen`, `route`, `input`, `answers`} → `ui`;
+  `macos`/`web` (the `platform`) and `screen` meet at the frame feed
+- scene: `film`, `panel`, `attention`, `recordings` → `timeline`
+- host: provisioning procedures → `machines` → {`vmm`, `agent`, `store`}
+  → {`capabilities`, `files`}

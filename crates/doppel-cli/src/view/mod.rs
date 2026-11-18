@@ -16,7 +16,7 @@ use doppel_console::{
     Screen, SourceError, Takeover,
 };
 use doppel_desktop::geometry::Size;
-use doppel_host::display::{Announcement, DisplayError, Nv12Frame, SharedFrames};
+use doppel_host::vmm::display::{Announcement, DisplayError, Nv12Frame, SharedFrames};
 use doppel_machine::machine::MachineName;
 use doppel_protocol::display::{RingLayout, SlotRead};
 

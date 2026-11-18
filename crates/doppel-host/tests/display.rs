@@ -17,8 +17,8 @@ use std::time::Duration;
 
 use doppel_desktop::deadline::Deadline;
 use doppel_host::capabilities::{Clock, SystemClock};
-use doppel_host::display::{DisplayError, DisplayStream, Nv12Frame};
 use doppel_host::store::Store;
+use doppel_host::vmm::display::{DisplayError, DisplayStream, Nv12Frame};
 use doppel_host::vmm::{VmmClient, VmmError};
 use doppel_machine::bundle::{DataRoot, RuntimeDir};
 use doppel_protocol::frame::{FrameDecoder, FrameEncoder, MaxFrameLen, Received};

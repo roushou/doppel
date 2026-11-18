@@ -11,7 +11,7 @@ use doppel_desktop::ax::tree::AxSnapshot;
 use doppel_desktop::geometry::{Point, Rect};
 use doppel_machine::machine::MachineName;
 
-use crate::recordings::{Actor, Recording, TraceOutcome};
+pub use crate::recordings::from_trace;
 
 /// What a call read off the screen by text recognition: each line, and
 /// where what it looked for was found. In display points.
@@ -743,57 +743,6 @@ pub(crate) fn callouts_at(moments: &[Moment], at: f64) -> Vec<Shown> {
                 since,
                 until,
             })
-        })
-        .collect()
-}
-
-/// A recording's calls on `machine` (and those naming none) as moments,
-/// timed from the session's start.
-pub fn from_trace(recording: &Recording, machine: &MachineName) -> Vec<Moment> {
-    recording
-        .calls()
-        .filter(|call| call.machine.as_ref().is_none_or(|named| named == machine))
-        .enumerate()
-        .map(|(index, traced)| {
-            let (gesture, target) = traced
-                .acted
-                .clone()
-                .unwrap_or((Gesture::Other, Target::Nowhere));
-            let callout = traced.callout.clone();
-            Moment {
-                start_ms: traced.start_ms as f64,
-                end_ms: Some(traced.end_ms as f64),
-                call: Call {
-                    key: CallKey {
-                        session: 0,
-                        request: index as u64,
-                    },
-                    machine: machine.clone(),
-                    client: String::new(),
-                    caption: traced.call.clone(),
-                    gesture,
-                    target,
-                    callout,
-                    why: traced.why.clone(),
-                },
-                failed: match traced.outcome {
-                    TraceOutcome::Done => None,
-                    TraceOutcome::Failed
-                    | TraceOutcome::TimedOut
-                    | TraceOutcome::Refused
-                    | TraceOutcome::Unknown(_) => Some(
-                        traced
-                            .error
-                            .clone()
-                            .or_else(|| traced.outcome.words())
-                            .unwrap_or_default(),
-                    ),
-                },
-                person: traced.by == Actor::Person,
-                seen: traced.seen.map(Seen::Recorded),
-                refs: traced.refs.clone(),
-                read: traced.read.clone(),
-            }
         })
         .collect()
 }
@@ -1640,7 +1589,9 @@ mod tests {
 
     #[test]
     fn a_trace_becomes_the_machines_moments_and_people_draw_nothing() {
-        use crate::recordings::{RecordingId, TraceCall, TraceLine};
+        use crate::recordings::{
+            Actor, Recording, RecordingId, TraceCall, TraceLine, TraceOutcome, from_trace,
+        };
         let traced = |start_ms, machine: Option<&str>, by, outcome| {
             TraceLine::Call(Box::new(TraceCall {
                 why: None,

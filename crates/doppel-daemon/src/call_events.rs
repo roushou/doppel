@@ -16,9 +16,27 @@ use doppel_protocol::pb::agent::v1 as agent;
 use doppel_protocol::pb::daemon::v1 as daemon;
 
 use crate::Daemon;
-use crate::handle::Guest;
-use crate::recording::Traced;
 use crate::scheduler::SessionId;
+
+/// What a request may do to its machine's guest process.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Guest {
+    Kept,
+    /// It may start a new VMM, which a recording follows from its start.
+    MayRestart,
+}
+
+/// How a traced request ended.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Traced {
+    Done,
+    /// It ran and failed on the host, or a wait failed.
+    Failed(String),
+    /// A wait ran out of time, with the last poll's error if it failed.
+    TimedOut(Option<String>),
+    /// The request itself was wrong.
+    Refused(String),
+}
 
 /// One call of a session, as its events describe it: fixed when it is
 /// cleared to run.

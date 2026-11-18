@@ -9,9 +9,9 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context as _, Result};
 use doppel_host::capabilities::SystemClock;
 use doppel_host::files::LocalFilesystem;
-use doppel_host::launcher::VmmBinary;
 use doppel_host::machines::Machines;
 use doppel_host::store::Store;
+use doppel_host::vmm::launcher::VmmBinary;
 use doppel_machine::bundle::{DataRoot, RuntimeDir};
 
 use crate::daemon_at::DaemonAt;

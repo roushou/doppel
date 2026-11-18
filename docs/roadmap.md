@@ -76,7 +76,7 @@ person.
 
 - **Unrecognized values that can pass for known ones.** `RunState`,
   `Session`, `Permission`, `Truncation` and `Completeness` keep a value this
-  build doesn't know as a public raw number, which `convert.rs` writes back
+  build doesn't know as a public raw number, which `convert/` writes back
   as received. Nothing stops building one with a known number (an
   `Unrecognized(2)` that encodes as `Running`), so those five `From`s are
   lossless only for values the parsers make. Done when: such a value can't
