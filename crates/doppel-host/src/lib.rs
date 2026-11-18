@@ -18,6 +18,7 @@ pub mod machines;
 pub mod provision;
 #[cfg(test)]
 mod pure_modules;
+pub mod restore_image;
 mod screen_probe;
 mod shared_memory;
 pub mod store;

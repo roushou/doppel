@@ -15,7 +15,9 @@ files. People watch and take over from a desktop or browser viewer.
 ## What works
 
 - **Install:** `brew install roushou/doppel/doppel`, a release signed with a
-  Developer ID and notarized, for Apple silicon.
+  Developer ID and notarized, for Apple silicon. `doppel setup` then makes
+  a golden image from nothing, downloading the newest macOS this Mac
+  supports, and carries on where it stopped when run again.
 - **Machines:** create from an IPSW with no person (macOS 27 hosts: the
   account is made on first boot, logged in, SSH on), import, start, stop,
   pause, resume, checkpoint, fork, restore; delete from the viewers; delete a
@@ -55,10 +57,12 @@ doesn't know. Checked on a fork of a hand-made golden image: grants removed
 offline are gone at the next boot, and written by `grant` they're all there,
 with no alert.
 
-- Run the whole path live on a machine new from an IPSW: `doppel create
-  NAME --ipsw … --user U`, `doppel agent bootstrap`, `doppel stop`, `doppel
-  agent grant`, `doppel start`, `doppel golden prepare`. `bootstrap` has only
-  been unit-tested.
+- Run `doppel setup` live from nothing, on a Mac with room for it. It chains
+  the whole path (download, `create --user`, `agent bootstrap`, `stop`,
+  `agent grant`, `start`, `golden prepare`); the download and its resume,
+  and everything from a booted machine to a golden image, have run live, but
+  not an install from a fresh IPSW within it. Check that its forks show no
+  "Background Items Added" notification from the agent's LaunchAgent.
 - Files `grant` creates in the guest take the host user's uid. They match the
   guest's first account (501) only when the host user's uid is 501 too;
   otherwise replayd can't read the approvals it writes. Write them as the

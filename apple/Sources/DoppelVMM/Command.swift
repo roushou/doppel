@@ -7,12 +7,14 @@ public enum Command: Sendable {
     case install(MachineFiles, ipsw: URL)
     /// Burns a reel (the overlay) into a recorded video.
     case export(reel: URL, out: URL)
+    /// Prints the newest restore image this Mac can install: its build and URL.
+    case latestImage
 }
 
 public enum UsageError: Error, Equatable, CustomStringConvertible {
     case usage(String)
     public var description: String {
-        switch self { case .usage(let detail): "\(detail)\nusage: doppel-vmm serve|install --spec S --disk D --aux A ... | export --reel R --out O" }
+        switch self { case .usage(let detail): "\(detail)\nusage: doppel-vmm serve|install --spec S --disk D --aux A ... | export --reel R --out O | latest-image" }
     }
 }
 
@@ -34,6 +36,11 @@ extension Command {
             guard let value = options.removeValue(forKey: name) else { throw UsageError.usage("missing --\(name)") }
             guard value.hasPrefix("/") else { throw UsageError.usage("--\(name) must be an absolute path") }
             return URL(fileURLWithPath: value)
+        }
+        if verb == "latest-image" {
+            guard arguments.count == 1 else { throw UsageError.usage("latest-image takes no options") }
+            self = .latestImage
+            return
         }
         if verb == "export" {
             self = .export(reel: try path("reel"), out: try path("out"))

@@ -150,7 +150,7 @@ impl StatusCmd {
 
 /// A new machine's hardware, as `create` and `import` take it.
 #[derive(Debug, Args)]
-struct HardwareArgs {
+pub(crate) struct HardwareArgs {
     #[arg(long, default_value_t = 4)]
     cpus: u32,
     #[arg(long, default_value_t = 4)]
@@ -177,7 +177,7 @@ struct HardwareArgs {
 }
 
 impl HardwareArgs {
-    fn parse(self) -> Result<Hardware> {
+    pub(crate) fn parse(self) -> Result<Hardware> {
         let network = if self.offline {
             NetworkSpec::None
         } else {

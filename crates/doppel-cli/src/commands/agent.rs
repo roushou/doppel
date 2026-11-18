@@ -79,22 +79,7 @@ impl AgentCommand {
                 user,
                 archive,
             } => {
-                let path = match archive {
-                    Some(path) => path,
-                    None => InstallDir::current()?.agent_archive(),
-                };
-                let csreq = path.with_extension("csreq");
-                let requirement =
-                    CodeRequirement::parse(std::fs::read(&csreq).with_context(|| {
-                        format!("{} (scripts/build.sh writes it)", csreq.display())
-                    })?)
-                    .with_context(|| csreq.display().to_string())?;
-                machines
-                    .claim(&name, machines.within(CLAIM_TIMEOUT))?
-                    .grant_agent(
-                        &AgentGrant::new(user.clone(), requirement, SystemClock.wall()),
-                        machines.deadline(),
-                    )?;
+                grant(ctx, &name, &user, archive)?;
                 Ok(Report::AgentGranted { name, user })
             }
             Self::Bootstrap {
@@ -124,6 +109,34 @@ impl AgentCommand {
             }
         }
     }
+}
+
+/// Grants the agent build in `archive` (by default, the one beside
+/// `doppel`) its permissions in the stopped machine, as `agent grant` does.
+pub(crate) fn grant(
+    ctx: &Context,
+    name: &MachineName,
+    user: &GuestUserName,
+    archive: Option<PathBuf>,
+) -> Result<()> {
+    let machines = ctx.machines();
+    let path = match archive {
+        Some(path) => path,
+        None => InstallDir::current()?.agent_archive(),
+    };
+    let csreq = path.with_extension("csreq");
+    let requirement = CodeRequirement::parse(
+        std::fs::read(&csreq)
+            .with_context(|| format!("{} (scripts/build.sh writes it)", csreq.display()))?,
+    )
+    .with_context(|| csreq.display().to_string())?;
+    machines
+        .claim(name, machines.within(CLAIM_TIMEOUT))?
+        .grant_agent(
+            &AgentGrant::new(user.clone(), requirement, SystemClock.wall()),
+            machines.deadline(),
+        )?;
+    Ok(())
 }
 
 /// The zipped agent app and its build id, beside it as `<archive>.build-id`.

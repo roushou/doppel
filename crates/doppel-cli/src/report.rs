@@ -27,6 +27,7 @@ use doppel_machine::screen_probe::HostScreen;
 use doppel_machine::vm::{NextStart, RunState, Status};
 
 use crate::doctor::Diagnosis;
+use crate::setup::Blocked;
 use crate::tokens::{named, remaining};
 
 /// What a command did.
@@ -45,6 +46,12 @@ pub enum Report {
     /// Not ready exits 1.
     Doctor {
         diagnosis: Diagnosis,
+        form: Form,
+    },
+    /// `setup`: a golden image to give agents, or why setup can't go on.
+    /// Blocked exits 1.
+    Setup {
+        outcome: SetupOutcome,
         form: Form,
     },
     /// `ls`.
@@ -211,7 +218,62 @@ impl Report {
         {
             return Some(1);
         }
+        if let Self::Setup {
+            outcome: SetupOutcome::Blocked(_),
+            ..
+        } = self
+        {
+            return Some(1);
+        }
         None
+    }
+}
+
+/// Where `setup` left this Mac.
+#[derive(Debug)]
+pub enum SetupOutcome {
+    /// This golden image is ready to fork, from this template.
+    Ready {
+        golden: MachineName,
+        template: CheckpointLabel,
+    },
+    Blocked(Blocked),
+}
+
+impl SetupOutcome {
+    /// `--json`'s document: `ready`, and the golden image and the command
+    /// that serves an agent from it, or what blocked setup.
+    fn json(&self) -> serde_json::Value {
+        match self {
+            Self::Ready { golden, template } => serde_json::json!({
+                "ready": true,
+                "golden_image": golden.as_str(),
+                "template": template.as_str(),
+                "mcp_command": ["doppel", "mcp", "--from", golden.as_str()],
+            }),
+            Self::Blocked(blocked) => serde_json::json!({
+                "ready": false,
+                "blocked": blocked.to_string(),
+            }),
+        }
+    }
+}
+
+impl fmt::Display for SetupOutcome {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Ready { golden, template } => {
+                writeln!(f, "{golden}: ready, a golden image (template '{template}')")?;
+                writeln!(
+                    f,
+                    "Give an agent a machine of its own, a fresh fork per session:"
+                )?;
+                writeln!(f, "  doppel mcp --from {golden}")?;
+                writeln!(f, "For Claude Code:")?;
+                writeln!(f, "  claude mcp add doppel -- doppel mcp --from {golden}")
+            }
+            Self::Blocked(blocked) => writeln!(f, "setup can't go on: {blocked}"),
+        }
     }
 }
 
@@ -237,6 +299,14 @@ impl fmt::Display for Report {
                 diagnosis,
                 form: Form::Json,
             } => writeln!(f, "{:#}", diagnosis.json()),
+            Self::Setup {
+                outcome,
+                form: Form::Text,
+            } => outcome.fmt(f),
+            Self::Setup {
+                outcome,
+                form: Form::Json,
+            } => writeln!(f, "{:#}", outcome.json()),
             Self::Machines(listings) => {
                 for listing in listings {
                     match listing {

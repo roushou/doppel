@@ -71,7 +71,7 @@ fn archive(path: &Path) -> Archive {
 }
 
 /// Connecting starts the daemon when launchd has it: as any client would.
-fn daemon(ctx: &Context) -> Daemon {
+pub(crate) fn daemon(ctx: &Context) -> Daemon {
     let socket = match ctx.daemon() {
         Ok(at) => at.socket().to_path_buf(),
         Err(error) => return Daemon::Failed(crate::ErrorMessage::of(&error).to_string()),

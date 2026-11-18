@@ -65,7 +65,7 @@ impl LoginCmd {
 }
 
 /// Waits for an agent-ready desktop; fails unless it got one.
-fn await_desktop(client: &Client<SystemClock>, name: MachineName) -> Result<Report> {
+pub(crate) fn await_desktop(client: &Client<SystemClock>, name: MachineName) -> Result<Report> {
     eprintln!("{name}: waiting for the desktop…");
     let desktop = client.await_desktop(&name, within(LIFECYCLE))?;
     if desktop.is_ready() {

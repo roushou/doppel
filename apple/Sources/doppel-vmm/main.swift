@@ -4,6 +4,7 @@
 //                      [--provision-user U --provision-full-name N --provision-password-file F]
 //   doppel-vmm install --spec S --disk D --aux A --ipsw I
 //   doppel-vmm export  --video V --reel R --out O
+//   doppel-vmm latest-image
 
 import AppKit
 import DoppelVMM
@@ -31,6 +32,10 @@ Task { @MainActor in
         case .export(let reel, let out):
             let exported = try await Exporter.export(reel: try Exporter.reel(at: reel), to: out)
             print("exported \(exported.frames) frames (\(String(format: "%.1f", exported.seconds)) s)")
+            exit(0)
+        case .latestImage:
+            let image = try await LatestImage.fetch()
+            print(image.line)
             exit(0)
         }
     } catch {

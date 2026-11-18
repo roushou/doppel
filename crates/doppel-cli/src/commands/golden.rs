@@ -62,7 +62,7 @@ impl GoldenCommand {
     }
 }
 
-fn prepare(ctx: &Context, name: MachineName, label: CheckpointLabel) -> Result<Report> {
+pub(crate) fn prepare(ctx: &Context, name: MachineName, label: CheckpointLabel) -> Result<Report> {
     let machines = ctx.machines();
     // Owned from the first setting to the checkpoint: nothing else may
     // change the guest in between.
