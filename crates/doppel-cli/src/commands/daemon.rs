@@ -129,7 +129,7 @@ fn serve(ctx: Context, source: SocketSource) -> Result<Report> {
     );
     let listener = match source {
         SocketSource::Bind => daemon.listen()?,
-        SocketSource::Launchd => daemon.adopt(launchd::Launchd::socket()?)?,
+        SocketSource::Launchd => daemon.adopt(launchd::activated_socket()?)?,
     };
     eprintln!("doppeld: listening on {}", listener.path().display());
     signals.stop(daemon.stopper())?;

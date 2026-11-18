@@ -87,9 +87,6 @@ person.
   draws a dot nobody sees, and the VMM waits for it to reach the display.
   Done when: right after each of these calls, a screenshot shows the
   guest's current windows, without a fixed sleep.
-- **Free functions on placeholder types** (`struct Window;`,
-  `struct Launchd;`, the `Verdicts` trait): each becomes a method of the type
-  that owns the state it serves, or a module function.
 
 ### 3. Chrome through its DevTools protocol
 

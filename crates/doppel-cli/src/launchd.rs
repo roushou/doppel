@@ -3,7 +3,7 @@
 //! so nothing runs until a client needs it.
 //!
 //! [`LaunchAgent`] is the job's description and renders its plist (pure);
-//! [`Launchctl`] runs `launchctl`, and [`Launchd::socket`] takes the socket
+//! [`Launchctl`] runs `launchctl`, and [`activated_socket`] takes the socket
 //! launchd bound.
 
 use std::ffi::{CString, OsStr, OsString};
@@ -319,10 +319,6 @@ impl Service {
     }
 }
 
-/// The daemon's side of launchd.
-#[derive(Debug)]
-pub(crate) struct Launchd;
-
 mod ffi {
     use std::ffi::{c_char, c_int};
 
@@ -338,38 +334,36 @@ mod ffi {
     }
 }
 
-impl Launchd {
-    /// The socket launchd bound for this job.
-    pub(crate) fn socket() -> Result<UnixListener> {
-        let name = CString::new(LaunchAgent::SOCKETS).context("socket name")?;
-        let mut fds: *mut std::ffi::c_int = std::ptr::null_mut();
-        let mut count: usize = 0;
-        #[expect(unsafe_code, reason = "calling launchd's C API")]
-        // SAFETY: `name` is a valid C string; `fds` and `count` are valid
-        // out-pointers for the call.
-        let status =
-            unsafe { ffi::launch_activate_socket(name.as_ptr(), &raw mut fds, &raw mut count) };
-        if status != 0 {
-            bail!(
-                "launchd has no socket for this process ({}): run `doppel daemon install`, or `doppel daemon run` without --launchd",
-                std::io::Error::from_raw_os_error(status)
-            );
-        }
-        #[expect(unsafe_code, reason = "reading and freeing launchd's buffer")]
-        // SAFETY: on success launchd allocated `count` descriptors at `fds`,
-        // fresh in this process and owned by no one else; the buffer is
-        // ours to free with `free`.
-        let owned: Vec<OwnedFd> = unsafe {
-            let raw = std::slice::from_raw_parts(fds, count).to_vec();
-            nix::libc::free(fds.cast());
-            raw.into_iter().map(|fd| OwnedFd::from_raw_fd(fd)).collect()
-        };
-        let mut owned = owned.into_iter();
-        match (owned.next(), owned.next()) {
-            (Some(fd), None) => Ok(UnixListener::from(fd)),
-            (None, _) => bail!("launchd passed no socket"),
-            (Some(_), Some(_)) => bail!("launchd passed more than one socket"),
-        }
+/// The socket launchd bound for this job, which runs the daemon.
+pub(crate) fn activated_socket() -> Result<UnixListener> {
+    let name = CString::new(LaunchAgent::SOCKETS).context("socket name")?;
+    let mut fds: *mut std::ffi::c_int = std::ptr::null_mut();
+    let mut count: usize = 0;
+    #[expect(unsafe_code, reason = "calling launchd's C API")]
+    // SAFETY: `name` is a valid C string; `fds` and `count` are valid
+    // out-pointers for the call.
+    let status =
+        unsafe { ffi::launch_activate_socket(name.as_ptr(), &raw mut fds, &raw mut count) };
+    if status != 0 {
+        bail!(
+            "launchd has no socket for this process ({}): run `doppel daemon install`, or `doppel daemon run` without --launchd",
+            std::io::Error::from_raw_os_error(status)
+        );
+    }
+    #[expect(unsafe_code, reason = "reading and freeing launchd's buffer")]
+    // SAFETY: on success launchd allocated `count` descriptors at `fds`,
+    // fresh in this process and owned by no one else; the buffer is
+    // ours to free with `free`.
+    let owned: Vec<OwnedFd> = unsafe {
+        let raw = std::slice::from_raw_parts(fds, count).to_vec();
+        nix::libc::free(fds.cast());
+        raw.into_iter().map(|fd| OwnedFd::from_raw_fd(fd)).collect()
+    };
+    let mut owned = owned.into_iter();
+    match (owned.next(), owned.next()) {
+        (Some(fd), None) => Ok(UnixListener::from(fd)),
+        (None, _) => bail!("launchd passed no socket"),
+        (Some(_), Some(_)) => bail!("launchd passed more than one socket"),
     }
 }
 

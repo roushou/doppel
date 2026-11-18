@@ -57,47 +57,6 @@ const RAIL: f32 = 264.0;
 /// The group a segment's icon follows on hover.
 const SEGMENT: &str = "doppel-segment";
 
-/// Opens the window.
-pub(crate) struct Window;
-
-impl Window {
-    /// Opens the window in `cx`, once the platform has launched
-    /// (`platform::launch`). False when it can't be opened.
-    pub(crate) fn open(
-        daemon: Arc<dyn Daemon>,
-        clock: Arc<dyn LocalClock>,
-        settings: Arc<dyn Settings>,
-        shown: Vec<MachineName>,
-        cx: &mut App,
-    ) -> bool {
-        // Without them the window falls back to the system's fonts.
-        let _ = cx
-            .text_system()
-            .add_fonts(FONTS.iter().map(|font| Cow::Borrowed(*font)).collect());
-        cx.set_global(Theme::dark());
-        // Opens zoomed to fill the screen: the machine's picture is the
-        // point. Un-zoomed, it takes this centred size.
-        let bounds = Bounds::centered(None, size(px(1280.), px(820.)), cx);
-        cx.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Maximized(bounds)),
-                titlebar: Some(TitlebarOptions {
-                    title: Some("doppel".into()),
-                    ..TitlebarOptions::default()
-                }),
-                window_min_size: Some(size(px(480.), px(360.))),
-                ..WindowOptions::default()
-            },
-            |window, cx| {
-                crate::platform::tag_window(window);
-                cx.set_global(Theme::chosen(settings.theme(), window.appearance()));
-                cx.new(|cx| Root::new(daemon, clock, settings, shown, window, cx))
-            },
-        )
-        .is_ok()
-    }
-}
-
 /// Whether the window reaches the daemon.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Link {
@@ -155,7 +114,7 @@ enum Segment {
     SignalLine,
 }
 
-struct Root {
+pub(crate) struct Root {
     daemon: Arc<dyn Daemon>,
     clock: Arc<dyn LocalClock>,
     link: Link,
@@ -187,6 +146,42 @@ struct Root {
 }
 
 impl Root {
+    /// Opens the window, with a root view of its own, in `cx`, once the platform has launched
+    /// (`platform::launch`). False when it can't be opened.
+    pub(crate) fn open_window(
+        daemon: Arc<dyn Daemon>,
+        clock: Arc<dyn LocalClock>,
+        settings: Arc<dyn Settings>,
+        shown: Vec<MachineName>,
+        cx: &mut App,
+    ) -> bool {
+        // Without them the window falls back to the system's fonts.
+        let _ = cx
+            .text_system()
+            .add_fonts(FONTS.iter().map(|font| Cow::Borrowed(*font)).collect());
+        cx.set_global(Theme::dark());
+        // Opens zoomed to fill the screen: the machine's picture is the
+        // point. Un-zoomed, it takes this centred size.
+        let bounds = Bounds::centered(None, size(px(1280.), px(820.)), cx);
+        cx.open_window(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Maximized(bounds)),
+                titlebar: Some(TitlebarOptions {
+                    title: Some("doppel".into()),
+                    ..TitlebarOptions::default()
+                }),
+                window_min_size: Some(size(px(480.), px(360.))),
+                ..WindowOptions::default()
+            },
+            |window, cx| {
+                crate::platform::tag_window(window);
+                cx.set_global(Theme::chosen(settings.theme(), window.appearance()));
+                cx.new(|cx| Root::new(daemon, clock, settings, shown, window, cx))
+            },
+        )
+        .is_ok()
+    }
+
     fn new(
         daemon: Arc<dyn Daemon>,
         clock: Arc<dyn LocalClock>,
