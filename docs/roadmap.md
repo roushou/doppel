@@ -20,8 +20,8 @@ files. People watch and take over from a desktop or browser viewer.
   supports, and carries on where it stopped when run again.
 - **Machines:** create from an IPSW with no person (macOS 27 hosts: the
   account is made on first boot, logged in, SSH on), import, start, stop,
-  pause, resume, checkpoint, fork, restore; delete from the viewers; delete a
-  checkpoint (`doppel forget-checkpoint`). Golden images with a
+  pause, resume, checkpoint, fork, restore; delete (`doppel delete`, or
+  the viewers); delete a checkpoint (`doppel forget-checkpoint`). Golden images with a
   template checkpoint; forks resume agent-ready in about 11 s. A resume
   from saved memory returns once screenshots show the guest as it is, not
   as it was saved.

@@ -246,7 +246,7 @@ impl fmt::Display for Blocked {
             ),
             Self::CreateUnfinished(name) => write!(
                 f,
-                "installing macOS into '{name}' didn't finish: remove it (its folder under machines/ in the store) or pass --name, then run setup again"
+                "installing macOS into '{name}' didn't finish: delete it (doppel delete {name}) and run setup again, or pass --name"
             ),
             Self::TemplateMissing { name, template } => write!(
                 f,
