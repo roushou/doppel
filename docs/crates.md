@@ -67,8 +67,10 @@ Activity has two vocabularies. `doppel_machine::activity` and
 `doppel-protocol`'s `convert`): they keep what this build doesn't know
 (`Unknown(i32)`) and time in `Duration`. The scene's are what the overlay
 draws: unknowns folded into `Other` or `Done`, failures into one `Failed`,
-times in milliseconds on the window's clock. `doppel_scene::from_daemon`
-maps one to the other, with tests, for the console on both targets.
+times in milliseconds on the window's clock. Each scene type takes in its
+machine counterpart beside its definition (`ActivityEvent::of` in
+`timeline`, `Recording::of` in `recordings`), with tests, for the console
+on both targets.
 
 ## Storage
 

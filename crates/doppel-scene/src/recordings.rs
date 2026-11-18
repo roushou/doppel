@@ -6,8 +6,9 @@ use doppel_desktop::geometry::Size;
 use std::fmt;
 
 use doppel_machine::machine::MachineName;
+use doppel_machine::recording as kept;
 
-use crate::timeline::{Call, CallKey, Gesture, Moment, Seen, Target};
+use crate::timeline::{Call, CallKey, Gesture, Moment, Seen, Target, TextRead, on_screen};
 
 /// A recording's name, as the daemon lists it (`2026-11-14T06-15-42Z-s1`).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -464,6 +465,74 @@ pub fn from_trace(recording: &Recording, machine: &MachineName) -> Vec<Moment> {
             }
         })
         .collect()
+}
+
+impl Recording {
+    /// A recording, opened, as replay shows it.
+    #[must_use]
+    pub fn of(recording: kept::Recording) -> Self {
+        Self {
+            id: RecordingId::new(recording.id.to_string()),
+            videos: recording
+                .videos
+                .into_iter()
+                .map(|video| Video {
+                    file: VideoName::new(video.file.to_string()),
+                    machine: video.machine,
+                    start_ms: video.start_ms,
+                    points: video.points,
+                })
+                .collect(),
+            trace: recording.trace.into_iter().map(TraceLine::of).collect(),
+        }
+    }
+}
+
+impl TraceLine {
+    fn of(line: kept::TraceLine) -> Self {
+        match line {
+            kept::TraceLine::Call(call) => {
+                let why = call.acted.as_ref().and_then(|acted| acted.why.clone());
+                let (acted, callout) = match call.acted {
+                    Some(acted) => {
+                        let (gesture, target, callout) = on_screen(*acted);
+                        (Some((gesture, target)), callout)
+                    }
+                    None => (None, None),
+                };
+                Self::Call(Box::new(TraceCall {
+                    why,
+                    start_ms: call.start_ms,
+                    end_ms: call.end_ms,
+                    machine: call.machine,
+                    call: call.call,
+                    outcome: match call.outcome {
+                        kept::TraceOutcome::Done => TraceOutcome::Done,
+                        kept::TraceOutcome::Failed => TraceOutcome::Failed,
+                        kept::TraceOutcome::TimedOut => TraceOutcome::TimedOut,
+                        kept::TraceOutcome::Refused => TraceOutcome::Refused,
+                        kept::TraceOutcome::Unknown(raw) => TraceOutcome::Unknown(raw),
+                    },
+                    error: call.error,
+                    waited_ms: call.waited_ms,
+                    queued_ms: call.queued_ms,
+                    by: match call.by {
+                        kept::TraceActor::Session => Actor::Session,
+                        kept::TraceActor::Person => Actor::Person,
+                        kept::TraceActor::Unknown(raw) => Actor::Unknown(raw),
+                    },
+                    acted,
+                    callout,
+                    seen: call.seen,
+                    refs: call.refs.map(|refs| std::sync::Arc::new(*refs)),
+                    read: call
+                        .read
+                        .map(|read| std::sync::Arc::new(TextRead::of(&read))),
+                }))
+            }
+            kept::TraceLine::Unreadable(raw) => Self::Unreadable(raw),
+        }
+    }
 }
 
 #[cfg(test)]
