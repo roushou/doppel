@@ -14,6 +14,8 @@ files. People watch and take over from a desktop or browser viewer.
 
 ## What works
 
+- **Install:** `brew install roushou/doppel/doppel`, a release signed with a
+  Developer ID and notarized, for Apple silicon.
 - **Machines:** create from an IPSW with no person (macOS 27 hosts: the
   account is made on first boot, logged in, SSH on), import, start, stop,
   pause, resume, checkpoint, fork, restore; delete from the viewers; delete a
