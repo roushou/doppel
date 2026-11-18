@@ -51,9 +51,7 @@ use connection::Connection;
 pub use connection::Notes;
 
 pub use activity::ActivityStream;
-pub use display::{
-    Announced, Display, DisplayLayout, EncodedDisplay, EncodedFrame, EncodedSize, FrameKind,
-};
+pub use display::{Announced, Display, DisplayLayout, EncodedDisplay, EncodedSize};
 pub use doppel_machine::activity::{
     Activity, Callout, CalloutLasts, CalloutShape, Ended, Ending, Gesture, OnScreen, Phase, Target,
     TextRead,
@@ -62,6 +60,7 @@ pub use doppel_machine::recording::{
     NotARecording, Recording, RecordingId, RecordingSummary, RecordingVideo, TraceActor, TraceCall,
     TraceLine, TraceOutcome, VideoFile,
 };
+pub use doppel_scene::encoded::{EncodedFrame, FrameKind};
 
 pub use doppel_protocol::report::{
     Acted, CheckpointReport, CheckpointResult, Cleanup, HandedBack, MachineFailure, Resumed,
@@ -77,8 +76,10 @@ pub struct TokenEntry {
     pub expires: SystemTime,
 }
 
-impl TokenEntry {
-    fn from_wire(entry: daemon::TokenEntry) -> Result<Self, ParseError> {
+impl TryFrom<daemon::TokenEntry> for TokenEntry {
+    type Error = ParseError;
+
+    fn try_from(entry: daemon::TokenEntry) -> Result<Self, ParseError> {
         let at = |seconds| UNIX_EPOCH + Duration::from_secs(seconds);
         Ok(Self {
             id: entry
@@ -116,8 +117,10 @@ pub enum WebStatus {
     },
 }
 
-impl WebStatus {
-    fn from_wire(status: daemon::WebStatus) -> Result<Self, ParseError> {
+impl TryFrom<daemon::WebStatus> for WebStatus {
+    type Error = ParseError;
+
+    fn try_from(status: daemon::WebStatus) -> Result<Self, ParseError> {
         use daemon::web_status::State;
         let port = |port: u32| {
             u16::try_from(port).map_err(|_| ParseError::Invalid {
@@ -445,7 +448,7 @@ impl<C: Clock> Client<C> {
             },
             call,
         )?;
-        Ok(StopReport::from_wire(stopped)?)
+        Ok(StopReport::try_from(stopped)?)
     }
 
     /// # Errors
@@ -505,7 +508,7 @@ impl<C: Clock> Client<C> {
             },
             call,
         )?;
-        Ok(CheckpointReport::from_wire(report)?)
+        Ok(CheckpointReport::try_from(report)?)
     }
 
     /// Makes `into`, a new machine, from `source`'s checkpoint.
@@ -575,7 +578,7 @@ impl<C: Clock> Client<C> {
             },
             call,
         )?;
-        Ok(WebStatus::from_wire(status)?)
+        Ok(WebStatus::try_from(status)?)
     }
 
     /// What the web console's listener is doing.
@@ -584,7 +587,7 @@ impl<C: Clock> Client<C> {
     /// See [`ClientError`].
     pub fn web_status<'a>(&self, call: impl Into<Call<'a>>) -> Result<WebStatus, ClientError> {
         let status = self.call(daemon::GetWebStatus {}, call)?;
-        Ok(WebStatus::from_wire(status)?)
+        Ok(WebStatus::try_from(status)?)
     }
 
     /// Records a token by its digest, for as long as `ttl`. The token
@@ -609,7 +612,7 @@ impl<C: Clock> Client<C> {
             },
             call,
         )?;
-        Ok(TokenEntry::from_wire(entry)?)
+        Ok(TokenEntry::try_from(entry)?)
     }
 
     /// The tokens that let their holders in now, oldest first.
@@ -621,7 +624,7 @@ impl<C: Clock> Client<C> {
         Ok(list
             .tokens
             .into_iter()
-            .map(TokenEntry::from_wire)
+            .map(TokenEntry::try_from)
             .collect::<Result<_, _>>()?)
     }
 
@@ -635,7 +638,7 @@ impl<C: Clock> Client<C> {
         call: impl Into<Call<'a>>,
     ) -> Result<TokenEntry, ClientError> {
         let entry = self.call(daemon::RevokeToken { id: id.to_string() }, call)?;
-        Ok(TokenEntry::from_wire(entry)?)
+        Ok(TokenEntry::try_from(entry)?)
     }
 
     fn fork_run(fork: daemon::RunFork) -> Result<ForkRun, ClientError> {
@@ -796,7 +799,7 @@ impl<C: Clock> Client<C> {
         Ok(list
             .sessions
             .into_iter()
-            .map(SessionInfo::from_wire)
+            .map(SessionInfo::try_from)
             .collect::<Result<_, _>>()?)
     }
 

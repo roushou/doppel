@@ -173,7 +173,7 @@ async fn order(reach: &Reach, name: &MachineName, order: Order) -> Result<Verdic
                     then: daemon::AfterCheckpoint::from(AfterCheckpoint::Resume) as i32,
                 })
                 .await?;
-            match CheckpointReport::from_wire(report) {
+            match CheckpointReport::try_from(report) {
                 Ok(report) => answers::checkpoint(report.result),
                 Err(error) => Verdict::Unknown(error.to_string()),
             }
@@ -255,7 +255,7 @@ async fn stop(
             mode: mode as i32,
         })
         .await?;
-    Ok(match StopReport::from_wire(stopped) {
+    Ok(match StopReport::try_from(stopped) {
         Ok(report) => answers::stopped(report.outcome),
         Err(error) => Verdict::Unknown(error.to_string()),
     })
@@ -279,7 +279,7 @@ impl Daemon for WebDaemon {
             let list = reach.call(daemon::ListSessions {}).await?;
             list.sessions
                 .into_iter()
-                .map(|entry| SessionInfo::from_wire(entry).map(answers::session))
+                .map(|entry| SessionInfo::try_from(entry).map(answers::session))
                 .collect::<Result<_, _>>()
                 .map_err(unreadable)
         })

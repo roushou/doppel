@@ -108,25 +108,12 @@ impl StreamSource {
             EncodedDisplay::open(socket, SystemClock, name, within(DisplaySource::WAIT * 10))?;
         Ok((Self { display }, size.points))
     }
-
-    fn frame(frame: doppel_client::EncodedFrame) -> doppel_console::EncodedFrame {
-        doppel_console::EncodedFrame {
-            sequence: frame.sequence,
-            kind: match frame.kind {
-                doppel_client::FrameKind::Key { parameter_sets } => {
-                    doppel_console::FrameKind::Key { parameter_sets }
-                }
-                doppel_client::FrameKind::Delta => doppel_console::FrameKind::Delta,
-            },
-            data: frame.data,
-        }
-    }
 }
 
 impl EncodedSource for StreamSource {
     fn next_frame(&mut self) -> Result<NextEncoded, SourceError> {
         match self.display.next_frame(within(DisplaySource::WAIT)) {
-            Ok(frame) => Ok(NextEncoded::Frame(Self::frame(frame))),
+            Ok(frame) => Ok(NextEncoded::Frame(frame)),
             Err(ClientError::Timeout) => Ok(NextEncoded::Unchanged),
             // The daemon ends the connection when the VM stops.
             Err(ClientError::Closed) => Ok(NextEncoded::Ended),
@@ -267,38 +254,5 @@ impl View {
             .showing(self.names)
             .run();
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn encoded_frames_keep_their_kind_and_bytes() {
-        let key = StreamSource::frame(doppel_client::EncodedFrame {
-            sequence: 7,
-            kind: doppel_client::FrameKind::Key {
-                parameter_sets: vec![vec![0x67], vec![0x68]],
-            },
-            data: vec![0, 0, 0, 1, 0x65],
-        });
-        assert_eq!(
-            key,
-            doppel_console::EncodedFrame {
-                sequence: 7,
-                kind: doppel_console::FrameKind::Key {
-                    parameter_sets: vec![vec![0x67], vec![0x68]],
-                },
-                data: vec![0, 0, 0, 1, 0x65],
-            }
-        );
-        let delta = StreamSource::frame(doppel_client::EncodedFrame {
-            sequence: 8,
-            kind: doppel_client::FrameKind::Delta,
-            data: vec![1],
-        });
-        assert_eq!(delta.kind, doppel_console::FrameKind::Delta);
-        assert_eq!((delta.sequence, delta.data), (8, vec![1]));
     }
 }

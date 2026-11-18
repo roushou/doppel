@@ -92,7 +92,7 @@ impl Notes {
     pub fn take(&self) -> Result<Vec<HandedBack>, ClientError> {
         Ok(std::mem::take(&mut *self.lock())
             .iter()
-            .map(HandedBack::from_wire)
+            .map(HandedBack::try_from)
             .collect::<Result<_, _>>()?)
     }
 

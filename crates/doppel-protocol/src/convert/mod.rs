@@ -1008,3 +1008,7 @@ mod activity_convert;
 mod film_convert;
 
 mod encoded_convert;
+
+// --- Daemon reports -------------------------------------------------------------
+
+mod report_convert;

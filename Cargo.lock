@@ -1386,6 +1386,7 @@ dependencies = [
  "doppel-gateway",
  "doppel-machine",
  "doppel-protocol",
+ "doppel-scene",
  "nix",
  "thiserror 2.0.21",
 ]
