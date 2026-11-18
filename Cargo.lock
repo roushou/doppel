@@ -1353,7 +1353,7 @@ dependencies = [
 
 [[package]]
 name = "doppel-cli"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -1379,7 +1379,7 @@ dependencies = [
 
 [[package]]
 name = "doppel-client"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "doppel-gateway",
  "doppel-machine",
@@ -1390,7 +1390,7 @@ dependencies = [
 
 [[package]]
 name = "doppel-daemon"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "base64 0.22.1",
  "doppel-client",
@@ -1409,7 +1409,7 @@ dependencies = [
 
 [[package]]
 name = "doppel-gateway"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "base64 0.22.1",
  "nix",
@@ -1426,7 +1426,7 @@ dependencies = [
 
 [[package]]
 name = "doppel-host"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "doppel-machine",
  "doppel-protocol",
@@ -1441,7 +1441,7 @@ dependencies = [
 
 [[package]]
 name = "doppel-machine"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "insta",
  "proptest",
@@ -1450,7 +1450,7 @@ dependencies = [
 
 [[package]]
 name = "doppel-mcp"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "base64 0.22.1",
  "doppel-machine",
@@ -1464,7 +1464,7 @@ dependencies = [
 
 [[package]]
 name = "doppel-protocol"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "bytes",
  "doppel-machine",
@@ -1480,7 +1480,7 @@ dependencies = [
 
 [[package]]
 name = "doppel-scene"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "doppel-machine",
  "thiserror 2.0.21",
@@ -1488,7 +1488,7 @@ dependencies = [
 
 [[package]]
 name = "doppel-viewer"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "core-foundation 0.10.0",
  "core-video",
