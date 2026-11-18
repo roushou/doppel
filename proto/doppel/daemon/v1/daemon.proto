@@ -310,6 +310,33 @@ message LoginResult {
     // Typed, then the agent stopped answering. `last` is what it last said.
     string unknown = 6;
   }
+  // Set once the session is active: whether screenshots show it as it is.
+  HostScreen screen = 7;
+}
+
+// Whether the host's view of a machine's screen (screenshots, text
+// recognition, viewers) shows what the guest draws now. After a resume from
+// saved memory it shows the saved screen for a few seconds.
+message HostScreen {
+  oneof state {
+    // It does, since this long after the check began.
+    uint64 current_after_micros = 1;
+    // It does, but the probe square may still show in the top-left corner
+    // for up to 30 s.
+    CurrentWithProbe current_with_probe = 2;
+    // Unknown: the guest's agent predates the probe.
+    Done probe_unsupported = 3;
+    // Unknown: the probe wasn't seen within this long.
+    uint64 not_shown_after_micros = 4;
+    // Unknown: a step failed, and why.
+    string failed = 5;
+  }
+}
+
+message CurrentWithProbe {
+  uint64 after_micros = 1;
+  // Why it may still show.
+  string why = 2;
 }
 
 message NoAgent {
@@ -395,6 +422,8 @@ message CheckpointCompleted {
   optional string sync_skipped = 2;
   // Set when the guest may be left paused: the resume or stop failed.
   MachineFailure left_paused = 3;
+  // Set when the guest was resumed: whether screenshots show it as it is.
+  HostScreen screen = 4;
 }
 
 message CheckpointFailed {

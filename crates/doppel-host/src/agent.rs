@@ -18,6 +18,7 @@ use doppel_machine::files::{ReadRequest, WriteRequest};
 use doppel_machine::input::Input;
 use doppel_machine::outcome::{Certainty, Failure};
 use doppel_machine::screen::Screenshot;
+use doppel_machine::screen_probe::Probe;
 use doppel_protocol::convert::{ParseError, RemoteError};
 use doppel_protocol::exchange::{EventLimit, ExchangeConfig, ExchangeError};
 use doppel_protocol::frame::{EncodeError, StreamError};
@@ -138,6 +139,7 @@ pub struct AgentClient<C> {
     pushes: Pushes,
     /// Whether it answers a look without keeping it.
     observes: Observes,
+    probes: Probes,
 }
 
 /// Whether the agent can push events (its `Hello` lists the capability).
@@ -153,6 +155,14 @@ pub enum Pushes {
 /// would keep it, so it is never asked for one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Observes {
+    Supported,
+    Unsupported,
+}
+
+/// Whether the agent draws a screen probe (its `Hello` lists the
+/// capability). An older agent, as a checkpoint keeps it, doesn't.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Probes {
     Supported,
     Unsupported,
 }
@@ -188,6 +198,11 @@ impl<C: Clock> AgentClient<C> {
         } else {
             Observes::Unsupported
         };
+        let probes = if offers(common::Capability::ScreenProbe) {
+            Probes::Supported
+        } else {
+            Probes::Unsupported
+        };
         let peer_build = match hello.build_id.as_str() {
             "" => None,
             raw => Some(
@@ -200,6 +215,7 @@ impl<C: Clock> AgentClient<C> {
             peer_build,
             pushes,
             observes,
+            probes,
         })
     }
 
@@ -212,6 +228,40 @@ impl<C: Clock> AgentClient<C> {
     #[must_use]
     pub const fn pushes(&self) -> Pushes {
         self.pushes
+    }
+
+    #[must_use]
+    pub const fn probes(&self) -> Probes {
+        self.probes
+    }
+
+    /// Draws `probe` above every window, or moves the one shown. Check
+    /// [`Self::probes`] first: an agent without them refuses.
+    ///
+    /// # Errors
+    /// See [`AgentError`].
+    pub fn show_probe(&mut self, probe: Probe, by: Deadline) -> Result<(), AgentError> {
+        self.expect_done(Operation::ShowProbe(probe.into()), by)
+    }
+
+    /// Removes the probe, if one shows.
+    ///
+    /// # Errors
+    /// See [`AgentError`].
+    pub fn hide_probe(&mut self, by: Deadline) -> Result<(), AgentError> {
+        self.expect_done(Operation::HideProbe(agent::HideProbe {}), by)
+    }
+
+    fn expect_done(&mut self, operation: Operation, by: Deadline) -> Result<(), AgentError> {
+        match self.call(operation, by)? {
+            Outcome::Done(_) => Ok(()),
+            Outcome::Error(_)
+            | Outcome::Status(_)
+            | Outcome::Image(_)
+            | Outcome::AxSnapshot(_)
+            | Outcome::FileContents(_)
+            | Outcome::ExecResult(_) => Err(AgentError::Protocol("expected Done")),
+        }
     }
 
     /// Whether the connection still looks usable: the agent hasn't closed

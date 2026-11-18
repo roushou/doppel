@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 
 use crate::agent::Session;
 use crate::machine::Entropy;
+use crate::screen_probe::HostScreen;
 
 /// The guest user's login password. No `Display`, and `Debug` is redacted:
 /// it reaches the guest only through [`LoginPassword::keystrokes`].
@@ -184,6 +185,33 @@ impl LoginOutcome {
             | Self::PasswordNotAccepted
             | Self::NoAgent { .. }
             | Self::Unknown { .. } => false,
+        }
+    }
+}
+
+/// A desktop waited for: how the login went and, once the session is
+/// active, whether screenshots show it as it is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Desktop {
+    pub login: LoginOutcome,
+    /// `None` until the login is ready: nothing to check before.
+    pub screen: Option<HostScreen>,
+}
+
+impl Desktop {
+    /// Whether the session is active. An unconfirmed screen doesn't change
+    /// that: screenshots may lag a few seconds, and the screen says so.
+    #[must_use]
+    pub const fn is_ready(&self) -> bool {
+        self.login.is_ready()
+    }
+}
+
+impl fmt::Display for Desktop {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.screen {
+            Some(screen) => write!(f, "{}; {screen}", self.login),
+            None => write!(f, "{}", self.login),
         }
     }
 }

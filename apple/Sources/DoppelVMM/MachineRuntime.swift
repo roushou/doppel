@@ -158,6 +158,9 @@ public final class MachineRuntime: NSObject, VZVirtualMachineDelegate {
                 return Reply(.done(.init()))
             case .captureDisplay(let capture):
                 return Reply(.image(try captureDisplay(maxDimension: Int(capture.maxDimensionPixels))))
+            case .sampleDisplay(let sample):
+                let color = try sampleDisplay(at: sample.at)
+                return Reply(.displaySample(.with { $0.color = color }))
             case .recognizeText:
                 guard let image = try displayPixels().cgImage else { throw HostInputError.captureFailed }
                 let points = displayPoints

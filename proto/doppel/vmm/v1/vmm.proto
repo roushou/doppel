@@ -36,6 +36,8 @@ message VmmRequest {
     StopRecording stop_recording = 21;
     // EncodedFrame events then go to this connection only.
     OpenEncodedDisplay open_encoded_display = 22;
+    // Answered with DisplaySample.
+    SampleDisplay sample_display = 23;
   }
 }
 
@@ -53,6 +55,7 @@ message VmmResponse {
     RecordingStarted recording_started = 17;
     RecordingStopped recording_stopped = 18;
     EncodedDisplayOpened encoded_display_opened = 19;
+    DisplaySample display_sample = 20;
   }
 }
 
@@ -113,6 +116,15 @@ message CaptureDisplay {
 }
 
 // Text recognition (Vision) on the VM's display, at full resolution.
+// The colour of one point of the display, as a screenshot would show it.
+message SampleDisplay {
+  doppel.common.v1.Point at = 1;
+}
+
+message DisplaySample {
+  doppel.common.v1.Color color = 1;
+}
+
 message RecognizeText {}
 
 // Frames are in display points, top-left origin: the coordinate space of Input.

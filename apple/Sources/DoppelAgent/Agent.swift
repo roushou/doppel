@@ -12,10 +12,11 @@ typealias Outcome = Doppel_Agent_V1_AgentResponse.OneOf_Outcome
 @MainActor
 public final class Agent {
     private let ax = AxSnapshotter()
+    private let probe = ScreenProbe()
 
     public init() {}
 
-    public static let capabilities: [Doppel_Common_V1_Capability] = [.screenshot, .input, .axSnapshot, .axObserve, .axAction, .exec, .files, .events]
+    public static let capabilities: [Doppel_Common_V1_Capability] = [.screenshot, .input, .axSnapshot, .axObserve, .axAction, .exec, .files, .events, .screenProbe]
 
     public func handle(_ operation: Doppel_Agent_V1_AgentRequest.OneOf_Operation?) async -> Doppel_Agent_V1_AgentResponse.OneOf_Outcome {
         do {
@@ -38,6 +39,12 @@ public final class Agent {
                 return .fileContents(try GuestFiles.read(request))
             case .writeFile(let request):
                 try GuestFiles.write(request)
+                return .done(.init())
+            case .showProbe(let request):
+                try probe.show(request)
+                return .done(.init())
+            case .hideProbe:
+                probe.hide()
                 return .done(.init())
             case .subscribe:
                 // A connection's own business: AgentConnection answers it.

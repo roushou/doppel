@@ -26,6 +26,7 @@ pub mod mark;
 pub mod outcome;
 pub mod recording;
 pub mod screen;
+pub mod screen_probe;
 pub mod screen_text;
 pub mod startup;
 pub mod stop;

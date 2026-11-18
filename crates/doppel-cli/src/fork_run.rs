@@ -12,7 +12,7 @@ use std::process::{Child, Command, ExitStatus};
 use anyhow::{Context, Result, bail};
 use doppel_client::{MachineFailure, StopMode, StopOutcome};
 use doppel_machine::bundle::CheckpointLabel;
-use doppel_machine::login::LoginOutcome;
+use doppel_machine::login::Desktop;
 use doppel_machine::machine::MachineName;
 
 use crate::daemon_at::{DaemonAt, LIFECYCLE, within};
@@ -55,7 +55,7 @@ enum Ended {
     NotStarted(MachineFailure),
     /// It started without reaching an agent-ready desktop (locked, say), so
     /// its command didn't run.
-    NotReady(LoginOutcome),
+    NotReady(Desktop),
     /// Its command couldn't be started or waited for.
     NotRun(std::io::Error),
     Exited(ExitStatus),
@@ -263,7 +263,13 @@ mod tests {
                 false,
             ),
             (
-                report(Ended::NotReady(LoginOutcome::NeedsPassword), Ok(())),
+                report(
+                    Ended::NotReady(Desktop {
+                        login: doppel_machine::login::LoginOutcome::NeedsPassword,
+                        screen: None,
+                    }),
+                    Ok(()),
+                ),
                 false,
             ),
         ];

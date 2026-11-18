@@ -35,6 +35,8 @@ enum Capability {
   CAPABILITY_RECORDING = 11;
   // The agent answers snapshots with RETENTION_OBSERVATION without keeping them.
   CAPABILITY_AX_OBSERVE = 12;
+  // The agent draws a screen probe (ShowProbe, HideProbe).
+  CAPABILITY_SCREEN_PROBE = 13;
 }
 
 // Screen coordinates in points, top-left origin, of the display being driven.
@@ -51,6 +53,13 @@ message Size {
 message Rect {
   Point origin = 1;
   Size size = 2;
+}
+
+// An sRGB colour, 8 bits a channel: each field is 0 to 255.
+message Color {
+  uint32 red = 1;
+  uint32 green = 2;
+  uint32 blue = 3;
 }
 
 // --- Input ---------------------------------------------------------------

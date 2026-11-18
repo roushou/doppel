@@ -197,6 +197,31 @@ fn agent_stream() -> Vec<agent::AgentFrame> {
                 })),
             })),
         },
+        agent::AgentFrame {
+            kind: Some(Kind::Request(agent::AgentRequest {
+                id: 7,
+                operation: Some(Operation::ShowProbe(agent::ShowProbe {
+                    frame: Some(common::Rect {
+                        origin: point(0.0, 0.0),
+                        size: Some(common::Size {
+                            width: 4.0,
+                            height: 4.0,
+                        }),
+                    }),
+                    color: Some(common::Color {
+                        red: 0,
+                        green: 0,
+                        blue: 255,
+                    }),
+                })),
+            })),
+        },
+        agent::AgentFrame {
+            kind: Some(Kind::Request(agent::AgentRequest {
+                id: 8,
+                operation: Some(Operation::HideProbe(agent::HideProbe {})),
+            })),
+        },
     ]
 }
 
@@ -353,6 +378,30 @@ fn vmm_stream() -> Vec<vmm::VmmFrame> {
                     run_state: vmm::VmRunState::Running as i32,
                     window: vmm::WindowMode::Shown as i32,
                 })),
+            })),
+        },
+        vmm::VmmFrame {
+            kind: Some(Kind::Request(vmm::VmmRequest {
+                id: 15,
+                operation: Some(vmm::vmm_request::Operation::SampleDisplay(
+                    vmm::SampleDisplay {
+                        at: point(2.0, 2.0),
+                    },
+                )),
+            })),
+        },
+        vmm::VmmFrame {
+            kind: Some(Kind::Response(vmm::VmmResponse {
+                id: 15,
+                outcome: Some(vmm::vmm_response::Outcome::DisplaySample(
+                    vmm::DisplaySample {
+                        color: Some(common::Color {
+                            red: 236,
+                            green: 237,
+                            blue: 238,
+                        }),
+                    },
+                )),
             })),
         },
     ]
@@ -525,6 +574,9 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
                     outcome: Some(daemon::login_result::Outcome::UnlockedAfterMicros(
                         1_119_000,
                     )),
+                    screen: Some(daemon::HostScreen {
+                        state: Some(daemon::host_screen::State::CurrentAfterMicros(3_480_000)),
+                    }),
                 })),
             })),
         },
@@ -878,6 +930,11 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
                                             21_400_000,
                                         ),
                                     ),
+                                    screen: Some(daemon::HostScreen {
+                                        state: Some(daemon::host_screen::State::ProbeUnsupported(
+                                            daemon::Done {},
+                                        )),
+                                    }),
                                 },
                             )),
                         },

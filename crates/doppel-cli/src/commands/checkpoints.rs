@@ -54,12 +54,16 @@ impl CheckpointCmd {
                 memory_bytes,
                 left_paused: None,
                 sync_skipped,
+                screen,
             } => Ok(Report::Checkpointed {
                 name,
                 label,
                 memory_bytes,
                 paused_for: report.paused_for,
-                guest: GuestAfter::AsAsked { sync_skipped },
+                guest: GuestAfter::AsAsked {
+                    sync_skipped,
+                    screen,
+                },
             }),
             CheckpointResult::Completed {
                 memory_bytes,

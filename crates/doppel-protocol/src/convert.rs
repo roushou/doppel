@@ -10,11 +10,13 @@ use doppel_machine::bundle::CheckpointLabel;
 use doppel_machine::checkpoint::{AfterCheckpoint, GuestAfterFailure, Step};
 use doppel_machine::input::Via;
 use doppel_machine::lineage::{Lineage, Origin, RecordedLineage, Role};
-use doppel_machine::login::LoginOutcome;
+use doppel_machine::login::{Desktop, LoginOutcome};
 use doppel_machine::machine::SpecError;
 use doppel_machine::outcome::{Certainty, Failure};
+use doppel_machine::screen_probe::{HostScreen, Probe, Rgb, WhyUnconfirmed};
 use doppel_machine::vm::{MachineReport, NextStart, RunState, Status, Window};
 
+use crate::pb::agent::v1 as agent;
 use crate::pb::common::v1 as common;
 use crate::pb::daemon::v1 as daemon;
 use crate::pb::vmm::v1 as vmm;
@@ -427,12 +429,12 @@ impl Micros {
 }
 
 impl daemon::LoginResult {
-    /// The outcome, its durations in whole microseconds: below one is
+    /// The desktop, its durations in whole microseconds: below one is
     /// dropped, and past `u64::MAX` saturates.
     #[must_use]
-    pub fn in_micros(outcome: &LoginOutcome) -> Self {
+    pub fn in_micros(desktop: &Desktop) -> Self {
         use daemon::login_result::Outcome;
-        let outcome = match outcome {
+        let outcome = match &desktop.login {
             LoginOutcome::AlreadyActive { after } => {
                 Outcome::AlreadyActiveAfterMicros(Micros::saturating(*after).get())
             }
@@ -449,31 +451,126 @@ impl daemon::LoginResult {
         };
         Self {
             outcome: Some(outcome),
+            screen: desktop.screen.as_ref().map(daemon::HostScreen::in_micros),
         }
     }
 }
 
-impl TryFrom<daemon::LoginResult> for LoginOutcome {
+impl TryFrom<daemon::LoginResult> for Desktop {
     type Error = ParseError;
 
     fn try_from(result: daemon::LoginResult) -> Result<Self, ParseError> {
         use daemon::login_result::Outcome;
         use std::time::Duration;
-        Ok(match result.outcome {
+        let screen = result.screen.map(HostScreen::try_from).transpose()?;
+        let login = match result.outcome {
             None => return Err(ParseError::Missing("login_result.outcome")),
-            Some(Outcome::AlreadyActiveAfterMicros(after)) => Self::AlreadyActive {
+            Some(Outcome::AlreadyActiveAfterMicros(after)) => LoginOutcome::AlreadyActive {
                 after: Duration::from_micros(after),
             },
-            Some(Outcome::UnlockedAfterMicros(after)) => Self::Unlocked {
+            Some(Outcome::UnlockedAfterMicros(after)) => LoginOutcome::Unlocked {
                 after: Duration::from_micros(after),
             },
-            Some(Outcome::NeedsPassword(_)) => Self::NeedsPassword,
-            Some(Outcome::PasswordNotAccepted(_)) => Self::PasswordNotAccepted,
-            Some(Outcome::NoAgent(no_agent)) => Self::NoAgent {
+            Some(Outcome::NeedsPassword(_)) => LoginOutcome::NeedsPassword,
+            Some(Outcome::PasswordNotAccepted(_)) => LoginOutcome::PasswordNotAccepted,
+            Some(Outcome::NoAgent(no_agent)) => LoginOutcome::NoAgent {
                 waited: Duration::from_micros(no_agent.waited_micros),
                 last: no_agent.last,
             },
-            Some(Outcome::Unknown(last)) => Self::Unknown { last },
+            Some(Outcome::Unknown(last)) => LoginOutcome::Unknown { last },
+        };
+        Ok(Self { login, screen })
+    }
+}
+
+// --- Screen probe ---------------------------------------------------------------
+
+impl From<Rgb> for common::Color {
+    fn from(color: Rgb) -> Self {
+        Self {
+            red: color.red().into(),
+            green: color.green().into(),
+            blue: color.blue().into(),
+        }
+    }
+}
+
+impl TryFrom<common::Color> for Rgb {
+    type Error = ParseError;
+
+    fn try_from(color: common::Color) -> Result<Self, ParseError> {
+        let channel = |value: u32, field| {
+            u8::try_from(value).map_err(|_| ParseError::Invalid {
+                field,
+                reason: format!("{value} is past 255"),
+            })
+        };
+        Ok(Self::new(
+            channel(color.red, "color.red")?,
+            channel(color.green, "color.green")?,
+            channel(color.blue, "color.blue")?,
+        ))
+    }
+}
+
+impl From<Probe> for agent::ShowProbe {
+    fn from(probe: Probe) -> Self {
+        Self {
+            frame: Some(Probe::frame().into()),
+            color: Some(probe.color().into()),
+        }
+    }
+}
+
+impl daemon::HostScreen {
+    /// The screen's state, its durations in whole microseconds: below one
+    /// is dropped, and past `u64::MAX` saturates.
+    #[must_use]
+    pub fn in_micros(screen: &HostScreen) -> Self {
+        use daemon::host_screen::State;
+        let micros = |duration| Micros::saturating(duration).get();
+        let state = match screen {
+            HostScreen::Current { after } => State::CurrentAfterMicros(micros(*after)),
+            HostScreen::CurrentWithProbe { after, why } => {
+                State::CurrentWithProbe(daemon::CurrentWithProbe {
+                    after_micros: micros(*after),
+                    why: why.clone(),
+                })
+            }
+            HostScreen::Unconfirmed(WhyUnconfirmed::ProbeUnsupported) => {
+                State::ProbeUnsupported(daemon::Done {})
+            }
+            HostScreen::Unconfirmed(WhyUnconfirmed::NotShown { waited }) => {
+                State::NotShownAfterMicros(micros(*waited))
+            }
+            HostScreen::Unconfirmed(WhyUnconfirmed::Failed(why)) => State::Failed(why.clone()),
+        };
+        Self { state: Some(state) }
+    }
+}
+
+impl TryFrom<daemon::HostScreen> for HostScreen {
+    type Error = ParseError;
+
+    fn try_from(screen: daemon::HostScreen) -> Result<Self, ParseError> {
+        use daemon::host_screen::State;
+        use std::time::Duration;
+        Ok(match screen.state {
+            None => return Err(ParseError::Missing("host_screen.state")),
+            Some(State::CurrentAfterMicros(after)) => Self::Current {
+                after: Duration::from_micros(after),
+            },
+            Some(State::CurrentWithProbe(current)) => Self::CurrentWithProbe {
+                after: Duration::from_micros(current.after_micros),
+                why: current.why,
+            },
+            Some(State::ProbeUnsupported(_)) => Self::Unconfirmed(WhyUnconfirmed::ProbeUnsupported),
+            Some(State::NotShownAfterMicros(waited)) => {
+                Self::Unconfirmed(WhyUnconfirmed::NotShown {
+                    waited: Duration::from_micros(waited),
+                })
+            }
+            Some(State::Failed(why)) => Self::Unconfirmed(WhyUnconfirmed::Failed(why)),
         })
     }
 }
@@ -702,11 +799,59 @@ mod tests {
                 last: "connection reset".into(),
             },
         ] {
+            let desktop = Desktop {
+                login: outcome,
+                screen: None,
+            };
             assert_eq!(
-                LoginOutcome::try_from(daemon::LoginResult::in_micros(&outcome)),
-                Ok(outcome)
+                Desktop::try_from(daemon::LoginResult::in_micros(&desktop)),
+                Ok(desktop)
             );
         }
+    }
+
+    #[test]
+    fn host_screens_round_trip() {
+        use doppel_machine::screen_probe::{HostScreen, WhyUnconfirmed};
+        use std::time::Duration;
+        for screen in [
+            HostScreen::Current {
+                after: Duration::from_millis(3500),
+            },
+            HostScreen::CurrentWithProbe {
+                after: Duration::from_millis(40),
+                why: "hiding it failed: timeout".into(),
+            },
+            HostScreen::Unconfirmed(WhyUnconfirmed::ProbeUnsupported),
+            HostScreen::Unconfirmed(WhyUnconfirmed::NotShown {
+                waited: Duration::from_secs(20),
+            }),
+            HostScreen::Unconfirmed(WhyUnconfirmed::Failed("no VMM".into())),
+        ] {
+            let desktop = Desktop {
+                login: LoginOutcome::AlreadyActive {
+                    after: Duration::from_millis(12),
+                },
+                screen: Some(screen),
+            };
+            assert_eq!(
+                Desktop::try_from(daemon::LoginResult::in_micros(&desktop)),
+                Ok(desktop)
+            );
+        }
+    }
+
+    #[test]
+    fn colours_past_eight_bits_are_refused() {
+        use doppel_machine::screen_probe::Rgb;
+        let color = common::Color::from(Rgb::new(255, 0, 9));
+        assert_eq!(Rgb::try_from(color), Ok(Rgb::new(255, 0, 9)));
+        let too_red = common::Color {
+            red: 256,
+            green: 0,
+            blue: 0,
+        };
+        assert!(Rgb::try_from(too_red).is_err());
     }
 
     #[test]

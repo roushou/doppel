@@ -27,7 +27,7 @@ use doppel_machine::exec::{ExecOutput, ExecRequest};
 use doppel_machine::files::{ReadRequest, WriteRequest};
 use doppel_machine::input::Input;
 use doppel_machine::lineage::RecordedLineage;
-use doppel_machine::login::LoginOutcome;
+use doppel_machine::login::Desktop;
 use doppel_machine::machine::MachineName;
 use doppel_machine::screen::Screenshot;
 use doppel_machine::screen_text::{ScreenText, TextQuery};
@@ -150,7 +150,7 @@ impl WebStatus {
 pub struct ForkRun {
     pub name: MachineName,
     /// Its desktop, once it started; or why it didn't get there.
-    pub desktop: Result<LoginOutcome, MachineFailure>,
+    pub desktop: Result<Desktop, MachineFailure>,
 }
 
 /// Whether a session is recorded.
@@ -416,7 +416,7 @@ impl<C: Clock> Client<C> {
         &self,
         name: &MachineName,
         call: impl Into<Call<'a>>,
-    ) -> Result<LoginOutcome, ClientError> {
+    ) -> Result<Desktop, ClientError> {
         let result = self.call(
             daemon::AwaitDesktop {
                 name: name.to_string(),
@@ -1205,7 +1205,7 @@ impl<C: Clock> Client<C> {
         name: &MachineName,
         label: &CheckpointLabel,
         call: impl Into<Call<'a>>,
-    ) -> Result<LoginOutcome, ClientError> {
+    ) -> Result<Desktop, ClientError> {
         let result = self.call(
             daemon::RollBack {
                 name: name.to_string(),

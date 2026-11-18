@@ -168,6 +168,27 @@ extension MachineRuntime {
         }
     }
 
+    /// The display's colour at `at`, as a screenshot would show it: the
+    /// view's pixels there, in sRGB.
+    func sampleDisplay(at point: Doppel_Common_V1_Point) throws -> Doppel_Common_V1_Color {
+        guard point.x >= 0, point.y >= 0, point.x < displayPoints.width, point.y < displayPoints.height else {
+            throw HostInputError.outsideDisplay(CGPoint(x: point.x, y: point.y))
+        }
+        let bounds = view.bounds
+        let x = point.x * bounds.width / displayPoints.width
+        let y = bounds.height - point.y * bounds.height / displayPoints.height
+        let spot = NSRect(x: x.rounded(.down), y: (y - 1).rounded(.down), width: 1, height: 1).intersection(bounds)
+        guard !spot.isEmpty, let rep = view.bitmapImageRepForCachingDisplay(in: spot) else { throw HostInputError.captureFailed }
+        view.cacheDisplay(in: spot, to: rep)
+        guard let color = rep.colorAt(x: 0, y: 0)?.usingColorSpace(.sRGB) else { throw HostInputError.captureFailed }
+        let channel = { (value: CGFloat) in UInt32((min(max(value, 0), 1) * 255).rounded()) }
+        return .with {
+            $0.red = channel(color.redComponent)
+            $0.green = channel(color.greenComponent)
+            $0.blue = channel(color.blueComponent)
+        }
+    }
+
     /// Guest display points → view coordinates (bottom-left origin).
     private func viewPoint(_ point: Doppel_Common_V1_Point) throws -> NSPoint {
         guard point.x >= 0, point.y >= 0, point.x < displayPoints.width, point.y < displayPoints.height else {

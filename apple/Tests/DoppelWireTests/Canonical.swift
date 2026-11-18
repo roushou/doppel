@@ -83,7 +83,18 @@ enum Canonical {
         var changed = Doppel_Agent_V1_AgentFrame()
         changed.event.uiChanged.pid = 612
 
-        return [hello, click, chord, ask, snapshot, stale, exec, event, subscribe, frontmost, changed]
+        var showProbe = Doppel_Agent_V1_AgentFrame()
+        showProbe.request.id = 7
+        showProbe.request.showProbe = .with {
+            $0.frame = .with { $0.origin = .with { $0.x = 0; $0.y = 0 }; $0.size = .with { $0.width = 4; $0.height = 4 } }
+            $0.color = .with { $0.red = 0; $0.green = 0; $0.blue = 255 }
+        }
+
+        var hideProbe = Doppel_Agent_V1_AgentFrame()
+        hideProbe.request.id = 8
+        hideProbe.request.hideProbe = Doppel_Agent_V1_HideProbe()
+
+        return [hello, click, chord, ask, snapshot, stale, exec, event, subscribe, frontmost, changed, showProbe, hideProbe]
     }
 
     static var vmmStream: [Doppel_Vmm_V1_VmmFrame] {
@@ -171,9 +182,17 @@ enum Canonical {
             $0.window = .shown
         }
 
+        var sample = Doppel_Vmm_V1_VmmFrame()
+        sample.request.id = 15
+        sample.request.sampleDisplay.at = .with { $0.x = 2; $0.y = 2 }
+
+        var sampled = Doppel_Vmm_V1_VmmFrame()
+        sampled.response.id = 15
+        sampled.response.displaySample.color = .with { $0.red = 236; $0.green = 237; $0.blue = 238 }
+
         return [
             request, response, state, progress, openDisplay, opened, frame, drag, stop, stopped,
-            openEncoded, encodedOpened, encoded, shown,
+            openEncoded, encodedOpened, encoded, shown, sample, sampled,
         ]
     }
 

@@ -25,7 +25,7 @@ use doppel_machine::files::{ReadRequest, WriteRequest};
 use doppel_machine::input::Input;
 use doppel_machine::input::Via;
 use doppel_machine::lineage::{RecordedLineage, Role};
-use doppel_machine::login::{LoginOutcome, LoginPolicy};
+use doppel_machine::login::{Desktop, LoginPolicy};
 use doppel_machine::machine::MachineName;
 use doppel_machine::outcome::{Certainty, Failure, Outcome, Unconfirmed};
 use doppel_machine::screen::Screenshot;
@@ -496,17 +496,23 @@ where
             .map_err(|unconfirmed| unconfirmed.map(CallError::from))
     }
 
-    /// Waits for the desktop, logging in with the stored password if asked.
-    /// Takes no turn: it only watches, and a start's caller waits on it.
+    /// Waits for the desktop, logging in with the stored password if
+    /// asked, then, once it's ready, until screenshots show it as it is
+    /// (after a resume from saved memory they lag). Takes no turn: it only
+    /// watches, and a start's caller waits on it.
     pub(crate) fn await_desktop(
         &self,
         machine: &MachineName,
         call: &Call,
-    ) -> Result<LoginOutcome, CallError> {
-        Ok(self
-            .machines
-            .machine(machine)
-            .await_desktop(LoginPolicy::DEFAULT, call.cancel())?)
+    ) -> Result<Desktop, CallError> {
+        let machine = self.machines.machine(machine);
+        let login = machine.await_desktop(LoginPolicy::DEFAULT, call.cancel())?;
+        let screen = if login.is_ready() {
+            Some(machine.catch_up_screen(call.cancel())?)
+        } else {
+            None
+        };
+        Ok(Desktop { login, screen })
     }
 
     pub(crate) fn stop(
@@ -559,7 +565,7 @@ where
         machine: &MachineName,
         checkpoint: &CheckpointLabel,
         call: &Call,
-    ) -> Outcome<LoginOutcome, CallError> {
+    ) -> Outcome<Desktop, CallError> {
         let _turn = self.lifecycle_turn(machine, call)?;
         let known = self
             .machines
@@ -608,10 +614,7 @@ where
         claim
             .start(window, self.machines.within(START_TIMEOUT))
             .map_err(|unconfirmed| begun(unconfirmed.into_error().into()))?;
-        self.machines
-            .machine(machine)
-            .await_desktop(LoginPolicy::DEFAULT, call.cancel())
-            .map_err(|error| begun(error.into()))
+        self.await_desktop(machine, call).map_err(begun)
     }
 
     /// A forced stop that must end with the VM off.
@@ -1051,7 +1054,7 @@ enum Removed {
 #[derive(Debug)]
 pub(crate) enum ForkStart {
     /// Started and at its desktop.
-    Desktop(LoginOutcome),
+    Desktop(Desktop),
     Start(Unconfirmed<CallError>),
     /// Started, but its desktop didn't come.
     AwaitDesktop(CallError),

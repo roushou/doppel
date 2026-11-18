@@ -1,6 +1,7 @@
 //! What the daemon answers, in its clients' terms: parsed once from the
 //! wire, so callers never see a protobuf message.
 
+use doppel_machine::screen_probe::HostScreen;
 use std::fmt;
 use std::time::Duration;
 
@@ -177,6 +178,8 @@ pub enum CheckpointResult {
         sync_skipped: Option<String>,
         /// The checkpoint is valid, but the guest may be left paused.
         left_paused: Option<MachineFailure>,
+        /// Set when the guest was resumed: whether screenshots show it as it is.
+        screen: Option<HostScreen>,
     },
     Failed {
         at: Step,
@@ -230,6 +233,7 @@ impl CheckpointReport {
                 memory_bytes: completed.memory_bytes,
                 sync_skipped: completed.sync_skipped,
                 left_paused: completed.left_paused.map(MachineFailure::from_wire),
+                screen: completed.screen.map(HostScreen::try_from).transpose()?,
             },
             Some(Wire::Failed(failed)) => CheckpointResult::Failed {
                 at: ParseError::checkpoint_step("checkpoint_failed.at", failed.at)?,

@@ -67,11 +67,11 @@ impl LoginCmd {
 /// Waits for an agent-ready desktop; fails unless it got one.
 fn await_desktop(client: &Client<SystemClock>, name: MachineName) -> Result<Report> {
     eprintln!("{name}: waiting for the desktop…");
-    let outcome = client.await_desktop(&name, within(LIFECYCLE))?;
-    if outcome.is_ready() {
-        Ok(Report::Ready { name, outcome })
+    let desktop = client.await_desktop(&name, within(LIFECYCLE))?;
+    if desktop.is_ready() {
+        Ok(Report::Ready { name, desktop })
     } else {
-        bail!("{name}: not ready: {outcome}")
+        bail!("{name}: not ready: {desktop}")
     }
 }
 

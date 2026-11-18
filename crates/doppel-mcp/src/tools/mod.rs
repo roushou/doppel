@@ -15,11 +15,12 @@ use doppel_machine::exec::{Completeness, ExecOutput, ExecRequest, Termination};
 use doppel_machine::files::{ReadRequest, WritePolicy, WriteRequest};
 use doppel_machine::guest_path::GuestPath;
 use doppel_machine::input::{Button, ClickCount, Input, Via};
-use doppel_machine::login::LoginOutcome;
+use doppel_machine::login::Desktop;
 use doppel_machine::machine::MachineName;
 use doppel_machine::mark::{Lasts, Mark, MarkAt};
 use doppel_machine::outcome::Unconfirmed;
 use doppel_machine::screen::{Screenshot, ScreenshotSize};
+use doppel_machine::screen_probe::HostScreen;
 use doppel_machine::screen_text::{ScreenText, TextQuery};
 use doppel_machine::wait::{Condition, TextCondition, WaitOutcome, WaitSpec};
 use rmcp::model::{CallToolResult, ContentBlock};
@@ -257,6 +258,8 @@ pub enum CheckpointEnd<E> {
         sync_skipped: Option<String>,
         /// The checkpoint is kept, but the guest may be left paused.
         left_paused: Option<Unconfirmed<E>>,
+        /// Set when the guest was resumed: whether screenshots show it as it is.
+        screen: Option<HostScreen>,
     },
     Failed {
         at: Step,
@@ -331,7 +334,7 @@ pub enum ToolOutcome<E> {
     Started {
         machine: MachineName,
         from: StartedFrom,
-        desktop: LoginOutcome,
+        desktop: Desktop,
     },
     Stopped {
         machine: MachineName,
@@ -343,7 +346,7 @@ pub enum ToolOutcome<E> {
     RolledBack {
         machine: MachineName,
         checkpoint: CheckpointLabel,
-        desktop: LoginOutcome,
+        desktop: Desktop,
     },
     /// The call failed. When its outcome is unknown the model is told to
     /// look before retrying: a click may have landed, a guest may be paused.
@@ -519,7 +522,7 @@ impl<E: std::fmt::Display> ToolOutcome<E> {
 
     /// A start's result, then whether the desktop is ready. A machine that runs
     /// without a usable desktop is an error the model must see.
-    fn desktop(started: &str, desktop: &LoginOutcome) -> CallToolResult {
+    fn desktop(started: &str, desktop: &Desktop) -> CallToolResult {
         if desktop.is_ready() {
             Self::text(&format!("{started}; desktop ready ({desktop})."), false)
         } else {
@@ -546,15 +549,19 @@ impl<E: std::fmt::Display> ToolOutcome<E> {
                 memory_bytes,
                 sync_skipped,
                 left_paused,
+                screen,
             } => {
                 let size = format!("{} MiB of memory", memory_bytes >> 20);
                 let caveat = sync_skipped.as_ref().map_or_else(String::new, |why| {
                     GuestSync::<std::convert::Infallible>::skipped_caveat(why)
                 });
+                let screen = screen
+                    .as_ref()
+                    .map_or_else(String::new, |screen| format!("; {screen}"));
                 match left_paused {
                     None => Self::text(
                         &format!(
-                            "checkpoint {machine}/{label} saved ({size}){paused}{caveat}; the machine keeps running."
+                            "checkpoint {machine}/{label} saved ({size}){paused}{caveat}; the machine keeps running{screen}."
                         ),
                         false,
                     ),
@@ -1363,6 +1370,7 @@ pub(crate) mod tests {
                 memory_bytes: 1_248 << 20,
                 sync_skipped: None,
                 left_paused: None,
+                screen: None,
             });
             assert_eq!(saved["isError"], false);
             assert_eq!(
@@ -1396,6 +1404,7 @@ pub(crate) mod tests {
                 memory_bytes: 1 << 20,
                 sync_skipped: None,
                 left_paused: Some(Unconfirmed::Unknown("timed out".into())),
+                screen: None,
             });
             assert_eq!(maybe_paused["isError"], true);
             assert!(
@@ -1407,6 +1416,7 @@ pub(crate) mod tests {
                 memory_bytes: 1 << 20,
                 sync_skipped: Some("sync timed out".into()),
                 left_paused: None,
+                screen: None,
             });
             assert!(
                 text(&unsynced).contains("the guest wasn't synced (sync timed out)"),
@@ -1420,8 +1430,13 @@ pub(crate) mod tests {
             let ready = TestOutcome::RolledBack {
                 machine: dev(),
                 checkpoint: "ready".parse().unwrap(),
-                desktop: LoginOutcome::AlreadyActive {
-                    after: Duration::from_millis(22),
+                desktop: Desktop {
+                    login: doppel_machine::login::LoginOutcome::AlreadyActive {
+                        after: Duration::from_millis(22),
+                    },
+                    screen: Some(HostScreen::Current {
+                        after: Duration::from_millis(3_480),
+                    }),
                 },
             }
             .into_wire(&mut Refs::default());
@@ -1434,7 +1449,10 @@ pub(crate) mod tests {
             let locked = TestOutcome::Started {
                 machine: dev(),
                 from: StartedFrom::SavedState,
-                desktop: LoginOutcome::NeedsPassword,
+                desktop: Desktop {
+                    login: doppel_machine::login::LoginOutcome::NeedsPassword,
+                    screen: None,
+                },
             }
             .into_wire(&mut Refs::default());
             assert_eq!(locked["isError"], true);

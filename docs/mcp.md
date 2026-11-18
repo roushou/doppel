@@ -142,14 +142,16 @@ recording goes: keep secrets out of it.
 are lost. `checkpoint` first to keep it. A rollback starts the machine shown
 in a window if it was (`doppel start --window`), hidden otherwise.
 
-Right after a machine resumes from saved memory (a `start` that resumes, a
-`rollback`, or the end of a `checkpoint`), its screen can lag behind its
-apps for a few seconds: Virtualization.framework rebuilds the guest's
-graphics, and the guest's drawing waits on it while everything else runs.
-Accessibility answers at once; the screen, screenshots, `find_text` and
-recordings catch up when drawing does. A window on the host doesn't avoid
-it. `wait_for` on what you expect to see, rather than reading the screen
-straight after these calls. A fork shares its source's identity,
+When a machine resumes from saved memory (a `start` that resumes, a
+`rollback`, or the end of a `checkpoint`), the host's view of its screen
+lags behind the guest for up to a few seconds while Virtualization.framework
+rebuilds the guest's graphics. These calls return once it has caught up:
+the guest agent draws a small square in the screen's top-left corner, the
+host waits until its view shows it, then the agent removes it. Their result
+says how long that took. When it can't be confirmed (an agent too old to
+draw the square, or a step that failed), the result says so, and
+screenshots, `find_text` and recordings may show the screen as it was for a
+few seconds: `wait_for` on what you expect to see. A fork shares its source's identity,
 so it can't run while its source or another fork of it runs, and Apple runs
 at most two macOS machines at once. There's no tool to delete a checkpoint: they
 are the person's to keep, and a deletion can't be undone. People use `doppel

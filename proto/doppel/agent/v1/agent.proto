@@ -31,6 +31,9 @@ message AgentRequest {
     // subscribed connection gets events, so one-shot connections never see
     // unsolicited frames. Needs CAPABILITY_EVENTS.
     Subscribe subscribe = 18;
+    // Answered with Done. Needs CAPABILITY_SCREEN_PROBE.
+    ShowProbe show_probe = 19;
+    HideProbe hide_probe = 20;
   }
 }
 
@@ -101,6 +104,17 @@ message CaptureScreen {
   // Downscale so the longest side is at most this many pixels. 0 = native.
   uint32 max_dimension_pixels = 2;
 }
+
+// A small square drawn above every window, so the host can tell when its
+// view of the screen shows what the guest draws now. One at a time: showing
+// another moves it. The agent removes it by itself after 30 s.
+message ShowProbe {
+  doppel.common.v1.Rect frame = 1;
+  doppel.common.v1.Color color = 2;
+}
+
+// Removes the probe, if one shows.
+message HideProbe {}
 
 // --- Accessibility ---------------------------------------------------------
 // The agent ships a raw, flat tree. Compaction, refs and diffing are core

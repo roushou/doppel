@@ -9,6 +9,7 @@ use doppel_machine::bundle::CheckpointLabel;
 use doppel_machine::deadline::Deadline;
 use doppel_machine::login::{LoginOutcome, LoginPolicy};
 use doppel_machine::machine::MachineName;
+use doppel_machine::screen_probe::HostScreen;
 use doppel_machine::vm::{NextStart, Status, Window};
 
 use super::running::RunningMachine;
@@ -137,6 +138,18 @@ impl<'m, C: Clock, F: Filesystem> Machine<'m, C, F> {
         cancel: &Cancel,
     ) -> Result<LoginOutcome, AwaitDesktopError> {
         self.machines.await_desktop(&self.name, policy, cancel)
+    }
+
+    /// Waits until screenshots show the guest's screen as it is now, not as
+    /// it was before a resume from saved memory, with a probe drawn by the
+    /// agent (see [`doppel_machine::screen_probe`]). Unknown when the agent
+    /// can't draw one or a step fails: the [`HostScreen`] says.
+    ///
+    /// # Errors
+    /// [`MachineError::NotRunning`], a failed VMM connection, or the caller
+    /// cancelling (once the probe is hidden).
+    pub fn catch_up_screen(&self, cancel: &Cancel) -> Result<HostScreen, MachineError> {
+        self.machines.catch_up_screen(&self.name, cancel)
     }
 
     /// Applies the golden settings to the running, logged-in machine.

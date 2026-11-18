@@ -8,9 +8,11 @@ use std::path::Path;
 
 use doppel_machine::agent::VsockPort;
 use doppel_machine::deadline::Deadline;
+use doppel_machine::geometry::Point;
 use doppel_machine::input::Input;
 use doppel_machine::machine::MachineName;
 use doppel_machine::screen::Screenshot;
+use doppel_machine::screen_probe::Rgb;
 use doppel_machine::screen_text::ScreenText;
 
 use super::MachineError;
@@ -64,6 +66,15 @@ impl<'m, C: Clock> RunningMachine<'m, C> {
     /// See [`MachineError`].
     pub fn recognize_text(&mut self, by: Deadline) -> Result<ScreenText, MachineError> {
         Ok(self.client.recognize_text(by)?.try_into()?)
+    }
+
+    /// The colour of the VM's display at `at`, as [`Self::screenshot`]
+    /// would show it.
+    ///
+    /// # Errors
+    /// See [`MachineError`].
+    pub fn sample_display(&mut self, at: Point, by: Deadline) -> Result<Rgb, MachineError> {
+        Ok(self.client.sample_display(at, by)?)
     }
 
     /// Input through the VM's own keyboard and pointer: reaches the login

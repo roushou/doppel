@@ -406,3 +406,20 @@ private final class Host {
     #expect(try host.next()?.event.uiChanged.pid == 42)
     close(host.fd)
 }
+
+@Test @MainActor func aProbeWithNoSizeOrAColourPast8BitsIsRefused() async {
+    let agent = Agent()
+    let flat = await agent.handle(.showProbe(.with {
+        $0.frame = .with { $0.size = .with { $0.width = 0; $0.height = 4 } }
+    }))
+    guard case .error(let error) = flat else { Issue.record("expected an error, got \(flat)"); return }
+    #expect(error.invalidArgument.field == "frame")
+    let tooRed = await agent.handle(.showProbe(.with {
+        $0.frame = .with { $0.size = .with { $0.width = 4; $0.height = 4 } }
+        $0.color = .with { $0.red = 256 }
+    }))
+    guard case .error(let error) = tooRed else { Issue.record("expected an error, got \(tooRed)"); return }
+    #expect(error.invalidArgument.field == "color")
+    // Hiding with none shown is fine.
+    guard case .done = await agent.handle(.hideProbe(.init())) else { Issue.record("hide failed"); return }
+}

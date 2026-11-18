@@ -18,7 +18,9 @@ files. People watch and take over from a desktop or browser viewer.
   account is made on first boot, logged in, SSH on), import, start, stop,
   pause, resume, checkpoint, fork, restore; delete from the viewers; delete a
   checkpoint (`doppel forget-checkpoint`). Golden images with a
-  template checkpoint; forks resume agent-ready in about 11 s.
+  template checkpoint; forks resume agent-ready in about 11 s. A resume
+  from saved memory returns once screenshots show the guest as it is, not
+  as it was saved.
 - **The agent's tools over MCP:** `status`, `screenshot`, `snapshot` with
   refs, `act`, `click`, `type`, `key`, `find_text`, `wait_for`, `exec`,
   `read_file`, `write_file`, `mark`, `start`, `stop`, `checkpoint`,
@@ -73,15 +75,6 @@ person.
   `Unrecognized(2)` that encodes as `Running`), so those five `From`s are
   lossless only for values the parsers make. Done when: such a value can't
   be built, or the encoding says what it does with one.
-- **The screen lags after a resume from saved memory.** After a `start`
-  that resumes, a `rollback` or a `checkpoint`, the guest's drawing stalls
-  for 1–10 s while Virtualization.framework rebuilds its paravirtual
-  graphics; the guest and host are idle meanwhile, and a shown window
-  shortens it only a little. Doppel can't speed that up. Make these calls
-  return only once the screen draws again: for example, the guest agent
-  draws a dot nobody sees, and the VMM waits for it to reach the display.
-  Done when: right after each of these calls, a screenshot shows the
-  guest's current windows, without a fixed sleep.
 
 ### 3. Chrome through its DevTools protocol
 

@@ -20,9 +20,10 @@ use doppel_host::vmm::RecordingSummary;
 use doppel_machine::bundle::CheckpointLabel;
 use doppel_machine::guest_path::GuestPath;
 use doppel_machine::lineage::Lineage;
-use doppel_machine::login::LoginOutcome;
+use doppel_machine::login::Desktop;
 use doppel_machine::machine::MachineName;
 use doppel_machine::outcome::{Certainty, Failure as _};
+use doppel_machine::screen_probe::HostScreen;
 use doppel_machine::vm::{NextStart, RunState, Status};
 
 use crate::doctor::Diagnosis;
@@ -64,7 +65,7 @@ pub enum Report {
     /// An agent-ready desktop.
     Ready {
         name: MachineName,
-        outcome: LoginOutcome,
+        desktop: Desktop,
     },
     PasswordSaved {
         name: MachineName,
@@ -188,8 +189,12 @@ pub enum Report {
 /// How a completed checkpoint left the guest.
 #[derive(Debug)]
 pub enum GuestAfter {
-    /// As asked; with why its disk wasn't synced first, if it wasn't.
-    AsAsked { sync_skipped: Option<String> },
+    /// As asked; with why its disk wasn't synced first, if it wasn't, and
+    /// whether screenshots show it as it is, if it was resumed.
+    AsAsked {
+        sync_skipped: Option<String>,
+        screen: Option<HostScreen>,
+    },
     /// It may still be paused, and why.
     LeftPaused(MachineFailure),
 }
@@ -287,7 +292,7 @@ impl fmt::Display for Report {
                 };
                 writeln!(f, "{name}: {state} ({how})")
             }
-            Self::Ready { name, outcome } => writeln!(f, "{name}: ready ({outcome})"),
+            Self::Ready { name, desktop } => writeln!(f, "{name}: ready ({desktop})"),
             Self::PasswordSaved { name, path } => {
                 writeln!(f, "{name}: saved to {} (mode 600)", path.display())
             }
@@ -326,14 +331,21 @@ impl fmt::Display for Report {
                 label,
                 memory_bytes,
                 paused_for,
-                guest: GuestAfter::AsAsked { sync_skipped },
+                guest:
+                    GuestAfter::AsAsked {
+                        sync_skipped,
+                        screen,
+                    },
             } => {
                 let paused = paused_for.map_or_else(String::new, |paused| {
                     format!(", guest paused {:.1}s", paused.as_secs_f64())
                 });
+                let screen = screen
+                    .as_ref()
+                    .map_or_else(String::new, |screen| format!("; {screen}"));
                 writeln!(
                     f,
-                    "checkpoint {name}/{label}: {} MiB memory state{paused}{}",
+                    "checkpoint {name}/{label}: {} MiB memory state{paused}{}{screen}",
                     memory_bytes >> 20,
                     doppel_client::CheckpointResult::sync_caveat(sync_skipped.as_deref())
                 )
