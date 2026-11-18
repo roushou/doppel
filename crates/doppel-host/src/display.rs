@@ -4,8 +4,8 @@
 use std::os::fd::OwnedFd;
 use std::sync::atomic::{Ordering, fence};
 
-use doppel_machine::deadline::Deadline;
-use doppel_machine::geometry::Size;
+use doppel_desktop::deadline::Deadline;
+use doppel_desktop::geometry::Size;
 use doppel_protocol::display::{FrameRing, Plane, RingError, RingLayout, Slot, SlotRead};
 use doppel_protocol::pb::vmm::v1 as vmm;
 

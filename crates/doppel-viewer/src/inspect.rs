@@ -8,9 +8,9 @@ use std::f32::consts::FRAC_PI_2;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use doppel_machine::ax::refs::Ref;
-use doppel_machine::ax::tree::{AxSnapshot, NodeIndex};
-use doppel_machine::geometry::Point;
+use doppel_desktop::ax::refs::Ref;
+use doppel_desktop::ax::tree::{AxSnapshot, NodeIndex};
+use doppel_desktop::geometry::Point;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyElement, App, Bounds, FontWeight, Hsla, InteractiveElement, IntoElement, MouseButton,

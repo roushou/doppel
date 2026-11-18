@@ -18,9 +18,9 @@ use std::fmt;
 use std::str::FromStr;
 use std::time::Duration;
 
-use doppel_machine::exec::{ExecError, ExecOutput, ExecRequest, Termination};
-use doppel_machine::files::{FileError, FileMode, WritePolicy, WriteRequest};
-use doppel_machine::guest_path::{GuestPath, GuestPathError};
+use doppel_desktop::exec::{ExecError, ExecOutput, ExecRequest, Termination};
+use doppel_desktop::files::{FileError, FileMode, WritePolicy, WriteRequest};
+use doppel_desktop::guest_path::{GuestPath, GuestPathError};
 use doppel_machine::login::LoginPassword;
 
 /// A macOS account short name.
@@ -282,7 +282,7 @@ impl GoldenPlan {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use doppel_machine::exec::Completeness;
+    use doppel_desktop::exec::Completeness;
 
     fn password() -> LoginPassword {
         LoginPassword::parse(b"s3cret-pass").unwrap()

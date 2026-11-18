@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use doppel_machine::ax::tree::AxSnapshot;
+use doppel_desktop::ax::tree::AxSnapshot;
 
 use doppel_machine::machine::MachineName;
 use futures::StreamExt;

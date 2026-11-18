@@ -17,7 +17,7 @@ use std::net::Ipv4Addr;
 use std::path::Path;
 
 use crate::golden::plan::GuestUserName;
-use doppel_machine::guest_path::GuestPath;
+use doppel_desktop::guest_path::GuestPath;
 
 const STAGING_PREFIX: &str = "/tmp/doppel-bootstrap.";
 const ARCHIVE: &str = "doppel-agent.zip";

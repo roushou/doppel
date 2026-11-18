@@ -13,7 +13,7 @@ use std::os::unix::net::UnixStream;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread::JoinHandle;
 
-use doppel_machine::deadline::{Clock, Deadline, Remaining};
+use doppel_desktop::deadline::{Clock, Deadline, Remaining};
 
 use super::{Cancel, Channel, ChannelError, Reader, write_all};
 use crate::exchange::{Answer, Exchange, ExchangeConfig, Protocol, RequestId};

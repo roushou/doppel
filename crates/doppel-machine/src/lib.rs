@@ -8,11 +8,6 @@
 //! what should happen (paths, plans, state transitions) and the shell
 //! (`doppel-host`) performs it.
 
-pub use doppel_desktop::{
-    agent, ax, deadline, exec, files, geometry, guest_path, input, mark, outcome, screen,
-    screen_text, wait,
-};
-
 pub mod activity;
 pub mod bundle;
 pub mod checkpoint;

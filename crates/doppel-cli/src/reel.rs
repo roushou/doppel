@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use doppel_machine::geometry::Size;
+use doppel_desktop::geometry::Size;
 use doppel_protocol::pb::common::v1 as common;
 use doppel_protocol::pb::vmm::v1 as wire;
 use doppel_scene::film::Reel;

@@ -1,8 +1,8 @@
 //! A VM's state: as its VMM reports it while it runs, and a machine's
 //! status, running or stopped; and the vsock ports its guest listens on.
 
-use crate::agent::AgentReport;
 use crate::bundle::CheckpointLabel;
+use doppel_desktop::agent::AgentReport;
 
 /// A vsock port in the guest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

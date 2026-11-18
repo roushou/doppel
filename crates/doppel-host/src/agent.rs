@@ -10,14 +10,14 @@ use std::os::unix::net::UnixStream;
 use std::time::Duration;
 
 use crate::agent_install::plan::AgentBuild;
-use doppel_machine::agent::{AgentStatus, GuestEvent};
-use doppel_machine::ax::tree::{ActOn, AxSnapshot, Retention, SnapshotRequest};
-use doppel_machine::deadline::Deadline;
-use doppel_machine::exec::{ExecOutput, ExecRequest};
-use doppel_machine::files::{ReadRequest, WriteRequest};
-use doppel_machine::input::Input;
-use doppel_machine::outcome::{Certainty, Failure};
-use doppel_machine::screen::Screenshot;
+use doppel_desktop::agent::{AgentStatus, GuestEvent};
+use doppel_desktop::ax::tree::{ActOn, AxSnapshot, Retention, SnapshotRequest};
+use doppel_desktop::deadline::Deadline;
+use doppel_desktop::exec::{ExecOutput, ExecRequest};
+use doppel_desktop::files::{ReadRequest, WriteRequest};
+use doppel_desktop::input::Input;
+use doppel_desktop::outcome::{Certainty, Failure};
+use doppel_desktop::screen::Screenshot;
 use doppel_machine::screen_probe::Probe;
 use doppel_protocol::convert::{ParseError, RemoteError};
 use doppel_protocol::exchange::{EventLimit, ExchangeConfig, ExchangeError};
@@ -518,8 +518,8 @@ mod tests {
     //! The client against a scripted fake agent on a socketpair.
     use std::thread;
 
-    use doppel_machine::geometry::Point;
-    use doppel_machine::input::Input;
+    use doppel_desktop::geometry::Point;
+    use doppel_desktop::input::Input;
 
     use std::io::{Read, Write};
 
@@ -597,7 +597,7 @@ mod tests {
 
     #[test]
     fn a_look_reaches_only_an_agent_that_keeps_nothing_of_it() {
-        use doppel_machine::ax::tree::{Menus, Scope};
+        use doppel_desktop::ax::tree::{Menus, Scope};
         let asked = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let agent = |capabilities: Vec<i32>| {
             let asked = asked.clone();
@@ -659,7 +659,7 @@ mod tests {
         client.input(&Input::Type("x".into()), soon()).unwrap();
         let ui = |pid| {
             Some(GuestEvent::UiChanged(
-                doppel_machine::agent::ProcessId::new(pid),
+                doppel_desktop::agent::ProcessId::new(pid),
             ))
         };
         assert_eq!(client.next_event(soon()).unwrap(), ui(7));
@@ -746,7 +746,7 @@ mod tests {
         assert!(matches!(
             client.capture(0, soon()),
             Err(AgentError::Remote(RemoteError::PermissionMissing(
-                doppel_machine::agent::Permission::ScreenRecording
+                doppel_desktop::agent::Permission::ScreenRecording
             )))
         ));
     }
@@ -765,7 +765,7 @@ mod tests {
 
     #[test]
     fn snapshots_parse_and_stale_actions_are_typed() {
-        use doppel_machine::ax::tree::{
+        use doppel_desktop::ax::tree::{
             ActionName, ElementAction, ElementTarget, Menus, NodeIndex, Scope, SnapshotId,
         };
         let stream = fake_agent(hello(<doppel_protocol::pb::agent::v1::AgentFrame as doppel_protocol::exchange::Protocol>::VERSION), |request| match request.operation {

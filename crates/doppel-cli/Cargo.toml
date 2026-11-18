@@ -16,6 +16,7 @@ anyhow.workspace = true
 clap.workspace = true
 doppel-client = { path = "../doppel-client" }
 doppel-daemon = { path = "../doppel-daemon" }
+doppel-desktop = { path = "../doppel-desktop" }
 doppel-gateway = { path = "../doppel-gateway" }
 doppel-host = { path = "../doppel-host" }
 doppel-machine = { path = "../doppel-machine" }

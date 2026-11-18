@@ -6,14 +6,14 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use doppel_desktop::ax::tree::AxSnapshot;
+use doppel_desktop::geometry::Size;
+use doppel_desktop::screen_text::ScreenText;
 use doppel_machine::activity as told;
-use doppel_machine::ax::tree::AxSnapshot;
 use doppel_machine::bundle::CheckpointLabel;
 use doppel_machine::checkpoint::AfterCheckpoint;
-use doppel_machine::geometry::Size;
 use doppel_machine::machine::MachineName;
 use doppel_machine::recording as kept;
-use doppel_machine::screen_text::ScreenText;
 use doppel_machine::vm::{MachineReport, Status};
 use doppel_protocol::convert::ParseError;
 use doppel_protocol::pb::daemon::v1 as daemon;

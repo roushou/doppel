@@ -2,7 +2,7 @@
 //! export burns into its video, drawn live, so the viewers and the films
 //! show the same. This module draws; the film decides.
 
-use doppel_machine::geometry::Rect;
+use doppel_desktop::geometry::Rect;
 use doppel_scene::film::{Corner, Glyph, Line, Rgb, Shape, Spot};
 use gpui::{
     BorderStyle, Bounds, Div, FontWeight, Hsla, ParentElement, PathBuilder, Pixels, Point, Styled,

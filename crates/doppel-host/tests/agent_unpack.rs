@@ -12,8 +12,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use doppel_desktop::exec::{Completeness, ExecOutput, ExecRequest, Termination};
 use doppel_host::agent_install::plan::{AgentBuild, GuestAccount, InstallPlan, StepAction};
-use doppel_machine::exec::{Completeness, ExecOutput, ExecRequest, Termination};
 
 struct Scratch(PathBuf);
 

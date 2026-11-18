@@ -3,8 +3,8 @@
 //! parsed once from GPUI's keystrokes. [`GuestInput::on`] places it on the
 //! guest's display, as the host input the machine takes.
 
-use doppel_machine::geometry::{GeometryError, Point, Size};
-use doppel_machine::input as host;
+use doppel_desktop::geometry::{GeometryError, Point, Size};
+use doppel_desktop::input as host;
 
 /// A point on the screen as a fraction of its size: (0, 0) is the top-left
 /// corner, (1, 1) the bottom-right.

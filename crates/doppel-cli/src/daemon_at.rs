@@ -9,9 +9,9 @@ use std::time::Duration;
 
 use anyhow::{Result, bail};
 use doppel_client::{Client, ClientError};
+use doppel_desktop::deadline::Deadline;
 use doppel_host::capabilities::{Clock, SystemClock};
 use doppel_host::machines::CALL_TIMEOUT;
-use doppel_machine::deadline::Deadline;
 
 /// Where the daemon that commands go to listens.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -21,12 +21,12 @@ use std::time::{Duration, Instant, SystemTime};
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
+use doppel_desktop::deadline::Deadline;
+use doppel_desktop::geometry::Size;
 use doppel_host::capabilities::Clock;
 use doppel_host::files::Filesystem;
 use doppel_host::machines::{FINISH_RECORDING_TIMEOUT, MachineError, Machines};
 use doppel_host::vmm::RecordingStart;
-use doppel_machine::deadline::Deadline;
-use doppel_machine::geometry::Size;
 use doppel_machine::machine::MachineName;
 use doppel_protocol::pb::agent::v1 as agent;
 use doppel_protocol::pb::daemon::v1 as daemon;

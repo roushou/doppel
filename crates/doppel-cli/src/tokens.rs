@@ -5,9 +5,9 @@
 use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
+use doppel_desktop::deadline::Deadline;
 use doppel_gateway::{TokenLabel, TokenSecret, Ttl};
 use doppel_host::capabilities::{OsEntropy, WallClock};
-use doppel_machine::deadline::Deadline;
 use doppel_machine::machine::Entropy as _;
 
 use doppel_client::WebStatus;

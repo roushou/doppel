@@ -16,7 +16,7 @@ use crate::inspect::Looking;
 use crate::screen::Picture;
 use crate::theme::Theme;
 use crate::timeline::TextRead;
-use doppel_machine::geometry::Rect;
+use doppel_desktop::geometry::Rect;
 
 /// What the layer draws: a read, or why there is none to draw.
 pub(crate) enum Drawn<'a> {

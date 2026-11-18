@@ -8,6 +8,10 @@ use std::process::Child;
 use std::time::{Duration, Instant};
 
 use crate::provision::Setup;
+use doppel_desktop::deadline::{Deadline, Remaining};
+use doppel_desktop::exec::{ExecError, ExecOutput, ExecRequest, Termination};
+use doppel_desktop::guest_path::GuestPathError;
+use doppel_desktop::outcome::{Certainty, Failure, Outcome, Unconfirmed};
 use doppel_machine::bundle::{
     CheckpointLabel, FileOp, GuestRepair, KeptAux, MachineBundle, SocketPath, Trash,
 };
@@ -15,9 +19,6 @@ use doppel_machine::checkpoint::{
     Action, AfterCheckpoint, Aftermath, Checkpoint, CheckpointPlan, Event, GuestSync,
     IllegalTransition, SyncSkipped,
 };
-use doppel_machine::deadline::{Deadline, Remaining};
-use doppel_machine::exec::{ExecError, ExecOutput, ExecRequest, Termination};
-use doppel_machine::guest_path::GuestPathError;
 use doppel_machine::lineage::{
     CheckpointKept, Lineage, Origin, RecordedLineage, Role, TemplateAgent,
 };
@@ -26,7 +27,6 @@ use doppel_machine::machine::{
     Hardware, HardwareModel, MacAddress, MachineIdentifier, MachineName, MachineSpec, Platform,
     SpecError,
 };
-use doppel_machine::outcome::{Certainty, Failure, Outcome, Unconfirmed};
 use doppel_machine::screen_probe::{HostScreen, WhyUnconfirmed};
 use doppel_machine::startup::{
     IllegalStartupEvent, Startup, StartupAction, StartupEvent, StartupFailure,

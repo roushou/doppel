@@ -9,8 +9,8 @@ use std::os::fd::OwnedFd;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 
-use doppel_machine::deadline::Deadline;
-use doppel_machine::geometry::Size;
+use doppel_desktop::deadline::Deadline;
+use doppel_desktop::geometry::Size;
 use doppel_machine::machine::MachineName;
 use doppel_protocol::convert::RemoteError;
 use doppel_protocol::exchange::{DaemonCall, ExchangeConfig, Unrecognized};

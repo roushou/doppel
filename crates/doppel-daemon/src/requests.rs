@@ -4,6 +4,13 @@
 use std::os::unix::ffi::OsStrExt;
 use std::sync::Arc;
 
+use doppel_desktop::agent::AgentReport;
+use doppel_desktop::ax::refs::SnapshotRefs;
+use doppel_desktop::ax::tree::{SnapshotScope, SnapshotSpec};
+use doppel_desktop::input::Via;
+use doppel_desktop::mark::{Mark, MarkAt};
+use doppel_desktop::outcome::{Failure, Unconfirmed};
+use doppel_desktop::screen::ScreenshotSize;
 use doppel_host::capabilities::WallClock;
 use doppel_host::files::Filesystem;
 use doppel_host::launcher::Window;
@@ -12,16 +19,9 @@ use doppel_host::machines::{
     CheckpointReport, Listing, MachineError, Resumed, StopOutcome, StopReport, StopRequest,
 };
 use doppel_host::vmm::StopMode;
-use doppel_machine::agent::AgentReport;
-use doppel_machine::ax::refs::SnapshotRefs;
-use doppel_machine::ax::tree::{SnapshotScope, SnapshotSpec};
 use doppel_machine::bundle::CheckpointLabel;
 use doppel_machine::checkpoint::{Aftermath, Checkpoint, GuestSync};
-use doppel_machine::input::Via;
 use doppel_machine::machine::MachineName;
-use doppel_machine::mark::{Mark, MarkAt};
-use doppel_machine::outcome::{Failure, Unconfirmed};
-use doppel_machine::screen::ScreenshotSize;
 use doppel_protocol::convert::{Micros, ParseError};
 use doppel_protocol::pb::agent::v1 as agent;
 use doppel_protocol::pb::common::v1 as common;
@@ -79,7 +79,7 @@ impl Refusal {
     /// as this process would.
     fn described(
         error: &dyn std::error::Error,
-        certainty: doppel_machine::outcome::Certainty,
+        certainty: doppel_desktop::outcome::Certainty,
     ) -> daemon::MachineFailure {
         let causes = std::iter::successors(error.source(), |cause| cause.source())
             .map(ToString::to_string)
@@ -613,7 +613,7 @@ where
         let status = self.web.set(setting).map_err(|error| {
             Refusal::Failed(Refusal::described(
                 &error,
-                doppel_machine::outcome::Certainty::MaybeDone,
+                doppel_desktop::outcome::Certainty::MaybeDone,
             ))
         })?;
         Ok(Self::web_status(&status))
@@ -900,7 +900,7 @@ where
                     self.scheduler.discard(id);
                     return Err(Refusal::Failed(Refusal::described(
                         &error,
-                        doppel_machine::outcome::Certainty::NotDone,
+                        doppel_desktop::outcome::Certainty::NotDone,
                     )));
                 }
             }

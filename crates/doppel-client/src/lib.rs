@@ -13,26 +13,26 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use doppel_desktop::ax::tree::SnapshotSpec;
+use doppel_desktop::input::Via;
+use doppel_desktop::screen::ScreenshotSize;
 use doppel_gateway::{TokenDigest, TokenId, TokenLabel, Ttl};
-use doppel_machine::ax::tree::SnapshotSpec;
-use doppel_machine::input::Via;
-use doppel_machine::screen::ScreenshotSize;
 use doppel_machine::vm::MachineReport;
 
-use doppel_machine::ax::tree::{ActOn, AxSnapshot};
+use doppel_desktop::ax::tree::{ActOn, AxSnapshot};
+use doppel_desktop::deadline::Deadline;
+use doppel_desktop::exec::{ExecOutput, ExecRequest};
+use doppel_desktop::files::{ReadRequest, WriteRequest};
+use doppel_desktop::input::Input;
+use doppel_desktop::screen::Screenshot;
+use doppel_desktop::screen_text::{ScreenText, TextQuery};
+use doppel_desktop::wait::{Condition, TextCondition, WaitOutcome, WaitSpec};
 use doppel_machine::bundle::CheckpointLabel;
 use doppel_machine::checkpoint::AfterCheckpoint;
-use doppel_machine::deadline::Deadline;
-use doppel_machine::exec::{ExecOutput, ExecRequest};
-use doppel_machine::files::{ReadRequest, WriteRequest};
-use doppel_machine::input::Input;
 use doppel_machine::lineage::RecordedLineage;
 use doppel_machine::login::Desktop;
 use doppel_machine::machine::MachineName;
-use doppel_machine::screen::Screenshot;
-use doppel_machine::screen_text::{ScreenText, TextQuery};
 use doppel_machine::vm::{NextStart, RunState, Status};
-use doppel_machine::wait::{Condition, TextCondition, WaitOutcome, WaitSpec};
 use doppel_protocol::convert::{ParseError, RemoteError};
 use doppel_protocol::exchange::ExchangeError;
 use doppel_protocol::frame::{EncodeError, StreamError};
@@ -171,7 +171,7 @@ pub struct OpenedSession {
 
 /// The time requests are measured against: a port, so callers pass their
 /// own clock in.
-pub use doppel_machine::deadline::Clock;
+pub use doppel_desktop::deadline::Clock;
 
 /// An entry of the daemon's machines directory.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -763,7 +763,7 @@ impl<C: Clock> Client<C> {
     pub fn name_elements<'a>(
         &self,
         name: &MachineName,
-        refs: &doppel_machine::ax::refs::SnapshotRefs,
+        refs: &doppel_desktop::ax::refs::SnapshotRefs,
         call: impl Into<Call<'a>>,
     ) -> Result<(), ClientError> {
         self.done(
@@ -783,7 +783,7 @@ impl<C: Clock> Client<C> {
     pub fn mark<'a>(
         &self,
         name: &MachineName,
-        mark: &doppel_machine::mark::Mark,
+        mark: &doppel_desktop::mark::Mark,
         call: impl Into<Call<'a>>,
     ) -> Result<(), ClientError> {
         self.done(daemon::MarkScreen::new(name.to_string(), mark), call)

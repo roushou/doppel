@@ -9,7 +9,7 @@ use crate::exchange::Protocol;
 use crate::frame::{FrameDecoder, FrameEncoder, MaxFrameLen, Received};
 use crate::pb::common::v1 as common;
 use crate::pb::vmm::v1 as vmm;
-use doppel_machine::deadline::{Clock, Deadline};
+use doppel_desktop::deadline::{Clock, Deadline};
 use nix::sys::socket::{ControlMessage, MsgFlags, sendmsg};
 
 use super::{Cancel, Channel, ChannelError, SharedChannel, Waited, Wakeup};

@@ -8,8 +8,8 @@ use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, PoisonError};
 
+use doppel_desktop::outcome::{Certainty, Failure};
 use doppel_gateway::{BookError, ChangeError, TokenBook};
-use doppel_machine::outcome::{Certainty, Failure};
 
 /// Where the book lives, and a lock so changes from two connections don't
 /// lose one another.

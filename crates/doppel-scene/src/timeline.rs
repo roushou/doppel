@@ -6,9 +6,9 @@
 
 use std::sync::Arc;
 
-use doppel_machine::ax::refs::SnapshotRefs;
-use doppel_machine::ax::tree::AxSnapshot;
-use doppel_machine::geometry::{Point, Rect};
+use doppel_desktop::ax::refs::SnapshotRefs;
+use doppel_desktop::ax::tree::AxSnapshot;
+use doppel_desktop::geometry::{Point, Rect};
 use doppel_machine::machine::MachineName;
 
 use crate::recordings::{Actor, Recording, TraceOutcome};
@@ -1030,8 +1030,8 @@ mod tests {
 
     #[test]
     fn the_snapshot_shown_is_the_latest_taken_and_says_when_the_agent_acted_since() {
-        use doppel_machine::agent::{ProcessId, RunningApp};
-        use doppel_machine::ax::tree::{AxNode, AxTree, Role, SnapshotId, States, Truncation};
+        use doppel_desktop::agent::{ProcessId, RunningApp};
+        use doppel_desktop::ax::tree::{AxNode, AxTree, Role, SnapshotId, States, Truncation};
         let snapshot = |id| {
             Arc::new(AxSnapshot {
                 id: SnapshotId::new(id),
@@ -1115,8 +1115,8 @@ mod tests {
             Some(false)
         );
         // Names reach the call that saw their snapshot, and come with it.
-        use doppel_machine::ax::refs::Generation;
-        use doppel_machine::ax::tree::NodeIndex;
+        use doppel_desktop::ax::refs::Generation;
+        use doppel_desktop::ax::tree::NodeIndex;
         let named = |id| ActivityEvent::Named {
             machine: "dev".parse().unwrap(),
             refs: Arc::new(SnapshotRefs::new(
@@ -1537,8 +1537,8 @@ mod tests {
     }
 
     fn snapshot_with_id(id: u64) -> AxSnapshot {
-        use doppel_machine::agent::{ProcessId, RunningApp};
-        use doppel_machine::ax::tree::{AxNode, AxTree, Role, SnapshotId, States, Truncation};
+        use doppel_desktop::agent::{ProcessId, RunningApp};
+        use doppel_desktop::ax::tree::{AxNode, AxTree, Role, SnapshotId, States, Truncation};
         AxSnapshot {
             id: SnapshotId::new(id),
             app: RunningApp {

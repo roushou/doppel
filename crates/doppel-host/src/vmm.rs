@@ -9,10 +9,10 @@ use std::os::fd::OwnedFd;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 
+use doppel_desktop::deadline::Deadline;
+use doppel_desktop::geometry::Point;
+use doppel_desktop::outcome::{Certainty, Failure};
 use doppel_machine::bundle::SocketPath;
-use doppel_machine::deadline::Deadline;
-use doppel_machine::geometry::Point;
-use doppel_machine::outcome::{Certainty, Failure};
 use doppel_machine::screen_probe::Rgb;
 use doppel_machine::vm::{RunState, Window};
 use doppel_protocol::convert::RemoteError;

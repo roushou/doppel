@@ -6,7 +6,7 @@
 use std::os::unix::net::UnixStream;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use doppel_machine::deadline::Deadline;
+use doppel_desktop::deadline::Deadline;
 use doppel_protocol::convert::RemoteError;
 use doppel_protocol::exchange::{DaemonCall, EventLimit, ExchangeConfig};
 use doppel_protocol::pb::daemon::v1 as daemon;

@@ -8,7 +8,7 @@
 use std::cell::Cell;
 use std::rc::Rc;
 
-use doppel_machine::geometry::Size;
+use doppel_desktop::geometry::Size;
 use doppel_machine::machine::MachineName;
 use doppel_protocol::pb::daemon::v1 as daemon;
 use doppel_scene::encoded::{DecoderConfig, EncodedFrame};

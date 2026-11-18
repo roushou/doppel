@@ -11,8 +11,8 @@ use std::time::Duration;
 
 use anyhow::Result;
 use doppel_client::{Client, ClientError, Display, DisplayLayout, EncodedDisplay};
+use doppel_desktop::geometry::Size;
 use doppel_host::display::{Announcement, DisplayError, Nv12Frame, SharedFrames};
-use doppel_machine::geometry::Size;
 use doppel_machine::machine::MachineName;
 use doppel_protocol::display::{RingLayout, SlotRead};
 use doppel_viewer::{

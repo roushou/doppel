@@ -29,8 +29,8 @@
 //! to the report.
 
 use crate::bundle::{CheckpointFiles, CheckpointLabel, FileOp, ImageFiles, MachineBundle};
-use crate::exec::Termination;
-use crate::outcome::{Outcome, Unconfirmed};
+use doppel_desktop::exec::Termination;
+use doppel_desktop::outcome::{Outcome, Unconfirmed};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AfterCheckpoint {

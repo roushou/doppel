@@ -5,8 +5,8 @@ use std::path::Path;
 
 use crate::agent_install::plan::{AgentBuild, StepName};
 use crate::golden::plan::{GoldenStepName, GuestUserName};
+use doppel_desktop::deadline::Deadline;
 use doppel_machine::bundle::CheckpointLabel;
-use doppel_machine::deadline::Deadline;
 use doppel_machine::login::{LoginOutcome, LoginPolicy};
 use doppel_machine::machine::MachineName;
 use doppel_machine::screen_probe::HostScreen;

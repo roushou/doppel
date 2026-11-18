@@ -18,7 +18,7 @@
 use std::fmt;
 use std::time::{Duration, Instant};
 
-use crate::geometry::{Point, Rect};
+use doppel_desktop::geometry::{Point, Rect};
 
 /// How long the agent keeps a probe on screen, at most, when nobody hides it.
 pub const PROBE_LASTS: Duration = Duration::from_secs(30);

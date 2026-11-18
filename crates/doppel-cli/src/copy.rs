@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use doppel_machine::guest_path::{GuestPath, GuestPathError};
+use doppel_desktop::guest_path::{GuestPath, GuestPathError};
 use doppel_machine::machine::{MachineName, SpecError};
 
 /// One side of a copy, as written on the command line: `machine:/abs/path`

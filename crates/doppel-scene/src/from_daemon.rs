@@ -250,7 +250,7 @@ impl TraceLine {
 
 #[cfg(test)]
 mod tests {
-    use doppel_machine::geometry::Point;
+    use doppel_desktop::geometry::Point;
 
     use super::*;
 

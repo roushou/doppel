@@ -14,15 +14,15 @@ use doppel_client::{
     Listing, MachineFailure, Resumed, SessionInfo, SessionStatus, StopOutcome, StopReport,
     StopRequest, TokenEntry,
 };
+use doppel_desktop::guest_path::GuestPath;
+use doppel_desktop::outcome::{Certainty, Failure as _};
 use doppel_host::agent_install::Installed;
 use doppel_host::golden::plan::GuestUserName;
 use doppel_host::vmm::RecordingSummary;
 use doppel_machine::bundle::CheckpointLabel;
-use doppel_machine::guest_path::GuestPath;
 use doppel_machine::lineage::Lineage;
 use doppel_machine::login::Desktop;
 use doppel_machine::machine::MachineName;
-use doppel_machine::outcome::{Certainty, Failure as _};
 use doppel_machine::screen_probe::HostScreen;
 use doppel_machine::vm::{NextStart, RunState, Status};
 

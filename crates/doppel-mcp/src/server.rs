@@ -18,7 +18,7 @@ use rmcp::{ErrorData, RoleServer, ServerHandler};
 use tokio::sync::OnceCell;
 use tokio_util::sync::CancellationToken;
 
-use doppel_machine::ax::refs::SnapshotRefs;
+use doppel_desktop::ax::refs::SnapshotRefs;
 
 use crate::refs::Refs;
 use crate::tools::{ToolCall, ToolName, ToolOutcome};
@@ -295,11 +295,11 @@ mod tests {
     use serde_json::{Value, json};
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, DuplexStream, Lines};
 
-    use doppel_machine::outcome::Unconfirmed;
+    use doppel_desktop::outcome::Unconfirmed;
 
     use super::*;
     use crate::tools::ToolAction;
-    use doppel_machine::input::Via;
+    use doppel_desktop::input::Via;
 
     /// Records each call and fails it, so tests see what the server parsed.
     #[derive(Debug, Default)]

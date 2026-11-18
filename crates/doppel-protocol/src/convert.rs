@@ -3,16 +3,16 @@
 //! Inbound conversions are `TryFrom` (parse, don't validate). Outbound ones
 //! are `From` because a valid domain value always has a wire form.
 
-use doppel_machine::agent::AgentReport;
-use doppel_machine::agent::Permission;
-use doppel_machine::ax::tree::{SnapshotScope, SnapshotSpec};
+use doppel_desktop::agent::AgentReport;
+use doppel_desktop::agent::Permission;
+use doppel_desktop::ax::tree::{SnapshotScope, SnapshotSpec};
+use doppel_desktop::input::Via;
+use doppel_desktop::outcome::{Certainty, Failure};
 use doppel_machine::bundle::CheckpointLabel;
 use doppel_machine::checkpoint::{AfterCheckpoint, GuestAfterFailure, Step};
-use doppel_machine::input::Via;
 use doppel_machine::lineage::{Lineage, Origin, RecordedLineage, Role, TemplateAgent};
 use doppel_machine::login::{Desktop, LoginOutcome};
 use doppel_machine::machine::SpecError;
-use doppel_machine::outcome::{Certainty, Failure};
 use doppel_machine::screen_probe::{HostScreen, Probe, Rgb, WhyUnconfirmed};
 use doppel_machine::vm::{MachineReport, NextStart, RunState, Status, Window};
 
@@ -32,9 +32,9 @@ pub enum ParseError {
     #[error(transparent)]
     Spec(#[from] SpecError),
     #[error(transparent)]
-    ScreenText(#[from] doppel_machine::screen_text::ScreenTextError),
+    ScreenText(#[from] doppel_desktop::screen_text::ScreenTextError),
     #[error(transparent)]
-    Mark(#[from] doppel_machine::mark::MarkError),
+    Mark(#[from] doppel_desktop::mark::MarkError),
 }
 
 // --- Via ---------------------------------------------------------------------
@@ -332,7 +332,7 @@ pub(crate) fn template_agent(raw: &str) -> Result<TemplateAgent, ParseError> {
     match raw {
         "" => Ok(TemplateAgent::Unrecorded),
         raw => raw.parse().map(TemplateAgent::Recorded).map_err(
-            |error: doppel_machine::agent::AgentBuildError| ParseError::Invalid {
+            |error: doppel_desktop::agent::AgentBuildError| ParseError::Invalid {
                 field: "lineage.golden.agent_build",
                 reason: error.to_string(),
             },
@@ -942,8 +942,8 @@ mod tests {
 // --- Input ------------------------------------------------------------------
 
 mod input_convert {
-    use doppel_machine::geometry::Point;
-    use doppel_machine::input::{
+    use doppel_desktop::geometry::Point;
+    use doppel_desktop::input::{
         Button, ClickCount, FunctionKey, Input, Key, KeyChord, Modifier, NamedKey, Pointer,
         PointerPhase,
     };
@@ -1344,7 +1344,7 @@ mod input_convert {
 
         #[test]
         fn a_pointer_carries_a_button_only_where_it_has_one() {
-            use doppel_machine::input::ClickCount;
+            use doppel_desktop::input::ClickCount;
             let at = Point::new(3.0, 4.0).unwrap();
             let press = common::Pointer::from(&Pointer {
                 phase: PointerPhase::Press(Button::Right, ClickCount::Double),
@@ -1410,11 +1410,11 @@ mod input_convert {
 // --- Agent status and images -----------------------------------------------
 
 mod agent_convert {
-    use doppel_machine::agent::{
+    use doppel_desktop::agent::{
         AgentStatus, BundleId, GuestEvent, Permission, ProcessId, RunningApp, Session,
     };
-    use doppel_machine::geometry::Size;
-    use doppel_machine::screen::{ImageFormat, Screenshot};
+    use doppel_desktop::geometry::Size;
+    use doppel_desktop::screen::{ImageFormat, Screenshot};
 
     use super::ParseError;
     use crate::pb::agent::v1 as agent;
@@ -1695,9 +1695,9 @@ mod agent_convert {
 // --- Recognized text -------------------------------------------------------------
 
 mod screen_text_convert {
-    use doppel_machine::geometry::Rect;
-    use doppel_machine::geometry::Size;
-    use doppel_machine::screen_text::{
+    use doppel_desktop::geometry::Rect;
+    use doppel_desktop::geometry::Size;
+    use doppel_desktop::screen_text::{
         AccurateFailed, Confidence, Recognizer, ScreenText, TextLine,
     };
 
@@ -1909,8 +1909,8 @@ mod screen_text_convert {
 // --- Accessibility --------------------------------------------------------------
 
 mod refs_convert {
-    use doppel_machine::ax::refs::{Generation, SnapshotRefs};
-    use doppel_machine::ax::tree::{NodeIndex, SnapshotId};
+    use doppel_desktop::ax::refs::{Generation, SnapshotRefs};
+    use doppel_desktop::ax::tree::{NodeIndex, SnapshotId};
 
     use super::ParseError;
     use crate::pb::daemon::v1 as daemon;
@@ -1942,13 +1942,13 @@ mod refs_convert {
 }
 
 mod ax_convert {
-    use doppel_machine::agent::RunningApp;
-    use doppel_machine::ax::tree::{
+    use doppel_desktop::agent::RunningApp;
+    use doppel_desktop::ax::tree::{
         ActOn, ActionName, AxNode, AxSnapshot, AxText, AxTree, AxValue, ElementAction,
         ElementTarget, Menus, NodeIndex, Retention, Role, Scope, SnapshotId, SnapshotRequest,
         States, Subrole, Truncation,
     };
-    use doppel_machine::geometry::Rect;
+    use doppel_desktop::geometry::Rect;
 
     use super::ParseError;
     use crate::pb::agent::v1 as agent;
@@ -2332,7 +2332,7 @@ mod ax_convert {
         #[test]
         fn actions_map_onto_the_wire() {
             use agent::perform_ax_action::Action;
-            let target = doppel_machine::ax::tree::ElementTarget {
+            let target = doppel_desktop::ax::tree::ElementTarget {
                 snapshot: SnapshotId::new(5),
                 node: NodeIndex::new(2),
             };
@@ -2358,7 +2358,7 @@ mod ax_convert {
 mod exec_convert {
     use std::time::Duration;
 
-    use doppel_machine::exec::{Completeness, ExecOutput, ExecRequest, Termination};
+    use doppel_desktop::exec::{Completeness, ExecOutput, ExecRequest, Termination};
 
     use super::ParseError;
     use crate::pb::agent::v1 as agent;
@@ -2542,7 +2542,7 @@ mod exec_convert {
 // --- Files ------------------------------------------------------------------------
 
 mod files_convert {
-    use doppel_machine::files::{FileMode, ReadRequest, WritePolicy, WriteRequest};
+    use doppel_desktop::files::{FileMode, ReadRequest, WritePolicy, WriteRequest};
 
     use super::ParseError;
     use crate::pb::agent::v1 as agent;
@@ -2663,9 +2663,9 @@ mod files_convert {
 mod wait_convert {
     use std::time::Duration;
 
-    use doppel_machine::ax::tree::AxSnapshot;
-    use doppel_machine::screen_text::ScreenText;
-    use doppel_machine::wait::{Condition, TextCondition, WaitOutcome, WaitSpec};
+    use doppel_desktop::ax::tree::AxSnapshot;
+    use doppel_desktop::screen_text::ScreenText;
+    use doppel_desktop::wait::{Condition, TextCondition, WaitOutcome, WaitSpec};
 
     use super::{Micros, ParseError};
     use crate::pb::daemon::v1 as daemon;
@@ -2832,7 +2832,7 @@ mod wait_convert {
         }
 
         fn wait<C>(
-            spec: Result<WaitSpec<C>, doppel_machine::wait::WaitError>,
+            spec: Result<WaitSpec<C>, doppel_desktop::wait::WaitError>,
         ) -> Result<WaitSpec<C>, Self> {
             spec.map_err(|error| Self::Invalid {
                 field: "wait",
@@ -2966,9 +2966,9 @@ mod wait_convert {
 mod mark_convert {
     use std::time::Duration;
 
-    use doppel_machine::ax::tree::{ElementTarget, NodeIndex, SnapshotId};
-    use doppel_machine::geometry::Point;
-    use doppel_machine::mark::{Area, Lasts, Mark, MarkAt, Note, Shape};
+    use doppel_desktop::ax::tree::{ElementTarget, NodeIndex, SnapshotId};
+    use doppel_desktop::geometry::Point;
+    use doppel_desktop::mark::{Area, Lasts, Mark, MarkAt, Note, Shape};
 
     use super::ParseError;
     use crate::pb::common::v1 as common;
@@ -3068,7 +3068,7 @@ mod mark_convert {
 
     #[cfg(test)]
     mod tests {
-        use doppel_machine::mark::DEFAULT_LASTS;
+        use doppel_desktop::mark::DEFAULT_LASTS;
 
         use super::*;
 
@@ -3145,12 +3145,12 @@ mod mark_convert {
 mod activity_convert {
     use std::time::Duration;
 
+    use doppel_desktop::ax::tree::AxSnapshot;
+    use doppel_desktop::geometry::{Point, Rect, Size};
     use doppel_machine::activity::{
         Activity, CALLOUT_LASTS, Callout, CalloutLasts, CalloutShape, Ended, Ending, Gesture,
         OnScreen, Phase, Target, TextRead,
     };
-    use doppel_machine::ax::tree::AxSnapshot;
-    use doppel_machine::geometry::{Point, Rect, Size};
     use doppel_machine::recording::{
         Recording, RecordingSummary, RecordingVideo, TraceActor, TraceCall, TraceLine, TraceOutcome,
     };
@@ -3451,8 +3451,8 @@ mod activity_convert {
 
     #[cfg(test)]
     mod tests {
+        use doppel_desktop::geometry::{Point, Size};
         use doppel_machine::activity::*;
-        use doppel_machine::geometry::{Point, Size};
         use doppel_machine::recording::*;
         use std::time::Duration;
 
@@ -3849,7 +3849,7 @@ mod film_convert {
 
     #[cfg(test)]
     mod tests {
-        use doppel_machine::geometry::Rect;
+        use doppel_desktop::geometry::Rect;
         use doppel_scene::film::MARKED;
 
         use super::*;

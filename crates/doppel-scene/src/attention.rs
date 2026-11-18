@@ -3,9 +3,9 @@
 //! snapshot lands, and, once its next call aims at one of them, that one
 //! alone. Pure: the timeline in; what is taken in at an instant out.
 
-use doppel_machine::ax::refs::Ref;
-use doppel_machine::ax::tree::AxSnapshot;
-use doppel_machine::geometry::{Rect, Size};
+use doppel_desktop::ax::refs::Ref;
+use doppel_desktop::ax::tree::AxSnapshot;
+use doppel_desktop::geometry::{Rect, Size};
 
 use crate::elements::{self, Kind, Named};
 use crate::timeline::{Moment, Seen, Target};
@@ -181,9 +181,9 @@ impl Attention {
 mod tests {
     use std::sync::Arc;
 
-    use doppel_machine::agent::{ProcessId, RunningApp};
-    use doppel_machine::ax::refs::{Generation, SnapshotRefs};
-    use doppel_machine::ax::tree::{
+    use doppel_desktop::agent::{ProcessId, RunningApp};
+    use doppel_desktop::ax::refs::{Generation, SnapshotRefs};
+    use doppel_desktop::ax::tree::{
         AxNode, AxText, AxTree, NodeIndex, Role, SnapshotId, States, Truncation,
     };
 

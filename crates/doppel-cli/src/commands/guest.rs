@@ -7,10 +7,10 @@ use std::time::Duration;
 
 use anyhow::{Context as _, Result, bail};
 use clap::{Args, Subcommand};
-use doppel_machine::files::FileMode;
-use doppel_machine::geometry::Point;
-use doppel_machine::guest_path::GuestPath;
-use doppel_machine::input::{Button, ClickCount, Input, KeyChord};
+use doppel_desktop::files::FileMode;
+use doppel_desktop::geometry::Point;
+use doppel_desktop::guest_path::GuestPath;
+use doppel_desktop::input::{Button, ClickCount, Input, KeyChord};
 use doppel_machine::machine::MachineName;
 use doppel_protocol::transport::Cancel;
 
@@ -111,7 +111,7 @@ pub(crate) struct ExecCmd {
 
 impl ExecCmd {
     pub(crate) fn run(self, ctx: &Context) -> Result<Report> {
-        use doppel_machine::exec::{Completeness, ExecRequest, Termination};
+        use doppel_desktop::exec::{Completeness, ExecRequest, Termination};
         let (program, arguments) = self
             .command
             .split_first()
@@ -169,7 +169,7 @@ pub(crate) struct CpCmd {
 
 impl CpCmd {
     pub(crate) fn run(self, ctx: &Context) -> Result<Report> {
-        use doppel_machine::files::{MAX_FILE_BYTES, ReadRequest, WritePolicy, WriteRequest};
+        use doppel_desktop::files::{MAX_FILE_BYTES, ReadRequest, WritePolicy, WriteRequest};
         let machines = ctx.machines();
         let policy = if self.replace {
             WritePolicy::Replace

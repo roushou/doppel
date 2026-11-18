@@ -10,12 +10,12 @@ use doppel_client::{
     Acted, Call, CheckpointResult, Client, ClientError, Notes, Record, StopMode, StopOutcome,
     Window,
 };
+use doppel_desktop::ax::refs::{Ref, RefTarget, SnapshotRefs};
+use doppel_desktop::deadline::Deadline;
+use doppel_desktop::outcome::{Certainty, Failure, Outcome, Unconfirmed};
 use doppel_host::capabilities::{Clock, SystemClock};
-use doppel_machine::ax::refs::{Ref, RefTarget, SnapshotRefs};
 use doppel_machine::checkpoint::AfterCheckpoint;
-use doppel_machine::deadline::Deadline;
 use doppel_machine::machine::MachineName;
-use doppel_machine::outcome::{Certainty, Failure, Outcome, Unconfirmed};
 use doppel_machine::vm::NextStart;
 use doppel_protocol::transport::Cancel;
 

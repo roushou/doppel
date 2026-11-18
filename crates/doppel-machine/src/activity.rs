@@ -5,11 +5,11 @@
 
 use std::time::Duration;
 
-use crate::ax::refs::SnapshotRefs;
-use crate::ax::tree::AxSnapshot;
-use crate::geometry::{Point, Rect};
 use crate::machine::MachineName;
-use crate::screen_text::{ScreenText, TextQuery};
+use doppel_desktop::ax::refs::SnapshotRefs;
+use doppel_desktop::ax::tree::AxSnapshot;
+use doppel_desktop::geometry::{Point, Rect};
+use doppel_desktop::screen_text::{ScreenText, TextQuery};
 
 /// One call of a session, as it started or ended. A start and its end carry
 /// the same session and request.

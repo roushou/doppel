@@ -9,6 +9,7 @@ description = "The Doppel protocol: generated protobuf types, a sans-IO frame co
 
 [dependencies]
 bytes.workspace = true
+doppel-desktop = { path = "../doppel-desktop" }
 doppel-machine = { path = "../doppel-machine" }
 doppel-scene = { path = "../doppel-scene" }
 prost.workspace = true

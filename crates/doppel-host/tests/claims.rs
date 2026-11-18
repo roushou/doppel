@@ -17,6 +17,7 @@ use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use doppel_desktop::outcome::Unconfirmed;
 use doppel_host::capabilities::SystemClock;
 use doppel_host::files::{FileOpError, Filesystem, LocalFilesystem};
 use doppel_host::launcher::VmmBinary;
@@ -27,7 +28,6 @@ use doppel_machine::lineage::{Lineage, Origin, RecordedLineage, Role, TemplateAg
 use doppel_machine::machine::{
     CpuCount, DiskSize, DisplaySpec, Hardware, MachineName, MemorySize, NetworkSpec,
 };
-use doppel_machine::outcome::Unconfirmed;
 use doppel_protocol::frame::{FrameDecoder, FrameEncoder, MaxFrameLen, Received};
 use doppel_protocol::pb::common::v1 as common;
 use doppel_protocol::pb::vmm::v1 as vmm;
@@ -624,7 +624,7 @@ fn a_role_is_recorded_beside_the_origin_and_an_unreadable_one_is_never_a_default
         Err(MachineError::NoSuchCheckpoint { .. })
     ));
     assert!(!dev.lineage().exists(), "a refused mark writes nothing");
-    let build: doppel_machine::agent::AgentBuild = "20261118T164320Z-7da947b".parse().unwrap();
+    let build: doppel_desktop::agent::AgentBuild = "20261118T164320Z-7da947b".parse().unwrap();
     let golden = claim
         .mark_golden(
             &"ready".parse().unwrap(),
