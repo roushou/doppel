@@ -416,57 +416,6 @@ pub fn by_day<'a>(
         .collect()
 }
 
-/// A recording's calls on `machine` (and those naming none) as moments,
-/// timed from the session's start.
-pub fn from_trace(recording: &Recording, machine: &MachineName) -> Vec<Moment> {
-    recording
-        .calls()
-        .filter(|call| call.machine.as_ref().is_none_or(|named| named == machine))
-        .enumerate()
-        .map(|(index, traced)| {
-            let (gesture, target) = traced
-                .acted
-                .clone()
-                .unwrap_or((Gesture::Other, Target::Nowhere));
-            let callout = traced.callout.clone();
-            Moment {
-                start_ms: traced.start_ms as f64,
-                end_ms: Some(traced.end_ms as f64),
-                call: Call {
-                    key: CallKey {
-                        session: 0,
-                        request: index as u64,
-                    },
-                    machine: machine.clone(),
-                    client: String::new(),
-                    caption: traced.call.clone(),
-                    gesture,
-                    target,
-                    callout,
-                    why: traced.why.clone(),
-                },
-                failed: match traced.outcome {
-                    TraceOutcome::Done => None,
-                    TraceOutcome::Failed
-                    | TraceOutcome::TimedOut
-                    | TraceOutcome::Refused
-                    | TraceOutcome::Unknown(_) => Some(
-                        traced
-                            .error
-                            .clone()
-                            .or_else(|| traced.outcome.words())
-                            .unwrap_or_default(),
-                    ),
-                },
-                person: traced.by == Actor::Person,
-                seen: traced.seen.map(Seen::Recorded),
-                refs: traced.refs.clone(),
-                read: traced.read.clone(),
-            }
-        })
-        .collect()
-}
-
 impl Recording {
     /// A recording, opened, as replay shows it.
     #[must_use]
@@ -532,6 +481,57 @@ impl TraceLine {
             }
             kept::TraceLine::Unreadable(raw) => Self::Unreadable(raw),
         }
+    }
+}
+
+impl Recording {
+    /// Its calls on `machine` (and those naming none) as moments, timed
+    /// from the session's start, in the trace's order.
+    pub fn moments<'a>(&'a self, machine: &'a MachineName) -> impl Iterator<Item = Moment> + 'a {
+        self.calls()
+            .filter(move |call| call.machine.as_ref().is_none_or(|named| named == machine))
+            .enumerate()
+            .map(move |(index, traced)| {
+                let (gesture, target) = traced
+                    .acted
+                    .clone()
+                    .unwrap_or((Gesture::Other, Target::Nowhere));
+                let callout = traced.callout.clone();
+                Moment {
+                    start_ms: traced.start_ms as f64,
+                    end_ms: Some(traced.end_ms as f64),
+                    call: Call {
+                        key: CallKey {
+                            session: 0,
+                            request: index as u64,
+                        },
+                        machine: machine.clone(),
+                        client: String::new(),
+                        caption: traced.call.clone(),
+                        gesture,
+                        target,
+                        callout,
+                        why: traced.why.clone(),
+                    },
+                    failed: match traced.outcome {
+                        TraceOutcome::Done => None,
+                        TraceOutcome::Failed
+                        | TraceOutcome::TimedOut
+                        | TraceOutcome::Refused
+                        | TraceOutcome::Unknown(_) => Some(
+                            traced
+                                .error
+                                .clone()
+                                .or_else(|| traced.outcome.words())
+                                .unwrap_or_default(),
+                        ),
+                    },
+                    person: traced.by == Actor::Person,
+                    seen: traced.seen.map(Seen::Recorded),
+                    refs: traced.refs.clone(),
+                    read: traced.read.clone(),
+                }
+            })
     }
 }
 
@@ -758,5 +758,74 @@ mod tests {
     #[test]
     fn a_video_chip_drops_the_extension() {
         assert_eq!(VideoName::new("live-001.mp4".into()).stem(), "live-001");
+    }
+
+    #[test]
+    fn a_trace_becomes_the_machines_moments_and_people_draw_nothing() {
+        use doppel_desktop::geometry::Point;
+
+        use crate::timeline::Timeline;
+        let at = |x, y| Point::new(x, y).unwrap();
+        let traced = |start_ms, machine: Option<&str>, by, outcome| {
+            TraceLine::Call(Box::new(TraceCall {
+                why: None,
+                start_ms,
+                end_ms: start_ms + 500,
+                machine: machine.map(|raw| raw.parse().unwrap()),
+                call: "click".into(),
+                outcome,
+                error: None,
+                waited_ms: None,
+                queued_ms: None,
+                by,
+                seen: None,
+                refs: None,
+                read: None,
+                acted: Some((Gesture::Click, Target::Point(at(5.0, 6.0)))),
+                callout: None,
+            }))
+        };
+        let recording = Recording {
+            id: RecordingId::new("r".into()),
+            videos: Vec::new(),
+            trace: vec![
+                traced(100, Some("dev"), Actor::Session, TraceOutcome::Done),
+                traced(200, Some("web"), Actor::Session, TraceOutcome::Done),
+                traced(300, None, Actor::Session, TraceOutcome::TimedOut),
+                traced(2000, Some("dev"), Actor::Person, TraceOutcome::Done),
+                TraceLine::Unreadable(String::new()),
+            ],
+        };
+        let dev: MachineName = "dev".parse().unwrap();
+        let timeline = |recording: &Recording| {
+            let mut timeline = Timeline::new();
+            for moment in recording.moments(&dev) {
+                timeline.add(moment);
+            }
+            timeline
+        };
+        let shown = timeline(&recording);
+        let starts: Vec<f64> = shown
+            .moments()
+            .iter()
+            .map(|moment| moment.start_ms)
+            .collect();
+        assert_eq!(starts, [100.0, 300.0, 2000.0]);
+        assert_eq!(shown.moments()[1].failed.as_deref(), Some("timed out"));
+        assert!(shown.moments()[2].person);
+        // The person's stretch draws nothing over the screen.
+        let scene = shown.scene_at(2100.0);
+        assert!(scene.agents.iter().all(|agent| agent.current.is_none()));
+        // A trace's lines come as calls end; the moments are in start order.
+        let ended_first = Recording {
+            trace: recording.trace.iter().rev().cloned().collect(),
+            ..recording
+        };
+        let starts: Vec<f64> = timeline(&ended_first)
+            .moments()
+            .iter()
+            .map(|moment| moment.start_ms)
+            .collect();
+        assert_eq!(starts, [100.0, 300.0, 2000.0]);
     }
 }

@@ -691,7 +691,7 @@ impl MachinesPage {
         let moving = self
             .panels
             .iter()
-            .any(|(_, panel)| timeline::moving(panel.timeline(), now));
+            .any(|(_, panel)| panel.timeline().moving(now));
         if moving {
             window.request_animation_frame();
             return;
@@ -699,7 +699,7 @@ impl MachinesPage {
         let showing = self
             .panels
             .iter()
-            .any(|(_, panel)| now - timeline::latest(panel.timeline(), now) < WINDOW_MS);
+            .any(|(_, panel)| now - panel.timeline().latest(now) < WINDOW_MS);
         if showing && self.later.is_none() {
             self.later = Some(cx.spawn(async move |page, cx| {
                 cx.background_executor()
@@ -926,7 +926,7 @@ impl MachinesPage {
             let starts = self
                 .panels
                 .get(&machine.name)
-                .map_or(&[][..], |panel| panel.timeline())
+                .map_or(&[][..], |panel| panel.timeline().moments())
                 .iter()
                 .map(|moment| moment.start_ms);
             right.push(
@@ -1079,19 +1079,19 @@ impl MachinesPage {
             .panels
             .get(&name)
             .map_or(LensKind::Screen, |panel| panel.handles().lens.kind());
-        let moments = self
+        let calls = self
             .panels
             .get(&name)
-            .map(|panel| panel.timeline().to_vec())
+            .map(|panel| panel.timeline().clone())
             .unwrap_or_default();
         // What the elements tree shows: the agent's last snapshot, or the
         // person's own look, whichever is newer.
         let panel = ElementsShown::of(
-            &moments,
+            &calls,
             self.panels.get(&name).and_then(|panel| panel.look()),
             now,
         );
-        let scene = timeline::scene_at(&moments, now);
+        let scene = calls.scene_at(now);
         // The call each agent is on, as the activity feed shows it, and since when.
         let on_call = |session: &Session| {
             scene
@@ -1419,7 +1419,7 @@ impl MachinesPage {
                         std::rc::Rc::new(move |window, cx| listener(&(), window, cx))
                     };
                     let text_look = self.panels.get(&name).and_then(|panel| panel.text_look());
-                    let shown = timeline::reading(&moments, text_look, now);
+                    let shown = calls.reading(text_look, now);
                     let looking = match text_look.map(|look| &look.outcome) {
                         Some(timeline::TextLooked::Loading) => Looking::Busy,
                         Some(timeline::TextLooked::Read(_) | timeline::TextLooked::Failed(_))
@@ -1457,8 +1457,9 @@ impl MachinesPage {
                         &read_now,
                     ));
                 }
-                if let (true, Some(picture)) = (overlay_on && !moments.is_empty(), picture) {
-                    frame = frame.child(overlay::layer(&moments, picture, now));
+                if let (true, Some(picture)) = (overlay_on && !calls.moments().is_empty(), picture)
+                {
+                    frame = frame.child(overlay::layer(calls.moments(), picture, now));
                 }
                 if paused {
                     let resumed = name.clone();
@@ -1697,7 +1698,7 @@ impl MachinesPage {
 
         // The tape: the last minute of calls. Always there for a live
         // machine, so the screen never jumps when the first call comes.
-        let quiet = moments.is_empty();
+        let quiet = calls.moments().is_empty();
         let tape = live.then(|| {
             div()
                 .flex_none()
@@ -1721,7 +1722,7 @@ impl MachinesPage {
                 })
                 .child(overlay::strip(
                     id("timeline", &name),
-                    &moments,
+                    calls.moments(),
                     overlay::Span {
                         from: now - WINDOW_MS,
                         to: now,
@@ -2260,16 +2261,12 @@ pub(super) struct ElementsShown {
 }
 
 impl ElementsShown {
-    pub(super) fn of(
-        moments: &[timeline::Moment],
-        look: Option<&timeline::Look>,
-        now: f64,
-    ) -> Self {
+    pub(super) fn of(calls: &timeline::Timeline, look: Option<&timeline::Look>, now: f64) -> Self {
         let looking = match look.map(|look| &look.outcome) {
             Some(timeline::Looked::Loading) => Looking::Busy,
             Some(timeline::Looked::Seen(_) | timeline::Looked::Failed(_)) | None => Looking::Ready,
         };
-        match timeline::showing(moments, look, now) {
+        match calls.showing(look, now) {
             timeline::Showing::Agent(seen) => {
                 let (snapshot, named) = match &seen.seen {
                     timeline::Seen::Live(snapshot) => (

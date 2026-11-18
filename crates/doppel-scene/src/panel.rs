@@ -14,7 +14,7 @@ use doppel_machine::machine::MachineName;
 
 use crate::model::Action;
 use crate::report::Report;
-use crate::timeline::{self, ActivityEvent, Look, Looked, Moment, TextLook, TextLooked, TextRead};
+use crate::timeline::{ActivityEvent, Look, Looked, TextLook, TextLooked, TextRead, Timeline};
 
 /// A machine's screen, as the console has it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,7 +64,7 @@ pub struct Panel<S, H> {
     look: Option<Look>,
     text_look: Option<TextLook>,
     /// What agents did on it since the console began watching.
-    timeline: Vec<Moment>,
+    timeline: Timeline,
     /// When the person took control, for the timer on its frame.
     took: Option<f64>,
     report: Option<Report>,
@@ -79,7 +79,7 @@ impl<S, H: Default> Default for Panel<S, H> {
             overlay: Overlay::default(),
             look: None,
             text_look: None,
-            timeline: Vec::new(),
+            timeline: Timeline::new(),
             took: None,
             report: None,
             handles: H::default(),
@@ -185,7 +185,7 @@ impl<S, H> Panel<S, H> {
         }
     }
 
-    pub fn timeline(&self) -> &[Moment] {
+    pub const fn timeline(&self) -> &Timeline {
         &self.timeline
     }
 
@@ -236,8 +236,7 @@ impl<S, H: Default> Panels<S, H> {
 
     /// Records what an agent did, on its machine's timeline.
     pub fn record(&mut self, event: ActivityEvent, now: f64) {
-        let moments = &mut self.of(event.machine()).timeline;
-        timeline::record(moments, event, now);
+        self.of(event.machine()).timeline.record(event, now);
     }
 
     /// Opens the screens of `wanted`, and closes the rest and those that
