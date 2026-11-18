@@ -66,11 +66,6 @@ person.
 
 ### 2. Close the known gaps
 
-- **Text recognition when Vision's accurate model fails.** macOS's accurate
-  text recognizer sometimes fails on this Mac with `e5rtError … 13` until a
-  restart, and the fast one keeps working. Decide whether `find_text` and
-  text waits fall back to the fast recognizer and say so in the result.
-  Done when: the decision is made and, if it's a fallback, a test covers it.
 - **Unrecognized values that can pass for known ones.** `RunState`,
   `Session`, `Permission`, `Truncation` and `Completeness` keep a value this
   build doesn't know as a public raw number, which `convert.rs` writes back

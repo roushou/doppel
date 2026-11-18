@@ -1519,7 +1519,9 @@ mod agent_convert {
 mod screen_text_convert {
     use doppel_machine::geometry::Rect;
     use doppel_machine::geometry::Size;
-    use doppel_machine::screen_text::{Confidence, ScreenText, TextLine};
+    use doppel_machine::screen_text::{
+        AccurateFailed, Confidence, Recognizer, ScreenText, TextLine,
+    };
 
     use super::ParseError;
     use crate::pb::common::v1 as common;
@@ -1571,7 +1573,11 @@ mod screen_text_convert {
                 .into_iter()
                 .map(TextLine::try_from)
                 .collect::<Result<_, _>>()?;
-            Ok(Self::new(display, lines))
+            let recognizer = match AccurateFailed::new(wire.accurate_failed) {
+                None => Recognizer::Accurate,
+                Some(why) => Recognizer::Fast(why),
+            };
+            Ok(Self::new(display, lines).read_by(recognizer))
         }
     }
 
@@ -1610,6 +1616,10 @@ mod screen_text_convert {
                             .collect(),
                     })
                     .collect(),
+                accurate_failed: match text.recognizer() {
+                    Recognizer::Accurate => String::new(),
+                    Recognizer::Fast(why) => why.as_str().to_owned(),
+                },
             }
         }
     }
@@ -1637,6 +1647,7 @@ mod screen_text_convert {
                     confidence,
                     words,
                 }],
+                accurate_failed: String::new(),
             }
         }
 
@@ -1683,6 +1694,23 @@ mod screen_text_convert {
                 (found[0].region.center().x(), found[0].region.center().y()),
                 (100.0, 30.0)
             );
+        }
+
+        #[test]
+        fn the_fast_recognizer_and_its_reason_round_trip() {
+            let mut fast = wire(vec![], 0.9);
+            fast.accurate_failed = "e5rtError 13".into();
+            let text = ScreenText::try_from(fast).unwrap();
+            assert_eq!(
+                text.recognizer(),
+                &Recognizer::Fast(AccurateFailed::new("e5rtError 13").unwrap())
+            );
+            assert_eq!(
+                vmm::RecognizedText::from(&text).accurate_failed,
+                "e5rtError 13"
+            );
+            let accurate = ScreenText::try_from(wire(vec![], 0.9)).unwrap();
+            assert_eq!(accurate.recognizer(), &Recognizer::Accurate);
         }
 
         #[test]
