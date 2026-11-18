@@ -1,6 +1,6 @@
-//! The viewer's [`Daemon`] port over doppel-client: the machines, sessions
+//! The console's [`Daemon`] port over doppel-client: the machines, sessions
 //! and lifecycle the window shows and runs, its screens, and what agents
-//! do. The one place that knows both the client's answers and the viewer's
+//! do. The one place that knows both the client's answers and the console's
 //! words for them, and maps one to the other.
 
 use std::path::PathBuf;
@@ -10,14 +10,14 @@ use std::time::{Duration, Instant, SystemTime};
 use futures::channel::{mpsc, oneshot};
 
 use doppel_client::{ActivityStream, Client, ClientError, Listing, StopMode, Window};
-use doppel_host::capabilities::{Clock, SystemClock, WallClock};
-use doppel_machine::checkpoint::AfterCheckpoint;
-use doppel_machine::machine::MachineName;
-use doppel_viewer::{
+use doppel_console::{
     Activity, ActivityEvent, Answer, AxSnapshot, CheckpointLabel, Daemon, DaemonError, Hold, Later,
     LocalTime, Machine, MachineReport, Order, Recording, RecordingId, RecordingSummary, Screen,
     Session, SessionId, SourceError, TextRead, Verdict, VideoName, answers,
 };
+use doppel_host::capabilities::{Clock, SystemClock, WallClock};
+use doppel_machine::checkpoint::AfterCheckpoint;
+use doppel_machine::machine::MachineName;
 
 use super::Frames;
 use super::recordings::{self, Videos};
@@ -28,7 +28,7 @@ const CALL: Duration = Duration::from_secs(10);
 /// How long the activity stream waits before saying nothing happened.
 const QUIET: Duration = Duration::from_secs(1);
 
-/// The daemon on a socket, as the viewer's port: each call made on a
+/// The daemon on a socket, as the console's port: each call made on a
 /// thread of its own, since the client's calls block and the window's
 /// thread must not.
 pub(crate) struct DaemonPort(Arc<Blocking>);
@@ -66,7 +66,7 @@ fn off_thread<T: Send + 'static>(
     let (answer, answered) = oneshot::channel();
     // No thread: the receiver sees its sender dropped.
     let _ = std::thread::Builder::new()
-        .name("doppel-viewer-daemon".into())
+        .name("doppel-console-daemon".into())
         .spawn(move || {
             let _ = answer.send(work());
         });
@@ -248,7 +248,7 @@ fn failed(error: &ClientError) -> Verdict {
     }
 }
 
-/// A listed machine, in the viewer's words; a stray entry is left out.
+/// A listed machine, in the console's words; a stray entry is left out.
 fn machine(listing: Listing) -> Option<Machine> {
     match listing {
         Listing::Machine {
@@ -311,7 +311,7 @@ impl Blocking {
     }
 
     fn open_recording(&self, id: &RecordingId) -> Result<Recording, DaemonError> {
-        // The viewer's name, parsed again on the way in.
+        // The console's name, parsed again on the way in.
         let id: doppel_client::RecordingId =
             id.as_str()
                 .parse()
@@ -436,7 +436,7 @@ impl Daemon for DaemonPort {
 fn watching(mut stream: ActivityStream<SystemClock>) -> Activity {
     let (events, arrived) = mpsc::unbounded();
     let _ = std::thread::Builder::new()
-        .name("doppel-viewer-activity".into())
+        .name("doppel-console-activity".into())
         .spawn(move || {
             while !events.is_closed() {
                 let event = match stream.next(within(QUIET)) {
@@ -454,13 +454,13 @@ fn watching(mut stream: ActivityStream<SystemClock>) -> Activity {
     Box::pin(arrived)
 }
 
-/// The time, for the viewer: monotonic, from when it was made, and local
+/// The time, for the console: monotonic, from when it was made, and local
 /// to name checkpoints by.
-pub(crate) struct ViewerClock {
+pub(crate) struct ConsoleClock {
     origin: Instant,
 }
 
-impl ViewerClock {
+impl ConsoleClock {
     pub(crate) fn new() -> Self {
         Self {
             origin: SystemClock.now(),
@@ -468,7 +468,7 @@ impl ViewerClock {
     }
 }
 
-impl doppel_viewer::LocalClock for ViewerClock {
+impl doppel_console::LocalClock for ConsoleClock {
     fn millis(&self) -> f64 {
         SystemClock
             .now()
@@ -542,7 +542,7 @@ mod tests {
     }
 }
 
-/// What the person chose in the viewer, kept in a file of the store's.
+/// What the person chose in the console, kept in a file of the store's.
 #[derive(Debug)]
 pub(crate) struct KeptSettings {
     /// The theme chosen: `system`, `light` or `dark`.
@@ -558,8 +558,8 @@ impl KeptSettings {
     }
 }
 
-impl doppel_viewer::Settings for KeptSettings {
-    fn theme(&self) -> doppel_viewer::ThemeChoice {
+impl doppel_console::Settings for KeptSettings {
+    fn theme(&self) -> doppel_console::ThemeChoice {
         // None kept, or one unreadable: the system's.
         std::fs::read_to_string(&self.theme)
             .ok()
@@ -569,8 +569,8 @@ impl doppel_viewer::Settings for KeptSettings {
 
     fn keep_theme(
         &self,
-        choice: doppel_viewer::ThemeChoice,
-    ) -> Result<(), doppel_viewer::SettingsError> {
-        std::fs::write(&self.theme, choice.as_str()).map_err(doppel_viewer::SettingsError::new)
+        choice: doppel_console::ThemeChoice,
+    ) -> Result<(), doppel_console::SettingsError> {
+        std::fs::write(&self.theme, choice.as_str()).map_err(doppel_console::SettingsError::new)
     }
 }

@@ -1,4 +1,4 @@
-//! Tokens: who may use the browser viewer.
+//! Tokens: who may use the web console.
 //!
 //! A token is 32 random bytes, shown to the person once when it's issued.
 //! The book keeps only its SHA-256 digest, with when it was issued and when

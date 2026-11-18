@@ -1,6 +1,6 @@
 //! What the window asks before an action runs: a checkpoint's label, which
 //! checkpoint to go back to or start from, a fork's name, or that deleting
-//! is meant. The browser viewer's `Ask.svelte`.
+//! is meant. The web console's `Ask.svelte`.
 
 use std::sync::Arc;
 

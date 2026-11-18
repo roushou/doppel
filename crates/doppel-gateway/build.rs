@@ -1,4 +1,4 @@
-//! Embeds the browser viewer's build, `target/viewer-web` (made by
+//! Embeds the web console's build, `target/console-web` (made by
 //! `scripts/build-web.sh`), when there is one: each file becomes an `Asset`,
 //! its bytes compiled in, with the `.br` and `.gz` copies the script made
 //! of it and a hash of its bytes for its ETag. Without a build, the
@@ -46,10 +46,10 @@ fn content_type(path: &Path) -> Option<&'static str> {
 )]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR")?);
-    let dist = manifest.join("../../target/viewer-web");
+    let dist = manifest.join("../../target/console-web");
     println!("cargo::rerun-if-changed={}", dist.display());
     let mut code =
-        String::from("/// The browser viewer's build, if this doppel was built with one.\n");
+        String::from("/// The web console's build, if this doppel was built with one.\n");
     let mut found = Vec::new();
     if dist.join("index.html").is_file() {
         files(&dist, &mut found)?;

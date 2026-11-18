@@ -179,7 +179,7 @@ pub(crate) fn spinner(id: impl Into<ElementId>, size: f32, color: Hsla) -> impl 
     )
 }
 
-/// Something that fades in and out, as the browser viewer's `pulse` does.
+/// Something that fades in and out, as the web console's `pulse` does.
 pub(crate) fn pulse<E: IntoElement + Styled + 'static>(
     id: impl Into<ElementId>,
     period: Duration,
@@ -192,7 +192,7 @@ pub(crate) fn pulse<E: IntoElement + Styled + 'static>(
     })
 }
 
-/// A chrome label as the browser viewer's `.label-mono` draws it: small,
+/// A chrome label as the web console's `.label-mono` draws it: small,
 /// monospaced, upper case.
 pub(crate) fn upper(text: &str) -> SharedString {
     text.to_uppercase().into()

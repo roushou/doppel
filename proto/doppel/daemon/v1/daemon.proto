@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-// Clients (the doppel CLI, doppel mcp, the viewer) <-> doppeld, the daemon
+// Clients (the doppel CLI, doppel mcp, the console) <-> doppeld, the daemon
 // that owns a user's machines. Transport: the daemon's unix socket in the
 // data root (doppeld.socket). Framing: u32 LE length + DaemonFrame. The daemon speaks
 // first (Hello), then the client answers with its own.
@@ -319,7 +319,7 @@ message LoginResult {
 }
 
 // Whether the host's view of a machine's screen (screenshots, text
-// recognition, viewers) shows what the guest draws now. After a resume from
+// recognition, consoles) shows what the guest draws now. After a resume from
 // saved memory it shows the saved screen for a few seconds.
 message HostScreen {
   oneof state {
@@ -515,7 +515,7 @@ message RunFork {
   }
 }
 
-// --- Tokens for the browser viewer ------------------------------------------
+// --- Tokens for the web console ------------------------------------------
 //
 // Only on the daemon's local socket: a token can't mint tokens.
 
@@ -552,7 +552,7 @@ message TokenList {
   repeated TokenEntry tokens = 1;
 }
 
-// --- The browser viewer's listener -------------------------------------------
+// --- The web console's listener -------------------------------------------
 //
 // Only on the daemon's local socket. The setting is saved, and the daemon
 // listens whenever it runs with it on.
@@ -715,14 +715,14 @@ message TakeScreenshot {
 message ReadScreenText {
   string name = 1;
   // What the caller will look for in the text (`find_text`'s query), so
-  // viewers can show where it was found. The answer is the same without it.
+  // consoles can show where it was found. The answer is the same without it.
   optional string query = 2;
 }
 
 // Puts a mark on a machine's screen for the people watching: a box, a dot or
 // an arrow on an element, a point or an area, with a short note, for a
 // while. It changes nothing on the machine and takes no turn, but it is a
-// call of the session: viewers are told of it as activity and the trace
+// call of the session: consoles are told of it as activity and the trace
 // keeps it. Answered with Done; refused outside a session, and for an
 // element whose snapshot the daemon no longer keeps.
 message MarkScreen {
@@ -759,7 +759,7 @@ enum MarkShape {
   MARK_SHAPE_ARROW = 3;
 }
 
-// A mark as viewers draw it: its element found, in display points.
+// A mark as consoles draw it: its element found, in display points.
 message ScreenMark {
   MarkShape shape = 1;
   oneof at {
@@ -791,7 +791,7 @@ message OpenDisplay {
   string name = 1;
 }
 
-// Opens a running machine's display as an H.264 stream, for a viewer that
+// Opens a running machine's display as an H.264 stream, for a console that
 // can't share this host's memory (one across SSH). Like OpenDisplay, served
 // on a connection of its own until the machine stops: EncodedFrame events
 // follow the response, starting with a key frame.
@@ -799,7 +799,7 @@ message OpenEncodedDisplay {
   string name = 1;
 }
 
-// A person at a viewer takes control of a machine: sessions' calls on it
+// A person at a console takes control of a machine: sessions' calls on it
 // wait until it's handed back, and this connection alone may send it
 // SendHostInput. Refused while another connection has it. Closing the
 // connection hands it back.
@@ -811,7 +811,7 @@ message HandBack {
   string name = 1;
 }
 
-// Input through the VMM's virtual devices from a person at a viewer, on the
+// Input through the VMM's virtual devices from a person at a console, on the
 // connection that has control of the machine. Unlike SendInput it doesn't
 // wait for the machine's queue.
 message SendHostInput {
@@ -944,7 +944,7 @@ message RollBack {
 
 // --- Activity ------------------------------------------------------------------
 // Streams what agents' sessions do to the machines, as they do it, for a
-// viewer to draw over the screen: answered with Done, then an `activity`
+// console to draw over the screen: answered with Done, then an `activity`
 // event for each machine's recent calls (`recent`), then one as each call
 // on a machine gets its turn and as it ends, until the request is
 // cancelled. Served on a connection of its own, like a display.
@@ -964,7 +964,7 @@ message Activity {
   oneof phase {
     CallStarted started = 6;
     CallEnded ended = 7;
-    // A call from before the viewer began watching.
+    // A call from before the console began watching.
     CallRecent recent = 8;
     // The session's client named the elements of a snapshot a call of the
     // machine saw. `request` is the naming request's own id.
@@ -972,10 +972,10 @@ message Activity {
   }
 }
 
-// A call a new viewer is told of first, so it can show what happened before
+// A call a new console is told of first, so it can show what happened before
 // it began watching: each machine's latest calls, oldest first, with the
 // snapshot of only the latest call that saw one. Times are counted back
-// from when the viewer began watching. A call still under way has no end
+// from when the console began watching. A call still under way has no end
 // yet; its end comes as an ordinary `ended` event.
 message CallRecent {
   CallStarted started = 1;
@@ -1050,7 +1050,7 @@ message CallEnded {
   // What the call saw, when it took an accessibility snapshot (a snapshot,
   // or a wait on an element): the snapshot as the agent got it, except that
   // a password field's value is removed. Other values are left in: they are
-  // on the screen the viewer already shows.
+  // on the screen the console already shows.
   doppel.agent.v1.AxSnapshot seen = 5;
   // What the session's client named the elements of `seen`, once it has: set
   // only in a recent call (`CallRecent`); a live call's names come after it
@@ -1089,13 +1089,13 @@ message ElementRefs {
 // turn, so their calls keep their order, and the guest keeps nothing of it,
 // so their refs stay valid. Refused when the guest's agent can't promise
 // that (one built before CAPABILITY_AX_OBSERVE). Not traced or shown as
-// activity: it is the viewer's own.
+// activity: it is the console's own.
 message ObserveElements {
   string name = 1;
 }
 
 // Tells the daemon what the session's client named the elements of a snapshot
-// of `machine` that a call of the session saw, so viewers can show the same
+// of `machine` that a call of the session saw, so consoles can show the same
 // names. Answered with Done; not a call: it takes no turn and isn't traced.
 message NameElements {
   string machine = 1;
@@ -1106,7 +1106,7 @@ message NameElements {
 // A session recorded into the store (`doppel mcp --record`): a folder in
 // `recordings/` holding a video per VMM run of each machine it drove, the
 // videos' captions, the trace of its requests, and when each video starts.
-// The videos themselves are fetched over HTTPS from the browser viewer's
+// The videos themselves are fetched over HTTPS from the web console's
 // listener; these messages say what there is and how it lines up.
 
 message ListRecordings {}
@@ -1195,7 +1195,7 @@ message TraceCall {
   // `start_ms`: it arrived that much earlier.
   optional uint64 queued_ms = 9;
   // What it did on its machine's screen and where, as WatchActivity told
-  // viewers. Absent for a person's control, and for a call recorded before
+  // consoles. Absent for a person's control, and for a call recorded before
   // it was kept.
   CallStarted acted = 10;
   // The trace kept the accessibility snapshot this call saw: ask for it with
@@ -1223,6 +1223,6 @@ enum TraceActor {
   TRACE_ACTOR_UNSPECIFIED = 0;
   // One of the session's own requests.
   TRACE_ACTOR_SESSION = 1;
-  // A person at a viewer, who had control.
+  // A person at a console, who had control.
   TRACE_ACTOR_PERSON = 2;
 }

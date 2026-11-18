@@ -15,7 +15,7 @@ Doppel is early software. Know what each part listens on and trusts:
 - **doppeld** listens on a unix socket in your data directory, mode 0600:
   only processes running as you can use it, and anything that can use it can
   drive every machine you own.
-- **The browser viewer's listener** is off until `doppel daemon web on`.
+- **The web console's listener** is off until `doppel daemon web on`.
   When on, it listens on every network address, over TLS with a self-signed
   certificate (`doppel daemon web status` prints its fingerprint), and lets in
   only holders of a token from `doppel daemon token`. A token is printed

@@ -1,8 +1,8 @@
-// Encodes the display as an H.264 stream for viewers across a network.
+// Encodes the display as an H.264 stream for consoles across a network.
 //
 // One per VMM, shared by every encoded connection. Tuned for latency, not
 // for a file (that is the Recorder's job): the hardware encoder in real-time
-// mode, no frame reordering, and key frames when a viewer needs one rather
+// mode, no frame reordering, and key frames when a console needs one rather
 // than on a schedule. Frames arrive when the screen changes, each stamped
 // with the host time it was seen.
 
@@ -26,7 +26,7 @@ public enum StreamerError: Error, CustomStringConvertible {
 /// Encodes frames given on one queue; `output` gets each encoded frame, in
 /// order, on the encoder's thread, and `dropped` is called for a frame the
 /// encoder dropped (its rate control does, after a large key frame): the
-/// screen it showed must be encoded again, or a viewer keeps the frame
+/// screen it showed must be encoded again, or a console keeps the frame
 /// before it while the screen stays still.
 final class Streamer: @unchecked Sendable {
     static let bitsPerSecond = 8_000_000

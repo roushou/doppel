@@ -1,6 +1,6 @@
 //! Frames into CoreVideo pixel buffers GPUI can draw: IOSurface-backed,
 //! Metal-compatible NV12, from a pool so buffers are reused once GPUI
-//! releases them. The only raw pointers in the viewer.
+//! releases them. The only raw pointers in the console.
 
 #![expect(
     unsafe_code,

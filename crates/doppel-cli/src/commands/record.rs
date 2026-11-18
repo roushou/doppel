@@ -25,7 +25,7 @@ pub(crate) enum RecordCommand {
     /// Stop the recording and complete its file.
     Stop { name: MachineName },
     /// Write a recorded session's video with what its agent did drawn
-    /// over it, as the viewers show it, to OUT (MP4). RECORDING is a
+    /// over it, as the consoles show it, to OUT (MP4). RECORDING is a
     /// folder name in the data directory's `recordings/`.
     Export {
         recording: doppel_client::RecordingId,
@@ -98,9 +98,9 @@ fn export(
         view::Videos::Here
             .path(
                 || {
-                    client
-                        .data_root(within(CALL_TIMEOUT))
-                        .map_err(|error| doppel_viewer::DaemonError::Unreachable(error.to_string()))
+                    client.data_root(within(CALL_TIMEOUT)).map_err(|error| {
+                        doppel_console::DaemonError::Unreachable(error.to_string())
+                    })
                 },
                 &opened.id,
                 &video.file,

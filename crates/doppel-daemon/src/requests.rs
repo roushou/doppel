@@ -1000,7 +1000,7 @@ where
         Ok((&self.observe_text(&name)?).into())
     }
 
-    /// A mark for the people watching: checked here, drawn by viewers from
+    /// A mark for the people watching: checked here, drawn by consoles from
     /// the call's activity. Only a session's calls are shown, so outside one
     /// it would go nowhere.
     pub(super) fn mark_request(
@@ -1032,7 +1032,7 @@ where
         }
     }
 
-    /// A person's look: redacted like every snapshot that leaves for a viewer.
+    /// A person's look: redacted like every snapshot that leaves for a console.
     pub(super) fn observe_request(
         &self,
         request: &daemon::ObserveElements,
@@ -1043,7 +1043,7 @@ where
     }
 
     /// Keeps what the session named the elements of a snapshot its calls
-    /// saw, in its recording, and tells viewers.
+    /// saw, in its recording, and tells consoles.
     pub(super) fn name_elements(
         &self,
         session: crate::scheduler::SessionId,

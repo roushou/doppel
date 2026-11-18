@@ -202,7 +202,7 @@ pub(crate) struct Hue {
 
 /// The sessions' colours, as RGB: fill and ink. The first is the agent's
 /// colour of one session alone. None is the signal orange: that means a
-/// person in control, or attention. The browser viewer has the same.
+/// person in control, or attention. The web console has the same.
 const HUES: [(u32, u32); 4] = [
     (0x0022_e5ff, 0x000b_5d6b), // cyan
     (0x003d_8bff, 0x001f_4f9e), // blue
@@ -224,7 +224,7 @@ impl Hue {
     }
 }
 
-/// The fonts the window uses, as the browser viewer does: Geist for
+/// The fonts the window uses, as the web console does: Geist for
 /// people's words, Geist Mono for the machine's. Built into the binary
 /// (OFL, `assets/fonts/LICENSE`) in four weights each.
 pub(crate) const SANS: &str = "Geist";

@@ -140,7 +140,7 @@ impl Context {
     }
 
     /// This `doppel` and the global flags it was given, absolute, to run it
-    /// again from elsewhere (`fork-run`'s viewer).
+    /// again from elsewhere (`fork-run`'s console).
     pub(crate) fn doppel_command(&self) -> Result<Vec<OsString>> {
         let mut doppel = vec![std::env::current_exe()?.into_os_string()];
         let given = [

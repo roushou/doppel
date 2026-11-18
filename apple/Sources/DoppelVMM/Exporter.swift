@@ -34,7 +34,7 @@ public struct Exported: Sendable, Equatable {
 struct Painter {
     /// Video pixels per display point.
     let scale: CGFloat
-    /// The mono face the viewers' captions use.
+    /// The mono face the consoles' captions use.
     private let font: CTFont
 
     init(scale: CGFloat) {
@@ -157,7 +157,7 @@ struct Painter {
         context.strokePath()
     }
 
-    /// The viewers' pointer: an arrow 22 points tall, white-edged.
+    /// The consoles' pointer: an arrow 22 points tall, white-edged.
     private func pointed(at tip: CGPoint, colour: CGColor, opacity: Double, on context: CGContext) {
         let unit = 22.0 / 24.0 * scale
         let outline: [(CGFloat, CGFloat)] = [(4, 2.5), (4, 19), (8.6, 14.8), (11.6, 21.4), (14.6, 20), (11.7, 13.6), (18, 13.6)]

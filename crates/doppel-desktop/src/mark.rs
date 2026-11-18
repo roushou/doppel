@@ -1,6 +1,6 @@
 //! A mark an agent puts on a machine's screen for the people watching: a
 //! box, a dot or an arrow on an element, a point or an area, with a short
-//! note, for a while. It changes nothing on the machine; viewers draw it.
+//! note, for a while. It changes nothing on the machine; consoles draw it.
 
 use std::time::Duration;
 
@@ -63,7 +63,7 @@ pub enum Shape {
     /// A dot on what it's on.
     Dot,
     /// An arrow to what it's on, from `from` when given, else from where
-    /// the viewer finds room.
+    /// the console finds room.
     Arrow { from: Option<Point> },
 }
 

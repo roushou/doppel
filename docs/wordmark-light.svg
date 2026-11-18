@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="234" height="60" viewBox="0 0 78 20" shape-rendering="crispEdges">
   <title>Doppel</title>
-  <!-- The viewers' mark (a machine and its double), then the name; for light backgrounds. -->
+  <!-- The consoles' mark (a machine and its double), then the name; for light backgrounds. -->
   <path fill="#0f141c" fill-rule="evenodd" d="M2 2H13V13H2Z M3.5 3.5V11.5H11.5V3.5Z" />
   <rect fill="#2f8a5b" x="7" y="7" width="11" height="11" />
   <g fill="#0f141c" fill-rule="evenodd">

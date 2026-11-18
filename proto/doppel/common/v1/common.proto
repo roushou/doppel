@@ -163,7 +163,7 @@ enum PointerPhase {
   POINTER_PHASE_MOVE = 3;
 }
 
-// One pointer event as it happens, as an interactive viewer forwards it.
+// One pointer event as it happens, as an interactive console forwards it.
 // Click and Drag are gestures made of these.
 message Pointer {
   PointerPhase phase = 1;

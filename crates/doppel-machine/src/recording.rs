@@ -1,4 +1,4 @@
-//! A session's recordings, as a viewer replays them: which there are, and
+//! A session's recordings, as a console replays them: which there are, and
 //! for one, its videos with where each sits in the session, and its trace
 //! of calls. Names that aren't a recording's or a video's never parse.
 
@@ -168,7 +168,7 @@ pub enum TraceOutcome {
 pub enum TraceActor {
     /// One of the session's own requests.
     Session,
-    /// A person at a viewer, who had control.
+    /// A person at a console, who had control.
     Person,
     /// One this build doesn't know, as sent.
     Unknown(i32),

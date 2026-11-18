@@ -16,8 +16,8 @@ step "buf lint"
 buf lint
 step "clippy"
 cargo clippy --workspace --all-targets --quiet -- -D warnings
-step "clippy (WebAssembly: the viewer in a browser)"
-cargo clippy -p doppel-viewer --target wasm32-unknown-unknown --all-targets --quiet -- -D warnings
+step "clippy (WebAssembly: the console in a browser)"
+cargo clippy -p doppel-console --target wasm32-unknown-unknown --all-targets --quiet -- -D warnings
 step "cargo test"
 cargo test --workspace --quiet
 step "swift test"

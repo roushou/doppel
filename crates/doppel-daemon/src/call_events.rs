@@ -1,5 +1,5 @@
 //! What happens to a session's calls, told once to everything that keeps
-//! account of them: the viewers watching (`activity::Watchers`), the
+//! account of them: the consoles watching (`activity::Watchers`), the
 //! session's recording (`Recordings`), and where recent snapshots'
 //! elements are (`activity::Elements`).
 //!
@@ -98,7 +98,7 @@ where
     F: Filesystem,
 {
     /// Tells `event` to the session's recording, the element cache, and
-    /// the viewers, in that order.
+    /// the consoles, in that order.
     pub(crate) fn publish(&self, event: &CallEvent<'_>) {
         if let Some(recordings) = self.scheduler.recordings(event.session()) {
             recordings.on_call(event, &self.machines);

@@ -335,8 +335,8 @@ fn a_session_is_listed_with_its_machines_until_its_connection_closes() {
         "{waited:?}"
     );
 
-    let viewer = Client::connect(&socket, SystemClock, soon()).unwrap();
-    let sessions = viewer.sessions(soon()).unwrap();
+    let console = Client::connect(&socket, SystemClock, soon()).unwrap();
+    let sessions = console.sessions(soon()).unwrap();
     assert_eq!(sessions.len(), 1, "{sessions:?}");
     let session = &sessions[0];
     assert_eq!(session.client, "doppel mcp (test)");
@@ -370,7 +370,7 @@ fn a_session_is_listed_with_its_machines_until_its_connection_closes() {
     drop(agent);
     let closed = (0..50).any(|_| {
         std::thread::sleep(Duration::from_millis(20));
-        viewer.sessions(soon()).unwrap().is_empty()
+        console.sessions(soon()).unwrap().is_empty()
     });
     assert!(closed, "the session ended with its connection");
 
@@ -464,17 +464,17 @@ fn an_agent_s_calls_wait_while_a_person_has_the_machine_and_learn_of_it_after() 
         .open_session("doppel mcp (test)", doppel_client::Record::Off, soon())
         .unwrap();
     agent.status(&dev, soon()).unwrap();
-    let viewer = Client::connect(&socket, SystemClock, soon()).unwrap();
+    let console = Client::connect(&socket, SystemClock, soon()).unwrap();
     let click = doppel_desktop::input::Input::Key(doppel_desktop::input::KeyChord {
         modifiers: Vec::new(),
         key: doppel_desktop::input::Key::Character('a'),
     });
     // Input needs control first.
     assert!(matches!(
-        viewer.host_input(&dev, &click, soon()),
+        console.host_input(&dev, &click, soon()),
         Err(ClientError::Remote(_))
     ));
-    viewer.take_control(&dev, soon()).unwrap();
+    console.take_control(&dev, soon()).unwrap();
     let other = Client::connect(&socket, SystemClock, soon()).unwrap();
     assert!(matches!(
         other.take_control(&dev, soon()),
@@ -494,7 +494,7 @@ fn an_agent_s_calls_wait_while_a_person_has_the_machine_and_learn_of_it_after() 
         let waiting = scope.spawn(|| agent.status(&dev, noted));
         std::thread::sleep(Duration::from_millis(300));
         assert!(!waiting.is_finished(), "the agent's call waits");
-        viewer.hand_back(&dev, soon()).unwrap();
+        console.hand_back(&dev, soon()).unwrap();
         waiting.join().unwrap().unwrap();
     });
     // It came with the call that waited.
@@ -505,16 +505,16 @@ fn an_agent_s_calls_wait_while_a_person_has_the_machine_and_learn_of_it_after() 
     // Once only.
     agent.status(&dev, noted).unwrap();
     assert!(notes.take().unwrap().is_empty());
-    // A viewer that goes hands back.
-    viewer.take_control(&dev, soon()).unwrap();
-    drop(viewer);
+    // A console that goes hands back.
+    console.take_control(&dev, soon()).unwrap();
+    drop(console);
     let back = (0..50).any(|_| {
         std::thread::sleep(Duration::from_millis(20));
         other.take_control(&dev, soon()).is_ok()
     });
     assert!(
         back,
-        "control went back when the viewer's connection closed"
+        "control went back when the console's connection closed"
     );
 }
 
@@ -549,7 +549,7 @@ fn a_paused_session_waits_until_resumed() {
 
 /// A VMM on a machine's socket that serves one encoded display: it answers
 /// the daemon's probe, then opens the display, sends `frames` among events
-/// that aren't the viewer's, and stops.
+/// that aren't the console's, and stops.
 struct FakeVmm {
     stream: std::os::unix::net::UnixStream,
     decoder: doppel_protocol::frame::FrameDecoder<vmm::VmmFrame>,

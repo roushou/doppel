@@ -1,4 +1,4 @@
-//! The viewer's [`Daemon`] port in the browser: every call over one
+//! The console's [`Daemon`] port in the browser: every call over one
 //! WebSocket to the gateway, made again once it breaks. The daemon's
 //! answers are read with the protocol's conversions and mapped as the
 //! desktop's port maps them (`crate::answers`).
@@ -106,7 +106,7 @@ impl From<Refusal> for DaemonError {
 
 /// An answer this build can't read.
 fn unreadable(error: impl std::fmt::Display) -> Refusal {
-    Refusal::Refused(format!("an answer this viewer can't read: {error}"))
+    Refusal::Refused(format!("an answer this console can't read: {error}"))
 }
 
 fn machine(entry: daemon::MachineEntry) -> Result<Machine, ParseError> {

@@ -10,9 +10,9 @@
 //! person's clicks, drags, scrolls and keys to it until they hand it back.
 //!
 //! Everything the window knows and does goes through the [`Daemon`] port,
-//! which the shell implements on the desktop, and the viewer itself in a
+//! which the shell implements on the desktop, and the console itself in a
 //! browser. On the desktop each screen brings a source of its frames, raw
-//! or H.264, which the viewer reads on a thread of its own, decodes, and
+//! or H.264, which the console reads on a thread of its own, decodes, and
 //! draws with GPUI's surface element, which takes NV12 directly. In a
 //! browser the daemon's H.264 frames are decoded by the browser.
 
@@ -310,23 +310,23 @@ impl Settings for Unkept {
     }
 }
 
-/// The viewer window.
-pub struct Viewer {
+/// The console window.
+pub struct Console {
     daemon: Arc<dyn Daemon>,
     clock: Arc<dyn LocalClock>,
     settings: Arc<dyn Settings>,
     shown: Vec<MachineName>,
 }
 
-impl std::fmt::Debug for Viewer {
+impl std::fmt::Debug for Console {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Viewer")
+        f.debug_struct("Console")
             .field("shown", &self.shown)
             .finish_non_exhaustive()
     }
 }
 
-impl Viewer {
+impl Console {
     #[must_use]
     pub fn new(daemon: impl Daemon, clock: impl LocalClock) -> Self {
         Self {

@@ -14,44 +14,44 @@ that does I/O keeps a source test forbidding I/O and runtime imports.
 | ----- | ----------------- | ------------------------------------------------------------------------------------------------------------------ | ---- |
 | 0     | `doppel-desktop`  | Model what is seen and done on a Mac's desktop: screen and text, accessibility tree, input, files, programs, waits | yes  |
 | 1     | `doppel-machine`  | Model a machine: spec, files, lineage, and the procedures that change it                                           | yes  |
-| 2     | `doppel-scene`    | What a viewer shows, decided without drawing: timelines, elements, panels, stage, recordings, streams, films       | yes  |
-| 2     | `doppel-gateway`  | Serve the browser viewer to token holders                                                                          | no   |
+| 2     | `doppel-scene`    | What a console shows, decided without drawing: timelines, elements, panels, stage, recordings, streams, films      | yes  |
+| 2     | `doppel-gateway`  | Serve the web console to token holders                                                                             | no   |
 | 3     | `doppel-protocol` | Doppel's wire: generated types, framing, conversions; `transport` carries it (unix only)                           | no   |
 | 3     | `doppel-mcp`      | The MCP tool surface, over a `Runner` port                                                                         | no   |
 | 4     | `doppel-host`     | Run machines on this Mac: store, VMM and agent clients, provisioning                                               | no   |
 | 4     | `doppel-client`   | Talk to doppeld                                                                                                    | no   |
-| 4     | `doppel-viewer`   | The viewer window (GPUI), on the desktop and in a browser, over a `Daemon` port                                    | no   |
+| 4     | `doppel-console`  | The console window (GPUI), on the desktop and in a browser, over a `Daemon` port                                   | no   |
 | 5     | `doppel-daemon`   | doppeld: owns a user's machines and serves them                                                                    | no   |
 | 6     | `doppel-cli`      | The `doppel` command, and the composition root                                                                     | no   |
 
 `doppel-protocol` builds for WebAssembly but for its `transport`, so the
-viewer in a browser reads the same wire. It sits above `doppel-scene`
+console in a browser reads the same wire. It sits above `doppel-scene`
 because it converts the film's shapes to the `vmm.v1` pictures an export
 burns in, and the daemon's encoded frames to the scene's.
 
-`doppel-viewer` is one window for both targets. What differs is one module
+`doppel-console` is one window for both targets. What differs is one module
 per target, under one name (`platform`): `macos` reads the daemon's shared
 or encoded display on threads, decodes with VideoToolbox and plays videos
 with AVFoundation; `web` reaches the daemon over the gateway's WebSocket,
 decodes with WebCodecs and plays videos with a `<video>`, each through
 `web/glue.js`. `scripts/build-web.sh` builds it for the browser into
-`target/viewer-web`, with the page in `crates/doppel-viewer/page/`, and
+`target/console-web`, with the page in `crates/doppel-console/page/`, and
 `doppel-gateway` embeds that build. The build is for size (the `web`
 profile), with brotli and gzip copies of each file; the gateway sends the
 smallest copy a browser takes, with an ETag, so a browser that has the
 file gets `304 Not Modified` instead. The desktop's `Daemon` port is the
 CLI's (`view/port.rs`, over `doppel-client`); the browser's is the
-viewer's own (`web/daemon.rs`), since no other crate runs there.
+console's own (`web/daemon.rs`), since no other crate runs there.
 
 ## Geometry
 
 `doppel_desktop::geometry` has one `Point` (finite, on the display), one
 `Size` (finite, non-negative) and one `Rect` (a finite origin that may
 overhang an edge, and a `Size`), all in display points. A mark's `Area` is a
-`Rect` that must start on the display and have area. The viewer's `Position`
+`Rect` that must start on the display and have area. The console's `Position`
 is a fraction of the screen, not display points, so it is its own type.
 
-A display size reaches a viewer as `Option<Size>`: a stream or recording that
+A display size reaches a console as `Option<Size>`: a stream or recording that
 doesn't say, or says a size without area, has none, and its screen is
 view-only, since a person's input can't be placed on it.
 
@@ -68,7 +68,7 @@ Activity has two vocabularies. `doppel_machine::activity` and
 (`Unknown(i32)`) and time in `Duration`. The scene's are what the overlay
 draws: unknowns folded into `Other` or `Done`, failures into one `Failed`,
 times in milliseconds on the window's clock. `doppel_scene::from_daemon`
-maps one to the other, with tests, for the viewer on both targets.
+maps one to the other, with tests, for the console on both targets.
 
 ## Storage
 
@@ -77,9 +77,9 @@ A bundle's `spec.pb` and `lineage.pb` use their own package,
 a storage change. The files only ever gain fields; `fixtures/bundle/` pins
 their bytes. `doppel-protocol::bundle` converts them.
 
-## Viewers
+## Consoles
 
-The viewer keeps its decisions out of its toolkit, and tests them without
+The console keeps its decisions out of its toolkit, and tests them without
 it:
 
 - **Per machine,** a panel holds the action under way (one at a time), the
@@ -90,9 +90,9 @@ it:
   control time; it is generic over the toolkit's screen and handles.
 - **The stage** (`doppel_scene::stage`) lays out the two bays: the slot
   picked, side by side, and the open launcher.
-- **The daemon's answers** (`doppel_viewer::answers`) become the window's
+- **The daemon's answers** (`doppel_console::answers`) become the window's
   words the same way on both targets.
-- **The window's place** (`doppel_viewer::route`) is `/`,
+- **The window's place** (`doppel_console::route`) is `/`,
   `/machines/<name>`, `/replay` or `/replay/<id>`, parsed once from the
   address. The window holds it, and its page with it: one `navigate`
   changes both, for a click, a link, or Back and Forward. Each page is a

@@ -10,7 +10,7 @@ The way AI agents use macOS: a double of your Mac (an isolated VM you can
 fork and roll back), or your real one, behind one typed API. An agent sees
 the screen through accessibility snapshots with refs, recognized text and
 screenshots; acts by ref or point; waits on evidence; runs commands and moves
-files. People watch and take over from a desktop or browser viewer.
+files. People watch and take over from a desktop or web console.
 
 ## What works
 
@@ -21,7 +21,7 @@ files. People watch and take over from a desktop or browser viewer.
 - **Machines:** create from an IPSW with no person (macOS 27 hosts: the
   account is made on first boot, logged in, SSH on), import, start, stop,
   pause, resume, checkpoint, fork, restore; delete (`doppel delete`, or
-  the viewers); delete a checkpoint (`doppel forget-checkpoint`). Golden images with a
+  the consoles); delete a checkpoint (`doppel forget-checkpoint`). Golden images with a
   template checkpoint; forks resume agent-ready in about 11 s. A resume
   from saved memory returns once screenshots show the guest as it is, not
   as it was saved.
@@ -35,14 +35,14 @@ files. People watch and take over from a desktop or browser viewer.
 - **doppeld** ([doppeld.md](doppeld.md)): one daemon per user owns the
   machines; sessions, per-machine call queues, takeover and hand back,
   recordings with traces.
-- **Viewer:** one window (GPUI), on the desktop and in a browser
+- **Console:** one window (GPUI), on the desktop and in a browser
   (WebAssembly), showing what agents do over the screen, an elements tree,
   read text, and replay. It draws the film's shapes (what exports burn
   in), including the elements an agent reads.
 - **Exports:** `doppel record export` writes a recorded session's video
   with its overlay burned in.
 - **Remote:** another Mac's daemon over `ssh -L` and `--host`; the browser
-  viewer over TLS with tokens; several forks side by side with `fork-run`.
+  console over TLS with tokens; several forks side by side with `fork-run`.
 
 ## Next
 
@@ -89,7 +89,7 @@ page content only when launched with `--force-renderer-accessibility`. A CDP
 passthrough to the guest's Chrome would give an agent the DOM, navigation and
 network events. Not designed yet: start with a short design in `docs/`
 (transport from host to guest, which CDP domains the MCP tools expose, how it
-shows in traces and the viewers).
+shows in traces and the consoles).
 
 ### 4. Isolated networks
 
@@ -110,7 +110,7 @@ is the first question.
 ### 6. Fleets
 
 Many Macs, each with its daemon (two macOS VMs per Mac is Apple's limit),
-used as one pool: placing runs, and a viewer across hosts. Not designed yet.
+used as one pool: placing runs, and a console across hosts. Not designed yet.
 
 ## How work is done here
 

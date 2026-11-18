@@ -22,7 +22,7 @@ pub(crate) use frame::Frame;
 pub(crate) use player::Player;
 
 use crate::icons::Assets;
-use crate::{LocalClock, LocalTime, Settings, SettingsError, ThemeChoice, Viewer};
+use crate::{Console, LocalClock, LocalTime, Settings, SettingsError, ThemeChoice};
 
 thread_local! {
     /// The running app: dropping it would end it.
@@ -44,13 +44,13 @@ pub(crate) fn launch(open: impl FnOnce(&mut App) -> bool + 'static) {
 /// The browser draws in sRGB already.
 pub(crate) fn tag_window(_: &mut gpui::Window) {}
 
-/// Shows the viewer in the page, over the daemon behind the gateway that
+/// Shows the console in the page, over the daemon behind the gateway that
 /// served it, with the token the page was opened with.
 #[wasm_bindgen]
 pub fn run() {
     let token = js::take_token();
     js::share_token_with_videos(&token);
-    Viewer::new(daemon::WebDaemon::new(js::socket_url(), token), PageClock)
+    Console::new(daemon::WebDaemon::new(js::socket_url(), token), PageClock)
         .keeping(PageSettings)
         .run();
 }

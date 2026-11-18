@@ -1,4 +1,4 @@
-//! The browser viewer's listener: its saved setting (`web.json` in the
+//! The web console's listener: its saved setting (`web.json` in the
 //! data root), and the gateway that runs while it's on. A supervisor thread
 //! of the daemon's applies the setting; requests change it and wait for it
 //! to apply.

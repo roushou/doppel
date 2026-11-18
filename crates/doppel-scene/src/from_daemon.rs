@@ -1,4 +1,4 @@
-//! What the daemon tells a viewer, in the scene's words: the activity stream and a
+//! What the daemon tells a console, in the scene's words: the activity stream and a
 //! recording as parsed (`doppel_machine::activity` and `::recording`)
 //! become the events and trace the overlay draws. The stream keeps what
 //! this build doesn't know and times in `Duration`; the scene folds

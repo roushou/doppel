@@ -24,7 +24,7 @@ pub(crate) struct Refs {
     latest: HashMap<MachineName, Latest>,
     /// Generations count across machines, so a ref is never reused in a session.
     issued: Option<Generation>,
-    /// Snapshots shown since last taken, with their refs, for viewers.
+    /// Snapshots shown since last taken, with their refs, for consoles.
     shown: Vec<(MachineName, SnapshotRefs)>,
 }
 

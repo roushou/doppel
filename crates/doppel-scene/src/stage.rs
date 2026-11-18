@@ -1,4 +1,4 @@
-//! What the viewer's stage shows: the bays' machines, the slot picked, whether
+//! What the console's stage shows: the bays' machines, the slot picked, whether
 //! both bays show side by side, and the free bay whose launcher is open.
 
 use doppel_machine::machine::MachineName;

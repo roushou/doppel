@@ -157,7 +157,7 @@ pub trait Runner: Send + Sync + 'static {
         cancellation: Cancellation,
     ) -> impl Future<Output = Ran<Self::Error>> + Send;
 
-    /// Tells viewers what the model was shown the elements of a snapshot of
+    /// Tells consoles what the model was shown the elements of a snapshot of
     /// `machine` as. Best effort: the model never hears of a failure.
     fn name(&self, machine: MachineName, refs: SnapshotRefs) -> impl Future<Output = ()> + Send;
 
@@ -478,7 +478,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn viewers_are_told_the_refs_the_model_was_shown() {
+    async fn consoles_are_told_the_refs_the_model_was_shown() {
         let runner = Scripted::default();
         let named = runner.0.clone();
         let mut wire = Wire::initialized(runner).await;

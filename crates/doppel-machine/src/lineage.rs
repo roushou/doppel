@@ -160,7 +160,7 @@ pub enum CheckpointKept {
     LineageUnreadable(String),
 }
 
-/// How `ls` and the viewers say it: `golden (template ready)`, `temporary`,
+/// How `ls` and the consoles say it: `golden (template ready)`, `temporary`,
 /// `from golden-27 · ready`, a role and an origin, or nothing for a working machine whose
 /// origin wasn't recorded or isn't a fork.
 impl fmt::Display for Lineage {

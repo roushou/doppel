@@ -1,7 +1,7 @@
 //! What an agent does, drawn over its machine's screen, and the strip of
 //! its calls under it. Over the screen go the film's shapes
 //! (`doppel_scene::film`), the same an export burns in, with the agent's
-//! reason for its call beside its pointer; the browser viewer's
+//! reason for its call beside its pointer; the web console's
 //! `Overlay.svelte` and `Timeline.svelte` show the same.
 
 use doppel_scene::film;

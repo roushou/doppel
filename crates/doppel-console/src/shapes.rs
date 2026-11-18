@@ -1,5 +1,5 @@
 //! A film's shapes (`doppel_scene::film`) drawn over a screen: what an
-//! export burns into its video, drawn live, so the viewers and the films
+//! export burns into its video, drawn live, so the consoles and the films
 //! show the same. This module draws; the film decides.
 
 use doppel_desktop::geometry::Rect;

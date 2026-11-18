@@ -1,7 +1,7 @@
-//! What a viewer shows of machines and the agents driving them, decided
+//! What a console shows of machines and the agents driving them, decided
 //! without drawing: each agent's timeline of calls and what they pointed
 //! at, the element tree, recordings, the machine list, and how a screen's
-//! stream and a person's steering of it go. The desktop viewer draws it.
+//! stream and a person's steering of it go. The desktop console draws it.
 //!
 //! Pure: no window toolkit, no threads, no clock; time comes in as values.
 

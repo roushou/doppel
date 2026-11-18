@@ -183,7 +183,7 @@ message DisplayLayout {
 
 // --- Encoded display stream ---------------------------------------------------
 
-// Opens the display as an H.264 stream, for viewers that can't map shared
+// Opens the display as an H.264 stream, for consoles that can't map shared
 // memory (across a network). Frames come as the screen changes, starting
 // with a key frame of the screen as it is.
 message OpenEncodedDisplay {}

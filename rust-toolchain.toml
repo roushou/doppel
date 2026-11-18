@@ -1,5 +1,5 @@
 [toolchain]
 channel = "1.99.0"
 components = ["clippy", "rustfmt"]
-# The viewer also runs in a browser, built for WebAssembly.
+# The console also runs in a browser, built for WebAssembly.
 targets = ["wasm32-unknown-unknown"]

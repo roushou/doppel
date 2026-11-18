@@ -137,9 +137,9 @@ pub(crate) struct TraceEntry<'a> {
     /// before `started`: it arrived that much earlier.
     pub(crate) queued: Option<Duration>,
     pub(crate) by: Actor,
-    /// What it did on its machine's screen, and where, as viewers were told.
+    /// What it did on its machine's screen, and where, as consoles were told.
     pub(crate) acted: Option<&'a daemon::CallStarted>,
-    /// The accessibility snapshot it saw, as viewers may see it: no
+    /// The accessibility snapshot it saw, as consoles may see it: no
     /// password field's value.
     pub(crate) seen: Option<&'a agent::AxSnapshot>,
     /// What it read off the screen by text recognition.
@@ -151,7 +151,7 @@ pub(crate) struct TraceEntry<'a> {
 pub(crate) enum Actor {
     /// The session: one of its calls.
     Session,
-    /// A person at a viewer, who had control.
+    /// A person at a console, who had control.
     Person,
 }
 
@@ -678,7 +678,7 @@ pub(crate) const fn gesture_name(gesture: Gesture) -> Option<&'static str> {
 }
 
 /// The gesture a trace line names; a name this build doesn't know reads as
-/// unspecified, which viewers show as another call.
+/// unspecified, which consoles show as another call.
 pub(crate) fn gesture_named(name: &str) -> Gesture {
     [
         Gesture::Click,

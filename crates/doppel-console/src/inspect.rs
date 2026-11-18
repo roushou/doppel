@@ -126,7 +126,7 @@ impl Inspect {
     }
 }
 
-/// A kind's colour: the same as the browser viewer's, chosen to read over
+/// A kind's colour: the same as the web console's, chosen to read over
 /// any guest content.
 fn colour(kind: Kind) -> Hsla {
     let hex = match kind {

@@ -823,7 +823,7 @@ fn segment(
         .children(label.map(ui::upper))
 }
 /// A header view, marked as the one shown when `on`: strong words over a
-/// green underline, as the browser viewer marks it.
+/// green underline, as the web console marks it.
 fn current(segment: Stateful<Div>, on: bool, theme: &Theme) -> Stateful<Div> {
     segment.relative().when(on, |segment| {
         segment.text_color(theme.strong).child(

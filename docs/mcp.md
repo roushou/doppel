@@ -42,7 +42,7 @@ claude mcp add doppel -- /path/to/doppel mcp --from ready
   agent's signature, so a build signed by another identity also needs
   `doppel stop`, `doppel agent grant`, `doppel start` before preparing.
 - Each `doppel mcp` process is one session in the daemon. People see it in
-  the viewers and `doppel sessions`, by the name the client gives itself.
+  the consoles and `doppel sessions`, by the name the client gives itself.
 
 ## Tools
 
@@ -93,7 +93,7 @@ appeared.
   as it was, and the refs the agent holds for it still resolve.
 - It lists everything instead, saying why, when there's no previous listing
   of the machine, another app is frontmost, or most of the UI is new.
-- The viewers light up what the agent was shown, so a listing of changes
+- The consoles light up what the agent was shown, so a listing of changes
   shows the people watching what the act did.
 
 Accessibility covers native apps and Electron apps; Electron's first snapshot
@@ -133,7 +133,7 @@ default, at most 60 s) runs out, and then says what it last saw.
 
 ## People
 
-People watch sessions in the viewers, and can pause a session or take
+People watch sessions in the consoles, and can pause a session or take
 control of a machine. While a person has control, calls on that machine
 wait. When they hand back, the session's next result on that machine ends
 with a note that a person had control, so the agent snapshots again before
@@ -143,7 +143,7 @@ using earlier refs.
 over the screen for the people watching, and recordings keep it.
 
 Every tool also takes an optional `why`: one line, at most 120 characters, on
-why the agent makes the call ("to check the signup form"). The viewers show
+why the agent makes the call ("to check the signup form"). The consoles show
 it under the pointer's caption, and the trace, the recording's captions and
 exports keep it. It's the agent's own words, so it goes wherever the
 recording goes: keep secrets out of it.
@@ -171,6 +171,6 @@ forget-checkpoint`.
 
 ## What's never recorded
 
-Captions, traces and the viewers name what a call did, but leave out typed
+Captions, traces and the consoles name what a call did, but leave out typed
 text, values set, `exec` arguments and file contents. Snapshots shown to
 people keep no password field's value.

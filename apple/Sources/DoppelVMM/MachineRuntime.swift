@@ -212,7 +212,7 @@ public final class MachineRuntime: NSObject, VZVirtualMachineDelegate {
         }
     }
 
-    /// The display's frames: shared with viewers and recorded. Made once.
+    /// The display's frames: shared with consoles and recorded. Made once.
     private func displayShare() throws -> DisplayShare {
         if let display { return display }
         let share = try DisplayShare(view: view, server: server, pixels: displaySize, points: displayPoints)

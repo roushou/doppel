@@ -54,7 +54,7 @@ struct Reader {
 impl Reader {
     fn spawn(self) {
         std::thread::Builder::new()
-            .name("doppel-viewer-reader".into())
+            .name("doppel-console-reader".into())
             .spawn(move || self.run())
             .map(drop)
             .unwrap_or_else(|_| {
@@ -161,7 +161,7 @@ impl InputPump {
     fn spawn(self) {
         // No thread: the screen stays view-only (its sender's sends fail).
         let _ = std::thread::Builder::new()
-            .name("doppel-viewer-input".into())
+            .name("doppel-console-input".into())
             .spawn(move || self.run());
     }
 

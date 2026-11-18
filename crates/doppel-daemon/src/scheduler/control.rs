@@ -1,5 +1,5 @@
 //! Who controls a machine: the agents, through their sessions, or a person
-//! at a viewer. While a person holds it, agents' calls on it wait; handing
+//! at a console. While a person holds it, agents' calls on it wait; handing
 //! it back lets them go on, and they're owed a note that someone had it.
 //!
 //! A pure state machine: `(state, event) -> (state, actions)`, with

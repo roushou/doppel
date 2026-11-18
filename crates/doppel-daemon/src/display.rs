@@ -1,6 +1,6 @@
 //! A machine's display, served on a connection: the VMM's shared memory is
-//! passed to the viewer with the response, and each frame the VMM announces
-//! is passed on as an event, so the viewer reads frames as it would from the
+//! passed to the console with the response, and each frame the VMM announces
+//! is passed on as an event, so the console reads frames as it would from the
 //! VMM itself, with no copy and no encode.
 
 use doppel_host::capabilities::Clock;
@@ -21,8 +21,8 @@ where
     F: Filesystem + Sync,
 {
     /// Serves `OpenDisplay` until the machine stops, the request is
-    /// cancelled, or the viewer goes. When the machine stops, the connection
-    /// is shut down: that is how the viewer learns the display ended.
+    /// cancelled, or the console goes. When the machine stops, the connection
+    /// is shut down: that is how the console learns the display ended.
     pub(crate) fn serve_display(
         &self,
         id: u64,
@@ -64,7 +64,7 @@ where
 
     /// Serves `OpenEncodedDisplay` as [`Self::serve_display`] serves
     /// `OpenDisplay`, passing the VMM's encoded frames on as they come. A
-    /// viewer that reads too slowly backs up to the VMM, which then skips
+    /// console that reads too slowly backs up to the VMM, which then skips
     /// to a new key frame for it.
     pub(crate) fn serve_encoded_display(
         &self,
@@ -103,10 +103,10 @@ where
         });
     }
 
-    /// Passes the events of `client` that `pick` keeps to the viewer on
+    /// Passes the events of `client` that `pick` keeps to the console on
     /// `link`, as events of request `id`, until the machine stops, the
-    /// request is cancelled, or the viewer goes. When the machine stops,
-    /// the connection is shut down: that is how the viewer learns the
+    /// request is cancelled, or the console goes. When the machine stops,
+    /// the connection is shut down: that is how the console learns the
     /// display ended.
     fn forward<K: Clock>(
         &self,
@@ -141,7 +141,7 @@ where
                 Ok(Some(vmm::VmmEvent {
                     kind: Some(kind), ..
                 })) => {
-                    // Other events aren't the viewer's.
+                    // Other events aren't the console's.
                     let Some(kind) = pick(kind) else { continue };
                     let event = daemon::DaemonFrame {
                         kind: Some(daemon::daemon_frame::Kind::Event(daemon::DaemonEvent {
@@ -149,7 +149,7 @@ where
                             kind: Some(kind),
                         })),
                     };
-                    // The viewer went: nothing more to show.
+                    // The console went: nothing more to show.
                     if link.write(&event).is_err() {
                         return;
                     }
@@ -175,7 +175,7 @@ where
     }
 
     /// Serves `WatchActivity`: Done, then each activity as it happens,
-    /// until the request is cancelled or the viewer goes.
+    /// until the request is cancelled or the console goes.
     fn serve_activity(&self, id: u64, cancel: &Cancel, link: &Link) {
         let (watcher, activity) = self.watchers.watch(self.machines.clock().now());
         // A cancel stops the watch, which ends the loop.
@@ -193,7 +193,7 @@ where
                             kind: Some(daemon::daemon_event::Kind::Activity(activity)),
                         })),
                     };
-                    // The viewer went: nothing more to show.
+                    // The console went: nothing more to show.
                     if link.write(&event).is_err() {
                         return;
                     }

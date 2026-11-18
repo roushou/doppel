@@ -1,4 +1,4 @@
-//! What agents' sessions do to a machine, call by call, as a viewer is
+//! What agents' sessions do to a machine, call by call, as a console is
 //! told it: each call as it starts and ends, what it does on the screen
 //! and where, how it ended, and what it saw and read. Kept as told: what
 //! this build doesn't know stays (`Unknown(i32)`), times stay `Duration`s.
@@ -30,7 +30,7 @@ pub enum Phase {
     /// It got its machine's turn.
     Started(OnScreen),
     Ended(Ended),
-    /// A call from before the viewer began watching, told first: how long
+    /// A call from before the console began watching, told first: how long
     /// before it started, and, unless it is still under way, how it ended
     /// and how long before.
     Recent {
@@ -116,7 +116,7 @@ pub struct TextRead {
     pub found: Vec<Rect>,
 }
 
-/// What kind of thing a call does, for a viewer to draw.
+/// What kind of thing a call does, for a console to draw.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Gesture {
     Click,

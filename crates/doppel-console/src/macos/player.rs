@@ -110,7 +110,7 @@ impl Player {
             wake,
         };
         let spawned = std::thread::Builder::new()
-            .name("doppel-viewer-player".into())
+            .name("doppel-console-player".into())
             .spawn(move || thread.run());
         if spawned.is_err() {
             shared.lock().unwrap_or_else(PoisonError::into_inner).failed =

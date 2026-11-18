@@ -98,7 +98,7 @@ impl TokenEntry {
     }
 }
 
-/// What the browser viewer's listener is doing.
+/// What the web console's listener is doing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WebStatus {
     Off,
@@ -553,7 +553,7 @@ impl<C: Clock> Client<C> {
         run.forks.into_iter().map(Self::fork_run).collect()
     }
 
-    /// Turns the browser viewer's listener on, on `port`, or off (`None`),
+    /// Turns the web console's listener on, on `port`, or off (`None`),
     /// and saves that; answers once it has started, failed or stopped.
     ///
     /// # Errors
@@ -578,7 +578,7 @@ impl<C: Clock> Client<C> {
         Ok(WebStatus::from_wire(status)?)
     }
 
-    /// What the browser viewer's listener is doing.
+    /// What the web console's listener is doing.
     ///
     /// # Errors
     /// See [`ClientError`].
@@ -756,7 +756,7 @@ impl<C: Clock> Client<C> {
     }
 
     /// Tells the daemon what this session named the elements of a snapshot
-    /// of `name` one of its calls saw, so viewers show the same names.
+    /// of `name` one of its calls saw, so consoles show the same names.
     ///
     /// # Errors
     /// See [`ClientError`].
@@ -843,7 +843,7 @@ impl<C: Clock> Client<C> {
     }
 
     /// Text recognition on the host's view of the display. `looking_for`
-    /// is what the caller will look for in it, for viewers to show where it
+    /// is what the caller will look for in it, for consoles to show where it
     /// was found; the text is the same without it.
     ///
     /// # Errors
@@ -866,7 +866,7 @@ impl<C: Clock> Client<C> {
 
     /// # Errors
     /// See [`ClientError`].
-    /// Input from a person at a viewer, through the VMM's virtual devices.
+    /// Input from a person at a console, through the VMM's virtual devices.
     /// Unlike [`Client::input`], it doesn't wait for the machine's queue.
     ///
     /// # Errors

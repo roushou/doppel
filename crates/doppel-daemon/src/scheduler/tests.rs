@@ -34,7 +34,7 @@ fn scheduler() -> (Scheduler, ConnectionId) {
 fn a_session_shows_its_machines_and_what_runs_until_it_closes() {
     let (mut scheduler, connection) = scheduler();
     let id = scheduler.open("doppel mcp".into());
-    let other = scheduler.open("viewer".into());
+    let other = scheduler.open("console".into());
     let calls: Vec<CallId> = [
         (Some(dev()), "snapshot"),
         (Some(dev()), "wait_for"),
@@ -75,8 +75,8 @@ fn a_session_shows_its_machines_and_what_runs_until_it_closes() {
 fn calls_wait_while_a_person_has_the_machine_then_get_a_note() {
     let (mut scheduler, connection) = scheduler();
     let agent = scheduler.open("doppel mcp".into());
-    let viewer = scheduler.connection();
-    let other_viewer = scheduler.connection();
+    let console = scheduler.connection();
+    let other_console = scheduler.connection();
     let t0 = anchor();
     let call = |scheduler: &mut Scheduler, machine: MachineName| {
         let call = scheduler.arrive(connection, None);
@@ -86,17 +86,23 @@ fn calls_wait_while_a_person_has_the_machine_then_get_a_note() {
     let first = call(&mut scheduler, dev());
     let _ = scheduler.on(Event::Finish(first));
     assert_eq!(
-        scheduler.control(&dev(), ControlEvent::Take { by: viewer, at: t0 }),
+        scheduler.control(
+            &dev(),
+            ControlEvent::Take {
+                by: console,
+                at: t0
+            }
+        ),
         Ok(Vec::new())
     );
-    assert!(scheduler.holds(viewer, &dev()));
-    assert!(!scheduler.holds(other_viewer, &dev()));
+    assert!(scheduler.holds(console, &dev()));
+    assert!(!scheduler.holds(other_console, &dev()));
     assert!(
         scheduler
             .control(
                 &dev(),
                 ControlEvent::Take {
-                    by: other_viewer,
+                    by: other_console,
                     at: t0
                 }
             )
@@ -123,7 +129,7 @@ fn calls_wait_while_a_person_has_the_machine_then_get_a_note() {
         scheduler.control(
             &dev(),
             ControlEvent::HandBack {
-                by: viewer,
+                by: console,
                 at: back
             }
         ),
@@ -151,10 +157,16 @@ fn calls_wait_while_a_person_has_the_machine_then_get_a_note() {
         scheduler.on(Event::Act(after)),
         [Action::Clear(after, cleared(HeldUp::No))]
     );
-    // A viewer that leaves hands back what it held.
-    let _ = scheduler.control(&dev(), ControlEvent::Take { by: viewer, at: t0 });
-    let _ = scheduler.left(viewer, t0);
-    assert!(!scheduler.holds(viewer, &dev()));
+    // A console that leaves hands back what it held.
+    let _ = scheduler.control(
+        &dev(),
+        ControlEvent::Take {
+            by: console,
+            at: t0,
+        },
+    );
+    let _ = scheduler.left(console, t0);
+    assert!(!scheduler.holds(console, &dev()));
 }
 
 #[test]

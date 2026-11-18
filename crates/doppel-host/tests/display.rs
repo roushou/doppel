@@ -251,8 +251,8 @@ fn a_slot_outside_the_ring_is_an_error() {
     drop(vmm_side.join().unwrap());
 }
 
-/// A VMM that announces frames and exits before the viewer reads them:
-/// the viewer still gets them, then learns the VMM is gone. (macOS refuses
+/// A VMM that announces frames and exits before the console reads them:
+/// the console still gets them, then learns the VMM is gone. (macOS refuses
 /// a socket timeout once the peer has closed its end, unread data or not.)
 #[test]
 fn frames_sent_before_the_vmm_stopped_are_still_read() {

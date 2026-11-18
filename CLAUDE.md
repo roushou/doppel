@@ -1,8 +1,8 @@
 # Doppel
 
 The way AI agents use macOS: isolated macOS VMs (or the real Mac) behind one
-typed API, served over MCP by a per-user daemon, with desktop and browser
-viewers for the people watching.
+typed API, served over MCP by a per-user daemon, with desktop and web
+consoles for the people watching.
 
 - **Direction:** [docs/roadmap.md](docs/roadmap.md) says what works and what
   comes next, in order. Start there, and update it when an item lands.
