@@ -111,6 +111,8 @@ used as one pool: placing runs, and a viewer across hosts. Not designed yet.
 - What can be checked on a live machine is: rebuild with `scripts/build.sh`,
   restart the daemon (`launchctl kickstart -k gui/$(id -u)/dev.doppel.doppeld`),
   and drive a machine.
+- `scripts/release.sh` builds a release for Apple silicon, signed with a
+  Developer ID and notarized, and the Homebrew formula that installs it.
 - [crates.md](crates.md) says which crate owns what and which may depend on
   which. Pure decisions live in pure crates and modules, and are tested
   without I/O.
