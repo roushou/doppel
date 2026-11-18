@@ -363,7 +363,7 @@ impl Viewer {
             settings,
             shown,
         } = self;
-        platform::launch(move |cx| app::Window::open(daemon, clock, settings, shown, cx));
+        platform::launch(move |cx| app::Root::open_window(daemon, clock, settings, shown, cx));
     }
 }
 

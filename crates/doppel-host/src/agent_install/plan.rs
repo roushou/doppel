@@ -259,7 +259,12 @@ impl InstallPlan {
                 name: StepName::WriteLaunchAgent,
                 action: StepAction::Write(WriteRequest::new(
                     plist.clone(),
-                    LaunchAgent::render(&program, &log).into_bytes(),
+                    LaunchAgent {
+                        program: &program,
+                        log: &log,
+                    }
+                    .render()
+                    .into_bytes(),
                     FileMode::DEFAULT,
                     WritePolicy::Replace,
                 )?),
@@ -276,13 +281,18 @@ impl InstallPlan {
     }
 }
 
-/// The LaunchAgent property list.
-struct LaunchAgent;
+/// The agent's LaunchAgent: the program launchd runs, and where its
+/// output goes.
+struct LaunchAgent<'a> {
+    program: &'a GuestPath,
+    log: &'a GuestPath,
+}
 
-impl LaunchAgent {
-    fn render(program: &GuestPath, log: &GuestPath) -> String {
-        let program = Self::escape(program.as_str());
-        let log = Self::escape(log.as_str());
+impl LaunchAgent<'_> {
+    /// Its property list.
+    fn render(&self) -> String {
+        let program = Self::escape(self.program.as_str());
+        let log = Self::escape(self.log.as_str());
         format!(
             r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
