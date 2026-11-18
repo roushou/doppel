@@ -20,11 +20,57 @@ use crate::launchd;
 /// This Mac's machines, as the commands see them.
 pub(crate) type HostMachines = Machines<SystemClock, LocalFilesystem>;
 
+/// Where this `doppel` is installed: the folder of the file it runs from,
+/// symlinks followed, so a link on the `PATH` (as Homebrew makes) still
+/// finds what ships beside it.
+#[derive(Debug, Clone)]
+pub(crate) struct InstallDir(PathBuf);
+
+impl InstallDir {
+    pub(crate) fn current() -> Result<Self> {
+        let exe = std::env::current_exe()?;
+        let real = exe
+            .canonicalize()
+            .with_context(|| format!("resolving {}", exe.display()))?;
+        let dir = real
+            .parent()
+            .with_context(|| format!("{} has no folder", real.display()))?;
+        Ok(Self(dir.to_path_buf()))
+    }
+
+    /// The VMM that runs each machine.
+    pub(crate) fn vmm(&self) -> PathBuf {
+        self.0.join("doppel-vmm")
+    }
+
+    /// The zipped guest agent app, with its `.build-id` and `.csreq` beside it.
+    pub(crate) fn agent_archive(&self) -> PathBuf {
+        self.0.join("doppel-agent.zip")
+    }
+}
+
+/// Which VMM binary the commands run.
+#[derive(Debug, Clone)]
+enum Vmm {
+    /// `--vmm` (`DOPPEL_VMM`).
+    Given(PathBuf),
+    /// The one installed beside `doppel`, found again by each run.
+    Installed(PathBuf),
+}
+
+impl Vmm {
+    fn path(&self) -> &Path {
+        match self {
+            Self::Given(path) | Self::Installed(path) => path,
+        }
+    }
+}
+
 /// The inputs commands share, resolved once.
 pub(crate) struct Context {
     home: PathBuf,
     runtime: PathBuf,
-    vmm: PathBuf,
+    vmm: Vmm,
     /// Another Mac's daemon, forwarded to this socket (`--host`).
     host: Option<PathBuf>,
     machines: HostMachines,
@@ -46,8 +92,8 @@ impl Context {
         };
         let runtime = runtime.unwrap_or_else(|| std::env::temp_dir().join("doppel"));
         let vmm = match vmm {
-            Some(path) => path,
-            None => std::env::current_exe()?.with_file_name("doppel-vmm"),
+            Some(path) => Vmm::Given(path),
+            None => Vmm::Installed(InstallDir::current()?.vmm()),
         };
         let store = Store::new(
             DataRoot::new(home.clone())?,
@@ -55,7 +101,7 @@ impl Context {
         );
         let machines = Machines::new(
             store,
-            VmmBinary::new(vmm.clone()),
+            VmmBinary::new(vmm.path().to_path_buf()),
             SystemClock,
             LocalFilesystem,
         );
@@ -73,7 +119,7 @@ impl Context {
     }
 
     pub(crate) fn vmm(&self) -> &Path {
-        &self.vmm
+        self.vmm.path()
     }
 
     pub(crate) const fn machines(&self) -> &HostMachines {
@@ -114,20 +160,24 @@ impl Context {
     pub(crate) fn service(&self) -> Result<launchd::Service> {
         let absolute = |path: &PathBuf| std::path::absolute(path).context("an absolute path");
         let home = absolute(&self.home)?;
-        let program = [
+        // `doppel` as it was run, through any link on the PATH, so the job
+        // outlives an upgrade that moves the file behind the link. Likewise
+        // the VMM is named only when given: otherwise each run finds the one
+        // installed beside it.
+        let mut program = vec![
             std::env::current_exe()?.into_os_string(),
             "--home".into(),
             home.clone().into_os_string(),
             "--runtime-dir".into(),
             absolute(&self.runtime)?.into_os_string(),
-            "--vmm".into(),
-            absolute(&self.vmm)?.into_os_string(),
-            "daemon".into(),
-            "run".into(),
-            "--launchd".into(),
         ];
+        match &self.vmm {
+            Vmm::Given(path) => program.extend(["--vmm".into(), absolute(path)?.into_os_string()]),
+            Vmm::Installed(_) => {}
+        }
+        program.extend(["daemon".into(), "run".into(), "--launchd".into()]);
         let agent = launchd::LaunchAgent {
-            program: program.into(),
+            program,
             socket: home.join("doppeld.socket"),
             log: home.join("doppeld.log"),
         };
