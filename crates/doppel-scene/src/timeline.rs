@@ -16,7 +16,7 @@ use doppel_desktop::geometry::{Point, Rect};
 use doppel_machine::activity as told;
 use doppel_machine::machine::MachineName;
 
-pub use crate::recordings::from_trace;
+use crate::recordings::{Actor, Recording, TraceOutcome};
 
 /// What a call read off the screen by text recognition: each line, and
 /// where what it looked for was found. In display points.
@@ -269,11 +269,25 @@ pub fn swept(start: f64, now: f64) -> f64 {
     (now - start).rem_euclid(SWEEP_MS) / SWEEP_MS
 }
 
-/// The moments after an event at `now`, the oldest dropped past [`KEPT`].
-pub fn record(moments: &mut Vec<Moment>, event: ActivityEvent, now: f64) {
-    match event {
-        ActivityEvent::Started(call) => {
-            moments.push(Moment {
+/// One machine's calls as moments, in the order they started (calls that
+/// started together keep the order they came in). Recorded live, it keeps
+/// the latest [`KEPT`].
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Timeline {
+    moments: Vec<Moment>,
+}
+
+impl Timeline {
+    /// Its moments, in start order.
+    #[must_use]
+    pub fn moments(&self) -> &[Moment] {
+        &self.moments
+    }
+
+    /// Takes in an event at `now`, the oldest moment dropped past [`KEPT`].
+    pub fn record(&mut self, event: ActivityEvent, now: f64) {
+        match event {
+            ActivityEvent::Started(call) => self.keep(Moment {
                 start_ms: now,
                 end_ms: None,
                 call,
@@ -282,70 +296,90 @@ pub fn record(moments: &mut Vec<Moment>, event: ActivityEvent, now: f64) {
                 seen: None,
                 refs: None,
                 read: None,
-            });
-            if moments.len() > KEPT {
-                moments.drain(..moments.len() - KEPT);
-            }
-        }
-        ActivityEvent::Ended {
-            key,
-            ending,
-            seen,
-            read,
-            ..
-        } => {
-            for moment in moments
-                .iter_mut()
-                .filter(|moment| moment.call.key == key && moment.end_ms.is_none())
-            {
-                moment.end_ms = Some(now);
-                moment.failed = failure(&ending);
-                moment.seen = seen.clone().map(Seen::Live);
-                moment.read = read.clone();
-            }
-        }
-        ActivityEvent::Recent {
-            call,
-            started_ms_ago,
-            ended,
-        } => {
-            // Told once, when watching begins; a call already here stays as it is.
-            if moments.iter().any(|moment| moment.call.key == call.key) {
-                return;
-            }
-            let (end_ms, failed, seen, refs, read) = match ended {
-                Some(ended) => (
-                    Some(now - ended.ms_ago),
-                    failure(&ended.ending),
-                    ended.seen.map(Seen::Live),
-                    ended.refs,
-                    ended.read,
-                ),
-                None => (None, None, None, None, None),
-            };
-            moments.push(Moment {
-                start_ms: now - started_ms_ago,
-                end_ms,
-                call,
-                failed,
-                person: false,
+            }),
+            ActivityEvent::Ended {
+                key,
+                ending,
                 seen,
-                refs,
                 read,
-            });
-            moments.sort_by(|a, b| a.start_ms.total_cmp(&b.start_ms));
-            if moments.len() > KEPT {
-                moments.drain(..moments.len() - KEPT);
+                ..
+            } => {
+                for moment in self
+                    .moments
+                    .iter_mut()
+                    .filter(|moment| moment.call.key == key && moment.end_ms.is_none())
+                {
+                    moment.end_ms = Some(now);
+                    moment.failed = failure(&ending);
+                    moment.seen = seen.clone().map(Seen::Live);
+                    moment.read = read.clone();
+                }
+            }
+            ActivityEvent::Recent {
+                call,
+                started_ms_ago,
+                ended,
+            } => {
+                // Told once, when watching begins; a call already here stays as it is.
+                if self
+                    .moments
+                    .iter()
+                    .any(|moment| moment.call.key == call.key)
+                {
+                    return;
+                }
+                let (end_ms, failed, seen, refs, read) = match ended {
+                    Some(ended) => (
+                        Some(now - ended.ms_ago),
+                        failure(&ended.ending),
+                        ended.seen.map(Seen::Live),
+                        ended.refs,
+                        ended.read,
+                    ),
+                    None => (None, None, None, None, None),
+                };
+                self.keep(Moment {
+                    start_ms: now - started_ms_ago,
+                    end_ms,
+                    call,
+                    failed,
+                    person: false,
+                    seen,
+                    refs,
+                    read,
+                });
+            }
+            // The latest call that saw the snapshot: the agent may reuse an id
+            // once it restarts.
+            ActivityEvent::Named { refs, .. } => {
+                let saw = self.moments.iter_mut().rev().find(|moment| {
+                    matches!(&moment.seen, Some(Seen::Live(seen)) if seen.id == refs.snapshot())
+                });
+                if let Some(moment) = saw {
+                    moment.refs = Some(refs);
+                }
             }
         }
-        // The latest call that saw the snapshot: the agent may reuse an id
-        // once it restarts.
-        ActivityEvent::Named { refs, .. } => {
-            let saw = moments.iter_mut().rev().find(|moment| {
-                matches!(&moment.seen, Some(Seen::Live(seen)) if seen.id == refs.snapshot())
-            });
-            if let Some(moment) = saw {
-                moment.refs = Some(refs);
+    }
+
+    /// Places `moment` after every one that started no later, and drops
+    /// the oldest past [`KEPT`].
+    fn keep(&mut self, moment: Moment) {
+        let at = self
+            .moments
+            .partition_point(|kept| kept.start_ms.total_cmp(&moment.start_ms).is_le());
+        self.moments.insert(at, moment);
+        if self.moments.len() > KEPT {
+            self.moments.drain(..self.moments.len() - KEPT);
+        }
+    }
+
+    /// Puts what `resolve` makes of each snapshot still on a recording's
+    /// trace line in its place.
+    pub fn fill_seen(&mut self, mut resolve: impl FnMut(u32) -> Option<Seen>) {
+        for moment in &mut self.moments {
+            if let Some(Seen::Recorded(line)) = moment.seen {
+                moment.seen = resolve(line);
             }
         }
     }
@@ -613,74 +647,79 @@ impl Call {
     }
 }
 
-/// The scene at `at`: the pointer where the latest call that had a place
-/// acted, the call under way (the latest one started), and the marks of
-/// calls that started or failed less than [`MARK_MS`] before.
-pub fn scene_at(moments: &[Moment], at: f64) -> Scene {
-    let mut agents: Vec<AgentScene> = Vec::new();
-    for (at_index, moment) in moments
-        .iter()
-        .enumerate()
-        .filter(|(_, moment)| !moment.person && moment.start_ms <= at)
-    {
-        let session = moment.call.key.session;
-        let index = match agents.iter().position(|agent| agent.session == session) {
-            Some(index) => index,
-            None => {
-                agents.push(AgentScene {
-                    session,
-                    client: moment.call.client.clone(),
-                    cursor: None,
-                    current: None,
-                    scan: None,
-                    marks: Vec::new(),
-                    active: f64::NEG_INFINITY,
-                });
-                agents.len() - 1
-            }
-        };
-        let Some(agent) = agents.get_mut(index) else {
-            continue;
-        };
-        if let Some(placed) = moment.call.target.aim() {
-            agent.cursor = Some(placed);
-        }
-        agent.active = agent.active.max(moment.start_ms);
-        let shown_until = moment.end_ms.map_or(f64::INFINITY, |end| {
-            end.max(moment.start_ms + MIN_UNDER_WAY_MS)
-        });
-        if at < shown_until {
-            agent.current = Some((moment.call.clone(), moment.start_ms));
-        }
-        if moment.call.gesture == Gesture::Look && at < sweep_ends(moment.start_ms, moment.end_ms) {
-            agent.scan = Some(moment.start_ms);
-        }
-        if let Some(mark) = moment
-            .call
-            .leaves(moment.start_ms, mark_until(moments, at_index))
-            .filter(|mark| at < mark.until())
+impl Scene {
+    /// The scene at `at`: the pointer where the latest call that had a place
+    /// acted, the call under way (the latest one started), and the marks of
+    /// calls that started or failed less than [`MARK_MS`] before. `moments`
+    /// are in start order, as a [`Timeline`] keeps them.
+    pub(crate) fn at(moments: &[Moment], at: f64) -> Self {
+        let mut agents: Vec<AgentScene> = Vec::new();
+        for (at_index, moment) in moments
+            .iter()
+            .enumerate()
+            .filter(|(_, moment)| !moment.person && moment.start_ms <= at)
         {
-            agent.marks.push(mark);
-        }
-        if let Some(end) = moment.end_ms {
-            agent.active = agent.active.max(end.min(at));
-            if let (Some(reason), Some(cursor)) = (&moment.failed, agent.cursor)
-                && end <= at
-                && at - end < MARK_MS
+            let session = moment.call.key.session;
+            let index = match agents.iter().position(|agent| agent.session == session) {
+                Some(index) => index,
+                None => {
+                    agents.push(AgentScene {
+                        session,
+                        client: moment.call.client.clone(),
+                        cursor: None,
+                        current: None,
+                        scan: None,
+                        marks: Vec::new(),
+                        active: f64::NEG_INFINITY,
+                    });
+                    agents.len() - 1
+                }
+            };
+            let Some(agent) = agents.get_mut(index) else {
+                continue;
+            };
+            if let Some(placed) = moment.call.target.aim() {
+                agent.cursor = Some(placed);
+            }
+            agent.active = agent.active.max(moment.start_ms);
+            let shown_until = moment.end_ms.map_or(f64::INFINITY, |end| {
+                end.max(moment.start_ms + MIN_UNDER_WAY_MS)
+            });
+            if at < shown_until {
+                agent.current = Some((moment.call.clone(), moment.start_ms));
+            }
+            if moment.call.gesture == Gesture::Look
+                && at < sweep_ends(moment.start_ms, moment.end_ms)
             {
-                agent.marks.push(Mark::Failed {
-                    at: cursor,
-                    reason: reason.clone(),
-                    since: end,
-                    until: end + MARK_MS,
-                });
+                agent.scan = Some(moment.start_ms);
+            }
+            if let Some(mark) = moment
+                .call
+                .leaves(moment.start_ms, mark_until(moments, at_index))
+                .filter(|mark| at < mark.until())
+            {
+                agent.marks.push(mark);
+            }
+            if let Some(end) = moment.end_ms {
+                agent.active = agent.active.max(end.min(at));
+                if let (Some(reason), Some(cursor)) = (&moment.failed, agent.cursor)
+                    && end <= at
+                    && at - end < MARK_MS
+                {
+                    agent.marks.push(Mark::Failed {
+                        at: cursor,
+                        reason: reason.clone(),
+                        since: end,
+                        until: end + MARK_MS,
+                    });
+                }
             }
         }
-    }
-    agents.sort_by_key(|agent| agent.session);
-    Scene {
-        agents,
-        callouts: callouts_at(moments, at),
+        agents.sort_by_key(|agent| agent.session);
+        Self {
+            agents,
+            callouts: callouts_at(moments, at),
+        }
     }
 }
 
@@ -765,28 +804,38 @@ pub struct SeenAt {
     pub acted_since: bool,
 }
 
-/// The latest snapshot a call had seen by `at`.
-pub fn seen_at(moments: &[Moment], at: f64) -> Option<SeenAt> {
-    let (taken, seen, since_ms, refs) = moments
-        .iter()
-        .enumerate()
-        .filter_map(|(index, moment)| {
-            let end = moment.end_ms.filter(|end| *end <= at)?;
-            Some((index, moment.seen.as_ref()?, end, &moment.refs))
+impl Timeline {
+    /// The scene at `at`; see [`Scene`].
+    #[must_use]
+    pub fn scene_at(&self, at: f64) -> Scene {
+        Scene::at(&self.moments, at)
+    }
+
+    /// The latest snapshot a call had seen by `at`.
+    #[must_use]
+    pub fn seen_at(&self, at: f64) -> Option<SeenAt> {
+        let moments = &self.moments;
+        let (taken, seen, since_ms, refs) = moments
+            .iter()
+            .enumerate()
+            .filter_map(|(index, moment)| {
+                let end = moment.end_ms.filter(|end| *end <= at)?;
+                Some((index, moment.seen.as_ref()?, end, &moment.refs))
+            })
+            .max_by(|a, b| a.2.total_cmp(&b.2))?;
+        let started = moments
+            .get(taken)
+            .map_or(f64::INFINITY, |moment| moment.start_ms);
+        let acted_since = moments.iter().enumerate().any(|(index, moment)| {
+            index != taken && moment.start_ms >= started && moment.start_ms <= at && changes(moment)
+        });
+        Some(SeenAt {
+            seen: seen.clone(),
+            refs: refs.clone(),
+            since_ms,
+            acted_since,
         })
-        .max_by(|a, b| a.2.total_cmp(&b.2))?;
-    let started = moments
-        .get(taken)
-        .map_or(f64::INFINITY, |moment| moment.start_ms);
-    let acted_since = moments.iter().enumerate().any(|(index, moment)| {
-        index != taken && moment.start_ms >= started && moment.start_ms <= at && changes(moment)
-    });
-    Some(SeenAt {
-        seen: seen.clone(),
-        refs: refs.clone(),
-        since_ms,
-        acted_since,
-    })
+    }
 }
 
 /// The latest text a call had read by `at`, when it was read, and whether
@@ -798,23 +847,28 @@ pub struct ReadAt {
     pub acted_since: bool,
 }
 
-pub fn read_at(moments: &[Moment], at: f64) -> Option<ReadAt> {
-    let (taken, read, since_ms) = moments
-        .iter()
-        .enumerate()
-        .filter_map(|(index, moment)| {
-            let end = moment.end_ms.filter(|end| *end <= at)?;
-            Some((index, moment.read.as_ref()?, end))
+impl Timeline {
+    /// The latest text a call had read by `at`.
+    #[must_use]
+    pub fn read_at(&self, at: f64) -> Option<ReadAt> {
+        let moments = &self.moments;
+        let (taken, read, since_ms) = moments
+            .iter()
+            .enumerate()
+            .filter_map(|(index, moment)| {
+                let end = moment.end_ms.filter(|end| *end <= at)?;
+                Some((index, moment.read.as_ref()?, end))
+            })
+            .max_by(|a, b| a.2.total_cmp(&b.2))?;
+        let started = moments
+            .get(taken)
+            .map_or(f64::INFINITY, |moment| moment.start_ms);
+        Some(ReadAt {
+            read: read.clone(),
+            since_ms,
+            acted_since: acted_between(moments, Some(taken), started, at),
         })
-        .max_by(|a, b| a.2.total_cmp(&b.2))?;
-    let started = moments
-        .get(taken)
-        .map_or(f64::INFINITY, |moment| moment.start_ms);
-    Some(ReadAt {
-        read: read.clone(),
-        since_ms,
-        acted_since: acted_between(moments, Some(taken), started, at),
-    })
+    }
 }
 
 /// Whether a call other than `skip` that may change the screen started
@@ -851,15 +905,19 @@ pub enum Reading<'a> {
     Nothing,
 }
 
-pub fn reading<'a>(moments: &[Moment], look: Option<&'a TextLook>, at: f64) -> Reading<'a> {
-    match (read_at(moments, at), look) {
-        (Some(agent), Some(look)) if agent.since_ms > look.at_ms => Reading::Agent(agent),
-        (Some(_) | None, Some(look)) => Reading::Person {
-            look,
-            acted_since: acted_between(moments, None, look.at_ms, at),
-        },
-        (Some(agent), None) => Reading::Agent(agent),
-        (None, None) => Reading::Nothing,
+impl Timeline {
+    /// What the text layer shows at `at`, given the person's own read.
+    #[must_use]
+    pub fn reading<'a>(&self, look: Option<&'a TextLook>, at: f64) -> Reading<'a> {
+        match (self.read_at(at), look) {
+            (Some(agent), Some(look)) if agent.since_ms > look.at_ms => Reading::Agent(agent),
+            (Some(_) | None, Some(look)) => Reading::Person {
+                look,
+                acted_since: acted_between(&self.moments, None, look.at_ms, at),
+            },
+            (Some(agent), None) => Reading::Agent(agent),
+            (None, None) => Reading::Nothing,
+        }
     }
 }
 
@@ -890,18 +948,21 @@ pub enum Showing<'a> {
     Nothing,
 }
 
-pub fn showing<'a>(moments: &[Moment], look: Option<&'a Look>, at: f64) -> Showing<'a> {
-    let agent = seen_at(moments, at);
-    match (agent, look) {
-        (Some(agent), Some(look)) if agent.since_ms > look.at_ms => Showing::Agent(agent),
-        (Some(_) | None, Some(look)) => Showing::Person {
-            look,
-            acted_since: moments.iter().any(|moment| {
-                moment.start_ms >= look.at_ms && moment.start_ms <= at && changes(moment)
-            }),
-        },
-        (Some(agent), None) => Showing::Agent(agent),
-        (None, None) => Showing::Nothing,
+impl Timeline {
+    /// What the elements panel shows at `at`, given the person's own look.
+    #[must_use]
+    pub fn showing<'a>(&self, look: Option<&'a Look>, at: f64) -> Showing<'a> {
+        match (self.seen_at(at), look) {
+            (Some(agent), Some(look)) if agent.since_ms > look.at_ms => Showing::Agent(agent),
+            (Some(_) | None, Some(look)) => Showing::Person {
+                look,
+                acted_since: self.moments.iter().any(|moment| {
+                    moment.start_ms >= look.at_ms && moment.start_ms <= at && changes(moment)
+                }),
+            },
+            (Some(agent), None) => Showing::Agent(agent),
+            (None, None) => Showing::Nothing,
+        }
     }
 }
 
@@ -929,20 +990,25 @@ fn changes(moment: &Moment) -> bool {
     }
 }
 
-/// Whether anything on a timeline still moves at `now`: a call under way,
-/// a mark fading, or an agent's mark showing.
-pub fn moving(moments: &[Moment], now: f64) -> bool {
-    moments.iter().any(|moment| {
-        moment.end_ms.is_none() || now - moment.end_ms.unwrap_or(now).max(moment.start_ms) < MARK_MS
-    }) || !callouts_at(moments, now).is_empty()
-}
+impl Timeline {
+    /// Whether anything on it still moves at `now`: a call under way, a
+    /// mark fading, or an agent's mark showing.
+    #[must_use]
+    pub fn moving(&self, now: f64) -> bool {
+        self.moments.iter().any(|moment| {
+            moment.end_ms.is_none()
+                || now - moment.end_ms.unwrap_or(now).max(moment.start_ms) < MARK_MS
+        }) || !callouts_at(&self.moments, now).is_empty()
+    }
 
-/// The latest time anything happened on a timeline.
-pub fn latest(moments: &[Moment], now: f64) -> f64 {
-    moments
-        .iter()
-        .map(|moment| moment.end_ms.unwrap_or(now).max(moment.start_ms))
-        .fold(f64::NEG_INFINITY, f64::max)
+    /// The latest time anything happened on it.
+    #[must_use]
+    pub fn latest(&self, now: f64) -> f64 {
+        self.moments
+            .iter()
+            .map(|moment| moment.end_ms.unwrap_or(now).max(moment.start_ms))
+            .fold(f64::NEG_INFINITY, f64::max)
+    }
 }
 
 impl ActivityEvent {
@@ -1109,6 +1175,66 @@ impl Target {
     }
 }
 
+impl Timeline {
+    /// A recording's calls on `machine` (and those naming none) as moments,
+    /// timed from the session's start, in the order they started whatever
+    /// the trace's order.
+    #[must_use]
+    pub fn from_trace(recording: &Recording, machine: &MachineName) -> Self {
+        let mut calls: Vec<_> = recording
+            .calls()
+            .filter(|call| call.machine.as_ref().is_none_or(|named| named == machine))
+            .collect();
+        calls.sort_by_key(|call| call.start_ms);
+        let moments = calls
+            .into_iter()
+            .enumerate()
+            .map(|(index, traced)| {
+                let (gesture, target) = traced
+                    .acted
+                    .clone()
+                    .unwrap_or((Gesture::Other, Target::Nowhere));
+                let callout = traced.callout.clone();
+                Moment {
+                    start_ms: traced.start_ms as f64,
+                    end_ms: Some(traced.end_ms as f64),
+                    call: Call {
+                        key: CallKey {
+                            session: 0,
+                            request: index as u64,
+                        },
+                        machine: machine.clone(),
+                        client: String::new(),
+                        caption: traced.call.clone(),
+                        gesture,
+                        target,
+                        callout,
+                        why: traced.why.clone(),
+                    },
+                    failed: match traced.outcome {
+                        TraceOutcome::Done => None,
+                        TraceOutcome::Failed
+                        | TraceOutcome::TimedOut
+                        | TraceOutcome::Refused
+                        | TraceOutcome::Unknown(_) => Some(
+                            traced
+                                .error
+                                .clone()
+                                .or_else(|| traced.outcome.words())
+                                .unwrap_or_default(),
+                        ),
+                    },
+                    person: traced.by == Actor::Person,
+                    seen: traced.seen.map(Seen::Recorded),
+                    refs: traced.refs.clone(),
+                    read: traced.read.clone(),
+                }
+            })
+            .collect();
+        Self { moments }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1222,14 +1348,12 @@ mod tests {
                 truncation: Truncation::Complete,
             })
         };
-        let look = |request, id, start: f64, moments: &mut Vec<Moment>| {
-            record(
-                moments,
+        let look = |request, id, start: f64, timeline: &mut Timeline| {
+            timeline.record(
                 ActivityEvent::Started(call(request, Gesture::Look, Target::Nowhere)),
                 start,
             );
-            record(
-                moments,
+            timeline.record(
                 ActivityEvent::Ended {
                     key: CallKey {
                         session: 1,
@@ -1243,39 +1367,39 @@ mod tests {
                 start + 100.0,
             );
         };
-        let mut moments = Vec::new();
-        look(1, 3, 0.0, &mut moments);
-        record(
-            &mut moments,
+        let mut timeline = Timeline::default();
+        look(1, 3, 0.0, &mut timeline);
+        timeline.record(
             ActivityEvent::Started(call(2, Gesture::Wait, Target::Nowhere)),
             200.0,
         );
-        record(&mut moments, ended(2, Ending::Done), 300.0);
-        record(
-            &mut moments,
+        timeline.record(ended(2, Ending::Done), 300.0);
+        timeline.record(
             ActivityEvent::Started(call(3, Gesture::Key, Target::Nowhere)),
             400.0,
         );
-        record(&mut moments, ended(3, Ending::Done), 450.0);
-        look(4, 4, 500.0, &mut moments);
-        let id = |at| match seen_at(&moments, at).map(|shown| shown.seen) {
+        timeline.record(ended(3, Ending::Done), 450.0);
+        look(4, 4, 500.0, &mut timeline);
+        let id = |at| match timeline.seen_at(at).map(|shown| shown.seen) {
             Some(Seen::Live(seen)) => Some(seen.id.get()),
             Some(Seen::Recorded(_)) | None => None,
         };
         assert_eq!(id(50.0), None);
         assert_eq!(id(300.0), Some(3));
         assert_eq!(
-            seen_at(&moments, 300.0).map(|shown| (shown.since_ms, shown.acted_since)),
+            timeline
+                .seen_at(300.0)
+                .map(|shown| (shown.since_ms, shown.acted_since)),
             Some((100.0, false))
         );
         // A key press may change the screen; a wait doesn't.
         assert_eq!(
-            seen_at(&moments, 420.0).map(|shown| shown.acted_since),
+            timeline.seen_at(420.0).map(|shown| shown.acted_since),
             Some(true)
         );
         assert_eq!(id(700.0), Some(4));
         assert_eq!(
-            seen_at(&moments, 700.0).map(|shown| shown.acted_since),
+            timeline.seen_at(700.0).map(|shown| shown.acted_since),
             Some(false)
         );
         // Names reach the call that saw their snapshot, and come with it.
@@ -1289,10 +1413,11 @@ mod tests {
                 vec![NodeIndex::ROOT],
             )),
         };
-        record(&mut moments, named(3), 710.0);
-        record(&mut moments, named(9), 720.0);
+        timeline.record(named(3), 710.0);
+        timeline.record(named(9), 720.0);
         let generation = |at| {
-            seen_at(&moments, at)
+            timeline
+                .seen_at(at)
                 .and_then(|shown| shown.refs)
                 .map(|refs| refs.generation())
         };
@@ -1302,7 +1427,7 @@ mod tests {
 
     #[test]
     fn a_recent_call_is_placed_back_in_time_once() {
-        let mut moments = Vec::new();
+        let mut timeline = Timeline::default();
         let recent = |request| ActivityEvent::Recent {
             call: call(request, Gesture::Click, Target::Nowhere),
             started_ms_ago: 5000.0,
@@ -1314,9 +1439,8 @@ mod tests {
                 ms_ago: 4000.0,
             })),
         };
-        record(&mut moments, recent(1), 10_000.0);
-        record(
-            &mut moments,
+        timeline.record(recent(1), 10_000.0);
+        timeline.record(
             ActivityEvent::Recent {
                 call: call(2, Gesture::Wait, Target::Nowhere),
                 started_ms_ago: 9000.0,
@@ -1325,36 +1449,37 @@ mod tests {
             10_000.0,
         );
         // In start order, the one under way still open.
-        let placed: Vec<(f64, Option<f64>)> = moments
+        let placed: Vec<(f64, Option<f64>)> = timeline
+            .moments()
             .iter()
             .map(|moment| (moment.start_ms, moment.end_ms))
             .collect();
         assert_eq!(placed, vec![(1000.0, None), (5000.0, Some(6000.0))]);
-        assert_eq!(moments[1].failed.as_deref(), Some("no window"));
+        assert_eq!(timeline.moments()[1].failed.as_deref(), Some("no window"));
         // Told again, it stays as it is.
-        record(&mut moments, recent(1), 20_000.0);
-        assert_eq!(moments.len(), 2);
+        timeline.record(recent(1), 20_000.0);
+        assert_eq!(timeline.moments().len(), 2);
     }
 
     #[test]
     fn the_reading_band_finishes_its_pass_after_a_look_ends() {
         let look = || ActivityEvent::Started(call(1, Gesture::Look, Target::Nowhere));
-        let scan = |moments: &[Moment], at: f64| scene_at(moments, at).of(1).unwrap().scan;
-        let mut quick = Vec::new();
-        record(&mut quick, look(), 0.0);
-        record(&mut quick, ended(1, Ending::Done), 300.0);
+        let scan = |timeline: &Timeline, at: f64| timeline.scene_at(at).of(1).unwrap().scan;
+        let mut quick = Timeline::default();
+        quick.record(look(), 0.0);
+        quick.record(ended(1, Ending::Done), 300.0);
         assert_eq!(scan(&quick, 400.0), Some(0.0));
         assert_eq!(scan(&quick, SWEEP_MS - 1.0), Some(0.0));
         assert_eq!(scan(&quick, SWEEP_MS), None);
         // A longer look runs to the end of the pass it ends in.
-        let mut long = Vec::new();
-        record(&mut long, look(), 0.0);
-        record(&mut long, ended(1, Ending::Done), SWEEP_MS + 100.0);
+        let mut long = Timeline::default();
+        long.record(look(), 0.0);
+        long.record(ended(1, Ending::Done), SWEEP_MS + 100.0);
         assert_eq!(scan(&long, 2.0 * SWEEP_MS - 1.0), Some(0.0));
         assert_eq!(scan(&long, 2.0 * SWEEP_MS), None);
         // One still looking keeps sweeping, each pass from the top.
-        let mut open = Vec::new();
-        record(&mut open, look(), 0.0);
+        let mut open = Timeline::default();
+        open.record(look(), 0.0);
         assert_eq!(scan(&open, 10.0 * SWEEP_MS), Some(0.0));
         assert_eq!(swept(500.0, 500.0), 0.0);
         assert_eq!(swept(0.0, SWEEP_MS / 2.0), 0.5);
@@ -1363,55 +1488,51 @@ mod tests {
 
     #[test]
     fn a_call_is_under_way_until_it_ends_and_a_little_after() {
-        let mut moments = Vec::new();
-        record(
-            &mut moments,
+        let mut timeline = Timeline::default();
+        timeline.record(
             ActivityEvent::Started(call(1, Gesture::Click, Target::Point(at(10.0, 20.0)))),
             0.0,
         );
-        let scene = scene_at(&moments, 100.0);
+        let scene = timeline.scene_at(100.0);
         assert_eq!(scene.of(1).unwrap().cursor, Some(at(10.0, 20.0)));
         assert!(scene.of(1).unwrap().current.is_some());
         assert!(matches!(
             scene.of(1).unwrap().marks.as_slice(),
             [Mark::Ripple { .. }]
         ));
-        record(&mut moments, ended(1, Ending::Done), 200.0);
+        timeline.record(ended(1, Ending::Done), 200.0);
         assert!(
-            scene_at(&moments, 500.0).of(1).unwrap().current.is_some(),
+            timeline.scene_at(500.0).of(1).unwrap().current.is_some(),
             "shown at least 600 ms"
         );
-        assert!(scene_at(&moments, 700.0).of(1).unwrap().current.is_none());
+        assert!(timeline.scene_at(700.0).of(1).unwrap().current.is_none());
         assert!(
-            scene_at(&moments, 2000.0).of(1).unwrap().marks.is_empty(),
+            timeline.scene_at(2000.0).of(1).unwrap().marks.is_empty(),
             "the ripple faded"
         );
     }
 
     #[test]
     fn each_session_has_its_own_pointer_call_and_lane() {
-        let mut moments = Vec::new();
+        let mut timeline = Timeline::default();
         let by = |session, request, gesture, target| Call {
             key: CallKey { session, request },
             client: format!("agent {session}"),
             ..call(request, gesture, target)
         };
-        record(
-            &mut moments,
+        timeline.record(
             ActivityEvent::Started(by(4, 1, Gesture::Click, Target::Point(at(1.0, 1.0)))),
             0.0,
         );
-        record(
-            &mut moments,
+        timeline.record(
             ActivityEvent::Started(by(2, 1, Gesture::Click, Target::Point(at(9.0, 9.0)))),
             10.0,
         );
-        record(
-            &mut moments,
+        timeline.record(
             ActivityEvent::Started(by(4, 2, Gesture::Type, Target::Nowhere)),
             20.0,
         );
-        let scene = scene_at(&moments, 30.0);
+        let scene = timeline.scene_at(30.0);
         let sessions: Vec<u64> = scene.agents.iter().map(|agent| agent.session).collect();
         assert_eq!(sessions, [2, 4], "by session id");
         let four = scene.of(4).unwrap();
@@ -1427,7 +1548,7 @@ mod tests {
             two.current.as_ref().map(|(call, _)| call.key.request),
             Some(1)
         );
-        let lanes = lanes(&moments);
+        let lanes = lanes(timeline.moments());
         let lanes: Vec<(u64, &str, usize)> = lanes
             .iter()
             .map(|lane| (lane.session, lane.client, lane.moments.len()))
@@ -1447,50 +1568,43 @@ mod tests {
                 },
             )
         };
-        let mut moments = Vec::new();
-        record(&mut moments, ActivityEvent::Started(press()), 0.0);
-        let marks = |moments: &[Moment], at| scene_at(moments, at).of(1).unwrap().marks.len();
-        assert_eq!(marks(&moments, 900.0), 1, "under way, it shows");
-        record(&mut moments, ended(1, Ending::Done), 30.0);
-        let scene = scene_at(&moments, 100.0);
+        let mut timeline = Timeline::default();
+        timeline.record(ActivityEvent::Started(press()), 0.0);
+        let marks = |timeline: &Timeline, at| timeline.scene_at(at).of(1).unwrap().marks.len();
+        assert_eq!(marks(&timeline, 900.0), 1, "under way, it shows");
+        timeline.record(ended(1, Ending::Done), 30.0);
+        let scene = timeline.scene_at(100.0);
         let shown = &scene.of(1).unwrap().marks[0];
         assert_eq!(shown.until(), 30.0 + SETTLE_MS);
         assert_eq!(shown.opacity(30.0 + SETTLE_MS - MARK_FADE_MS), 1.0);
         assert_eq!(
-            marks(&moments, 30.0 + SETTLE_MS),
+            marks(&timeline, 30.0 + SETTLE_MS),
             0,
             "gone once the screen changed"
         );
 
-        let mut moments = Vec::new();
-        record(&mut moments, ActivityEvent::Started(press()), 0.0);
-        record(
-            &mut moments,
+        let mut timeline = Timeline::default();
+        timeline.record(ActivityEvent::Started(press()), 0.0);
+        timeline.record(
             ActivityEvent::Started(call(2, Gesture::Look, Target::Nowhere)),
             80.0,
         );
-        assert_eq!(marks(&moments, 90.0), 0, "the next call took over");
+        assert_eq!(marks(&timeline, 90.0), 0, "the next call took over");
     }
 
     #[test]
     fn a_failure_marks_where_the_pointer_was() {
-        let mut moments = Vec::new();
-        record(
-            &mut moments,
+        let mut timeline = Timeline::default();
+        timeline.record(
             ActivityEvent::Started(call(1, Gesture::Move, Target::Point(at(5.0, 5.0)))),
             0.0,
         );
-        record(
-            &mut moments,
+        timeline.record(
             ActivityEvent::Started(call(2, Gesture::Type, Target::Nowhere)),
             10.0,
         );
-        record(
-            &mut moments,
-            ended(2, Ending::Failed("no focus".into())),
-            50.0,
-        );
-        let scene = scene_at(&moments, 60.0);
+        timeline.record(ended(2, Ending::Failed("no focus".into())), 50.0);
+        let scene = timeline.scene_at(60.0);
         assert!(scene.of(1).unwrap().marks.contains(&Mark::Failed {
             at: at(5.0, 5.0),
             reason: "no focus".into(),
@@ -1528,46 +1642,45 @@ mod tests {
 
     #[test]
     fn a_timeline_keeps_its_latest_calls() {
-        let mut moments = Vec::new();
+        let mut timeline = Timeline::default();
         for request in 0..(KEPT as u64 + 5) {
-            record(
-                &mut moments,
+            timeline.record(
                 ActivityEvent::Started(call(request, Gesture::Wait, Target::Nowhere)),
                 0.0,
             );
         }
-        assert_eq!(moments.len(), KEPT);
+        assert_eq!(timeline.moments().len(), KEPT);
         assert_eq!(
-            moments.first().map(|moment| moment.call.key.request),
+            timeline
+                .moments()
+                .first()
+                .map(|moment| moment.call.key.request),
             Some(5)
         );
     }
 
     #[test]
     fn a_timeline_moves_while_a_call_runs_or_a_mark_fades() {
-        let mut moments = Vec::new();
-        record(
-            &mut moments,
+        let mut timeline = Timeline::default();
+        timeline.record(
             ActivityEvent::Started(call(1, Gesture::Wait, Target::Nowhere)),
             0.0,
         );
-        assert!(moving(&moments, 10_000.0));
-        record(&mut moments, ended(1, Ending::Done), 100.0);
-        assert!(moving(&moments, 1000.0));
-        assert!(!moving(&moments, 5000.0));
-        assert!((latest(&moments, 5000.0) - 100.0).abs() < f64::EPSILON);
+        assert!(timeline.moving(10_000.0));
+        timeline.record(ended(1, Ending::Done), 100.0);
+        assert!(timeline.moving(1000.0));
+        assert!(!timeline.moving(5000.0));
+        assert!((timeline.latest(5000.0) - 100.0).abs() < f64::EPSILON);
     }
 
     #[test]
     fn the_panel_shows_the_newer_of_the_agents_snapshot_and_a_persons_look() {
-        let mut moments = Vec::new();
-        record(
-            &mut moments,
+        let mut timeline = Timeline::default();
+        timeline.record(
             ActivityEvent::Started(call(1, Gesture::Look, Target::Nowhere)),
             0.0,
         );
-        record(
-            &mut moments,
+        timeline.record(
             ActivityEvent::Ended {
                 key: CallKey {
                     session: 1,
@@ -1584,36 +1697,33 @@ mod tests {
             at_ms: 200.0,
             outcome: Looked::Loading,
         };
-        assert!(matches!(showing(&moments, None, 300.0), Showing::Agent(_)));
+        assert!(matches!(timeline.showing(None, 300.0), Showing::Agent(_)));
         assert!(matches!(
-            showing(&moments, Some(&look), 300.0),
+            timeline.showing(Some(&look), 300.0),
             Showing::Person {
                 acted_since: false,
                 ..
             }
         ));
         // A key press after the look may have changed the screen.
-        record(
-            &mut moments,
+        timeline.record(
             ActivityEvent::Started(call(2, Gesture::Key, Target::Nowhere)),
             400.0,
         );
-        record(&mut moments, ended(2, Ending::Done), 450.0);
+        timeline.record(ended(2, Ending::Done), 450.0);
         assert!(matches!(
-            showing(&moments, Some(&look), 500.0),
+            timeline.showing(Some(&look), 500.0),
             Showing::Person {
                 acted_since: true,
                 ..
             }
         ));
         // The agent's next snapshot is newer than the look.
-        record(
-            &mut moments,
+        timeline.record(
             ActivityEvent::Started(call(3, Gesture::Look, Target::Nowhere)),
             600.0,
         );
-        record(
-            &mut moments,
+        timeline.record(
             ActivityEvent::Ended {
                 key: CallKey {
                     session: 1,
@@ -1627,13 +1737,13 @@ mod tests {
             700.0,
         );
         assert!(matches!(
-            showing(&moments, Some(&look), 800.0),
+            timeline.showing(Some(&look), 800.0),
             Showing::Agent(SeenAt {
                 since_ms: 700.0,
                 ..
             })
         ));
-        assert_eq!(showing(&[], None, 0.0), Showing::Nothing);
+        assert_eq!(Timeline::default().showing(None, 0.0), Showing::Nothing);
     }
 
     #[test]
@@ -1648,15 +1758,13 @@ mod tests {
                 found: Vec::new(),
             }))
         };
-        let mut moments = Vec::new();
-        let find = |request, start: f64, text: &str, moments: &mut Vec<Moment>| {
-            record(
-                moments,
+        let mut timeline = Timeline::default();
+        let find = |request, start: f64, text: &str, timeline: &mut Timeline| {
+            timeline.record(
                 ActivityEvent::Started(call(request, Gesture::Look, Target::Nowhere)),
                 start,
             );
-            record(
-                moments,
+            timeline.record(
                 ActivityEvent::Ended {
                     key: CallKey {
                         session: 1,
@@ -1670,32 +1778,32 @@ mod tests {
                 start + 50.0,
             );
         };
-        find(1, 0.0, "Save", &mut moments);
+        find(1, 0.0, "Save", &mut timeline);
         let words = |shown: Reading<'_>| match shown {
             Reading::Agent(read) => Some(read.read.lines[0].text.clone()),
             Reading::Person { .. } | Reading::Nothing => None,
         };
-        assert_eq!(words(reading(&moments, None, 10.0)), None);
-        assert_eq!(words(reading(&moments, None, 100.0)), Some("Save".into()));
+        assert_eq!(words(timeline.reading(None, 10.0)), None);
+        assert_eq!(words(timeline.reading(None, 100.0)), Some("Save".into()));
         let mine = TextLook {
             at_ms: 200.0,
             outcome: TextLooked::Loading,
         };
         assert!(matches!(
-            reading(&moments, Some(&mine), 300.0),
+            timeline.reading(Some(&mine), 300.0),
             Reading::Person {
                 acted_since: false,
                 ..
             }
         ));
-        find(2, 400.0, "Open", &mut moments);
+        find(2, 400.0, "Open", &mut timeline);
         assert_eq!(
-            words(reading(&moments, Some(&mine), 500.0)),
+            words(timeline.reading(Some(&mine), 500.0)),
             Some("Open".into())
         );
         // A call that only read doesn't make the read stale.
         assert_eq!(
-            read_at(&moments, 500.0).map(|read| read.acted_since),
+            timeline.read_at(500.0).map(|read| read.acted_since),
             Some(false)
         );
     }
@@ -1743,69 +1851,63 @@ mod tests {
 
     #[test]
     fn a_mark_shows_for_its_time_without_moving_the_pointer() {
-        let mut moments = Vec::new();
-        record(
-            &mut moments,
+        let mut timeline = Timeline::default();
+        timeline.record(
             ActivityEvent::Started(call(1, Gesture::Click, Target::Point(at(1.0, 2.0)))),
             0.0,
         );
-        record(&mut moments, ended(1, Ending::Done), 10.0);
-        record(
-            &mut moments,
+        timeline.record(ended(1, Ending::Done), 10.0);
+        timeline.record(
             ActivityEvent::Started(marked(2, CalloutLasts::For(5000.0))),
             100.0,
         );
-        record(&mut moments, ended(2, Ending::Done), 101.0);
-        let scene = scene_at(&moments, 2000.0);
+        timeline.record(ended(2, Ending::Done), 101.0);
+        let scene = timeline.scene_at(2000.0);
         assert_eq!(scene.of(1).unwrap().cursor, Some(at(1.0, 2.0)));
         assert_eq!(scene.callouts.len(), 1);
         assert_eq!(scene.callouts[0].until, 5100.0);
-        assert!(moving(&moments, 4000.0));
-        assert!(scene_at(&moments, 5100.0).callouts.is_empty());
-        assert!(!moving(&moments, 5200.0));
-        assert_eq!(moments[1].call.describe(), "Pointing out: here");
+        assert!(timeline.moving(4000.0));
+        assert!(timeline.scene_at(5100.0).callouts.is_empty());
+        assert!(!timeline.moving(5200.0));
+        assert_eq!(timeline.moments()[1].call.describe(), "Pointing out: here");
     }
 
     #[test]
     fn a_mark_until_acted_goes_when_the_agent_next_changes_the_screen() {
-        let mut moments = Vec::new();
-        record(
-            &mut moments,
+        let mut timeline = Timeline::default();
+        timeline.record(
             ActivityEvent::Started(marked(1, CalloutLasts::UntilActed(5000.0))),
             0.0,
         );
-        record(&mut moments, ended(1, Ending::Done), 1.0);
+        timeline.record(ended(1, Ending::Done), 1.0);
         // Looking changes nothing: the mark stays.
-        record(
-            &mut moments,
+        timeline.record(
             ActivityEvent::Started(call(2, Gesture::Look, Target::Nowhere)),
             300.0,
         );
-        record(
-            &mut moments,
+        timeline.record(
             ActivityEvent::Started(call(3, Gesture::Click, Target::Point(at(40.0, 50.0)))),
             900.0,
         );
-        assert_eq!(scene_at(&moments, 800.0).callouts.len(), 1);
-        assert!(scene_at(&moments, 900.0).callouts.is_empty());
+        assert_eq!(timeline.scene_at(800.0).callouts.len(), 1);
+        assert!(timeline.scene_at(900.0).callouts.is_empty());
     }
 
     #[test]
     fn a_refused_mark_shows_nothing() {
-        let mut moments = Vec::new();
-        record(
-            &mut moments,
+        let mut timeline = Timeline::default();
+        timeline.record(
             ActivityEvent::Started(marked(1, CalloutLasts::For(5000.0))),
             0.0,
         );
-        record(&mut moments, ended(1, Ending::Failed("no".into())), 1.0);
-        assert!(scene_at(&moments, 500.0).callouts.is_empty());
+        timeline.record(ended(1, Ending::Failed("no".into())), 1.0);
+        assert!(timeline.scene_at(500.0).callouts.is_empty());
     }
 
     #[test]
     fn a_trace_becomes_the_machines_moments_and_people_draw_nothing() {
         use crate::recordings::{
-            Actor, Recording, RecordingId, TraceCall, TraceLine, TraceOutcome, from_trace,
+            Actor, Recording, RecordingId, TraceCall, TraceLine, TraceOutcome,
         };
         let traced = |start_ms, machine: Option<&str>, by, outcome| {
             TraceLine::Call(Box::new(TraceCall {
@@ -1838,13 +1940,28 @@ mod tests {
             ],
         };
         let dev: MachineName = "dev".parse().unwrap();
-        let moments = from_trace(&recording, &dev);
-        let starts: Vec<f64> = moments.iter().map(|moment| moment.start_ms).collect();
+        let timeline = Timeline::from_trace(&recording, &dev);
+        let starts: Vec<f64> = timeline
+            .moments()
+            .iter()
+            .map(|moment| moment.start_ms)
+            .collect();
         assert_eq!(starts, [100.0, 300.0, 2000.0]);
-        assert_eq!(moments[1].failed.as_deref(), Some("timed out"));
-        assert!(moments[2].person);
+        assert_eq!(timeline.moments()[1].failed.as_deref(), Some("timed out"));
+        assert!(timeline.moments()[2].person);
         // The person's stretch draws nothing over the screen.
-        let scene = scene_at(&moments, 2100.0);
+        let scene = timeline.scene_at(2100.0);
         assert!(scene.agents.iter().all(|agent| agent.current.is_none()));
+        // A trace's lines come as calls end; the moments are in start order.
+        let ended_first = Recording {
+            trace: recording.trace.iter().rev().cloned().collect(),
+            ..recording
+        };
+        let starts: Vec<f64> = Timeline::from_trace(&ended_first, &dev)
+            .moments()
+            .iter()
+            .map(|moment| moment.start_ms)
+            .collect();
+        assert_eq!(starts, [100.0, 300.0, 2000.0]);
     }
 }

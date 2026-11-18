@@ -12,9 +12,8 @@ use anyhow::{Context as _, Result, bail};
 use doppel_desktop::ax::tree::AxSnapshot;
 use doppel_desktop::geometry::Size;
 use doppel_scene::film::{POINTER_MS, Reel};
-use doppel_scene::recordings::from_trace;
 use doppel_scene::recordings::{Recording, Video};
-use doppel_scene::timeline::Seen;
+use doppel_scene::timeline::{Seen, Timeline};
 use prost::Message as _;
 
 /// What an export made.
@@ -88,15 +87,14 @@ pub(crate) fn reel_of(
             video.file.as_str()
         );
     };
-    let mut moments = from_trace(recording, &video.machine);
-    for moment in &mut moments {
-        if let Some(Seen::Recorded(line)) = moment.seen {
-            moment.seen = snapshot(line).map(|kept| Seen::Live(Arc::new(kept)));
-        }
-    }
+    let mut timeline = Timeline::from_trace(recording, &video.machine);
+    timeline.fill_seen(|line| snapshot(line).map(|kept| Seen::Live(Arc::new(kept))));
     #[expect(clippy::cast_precision_loss, reason = "milliseconds of a recording")]
     let until = recording.traced_ms() as f64 + POINTER_MS;
-    Ok((Reel::shoot(&moments, display, from, until, fps), display))
+    Ok((
+        Reel::shoot(timeline.moments(), display, from, until, fps),
+        display,
+    ))
 }
 
 /// Writes the run `named` is part of (each video at `source`), with

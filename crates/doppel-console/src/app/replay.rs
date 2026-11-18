@@ -27,7 +27,7 @@ use crate::screen::Picture;
 use crate::screen::inspect::{self, Act, Empty, Inspect, Pointing};
 use crate::screen::overlay;
 use crate::screen::reading;
-use crate::timeline::{self, Moment};
+use crate::timeline::{self, Timeline};
 use crate::transport::{Follow, Transport};
 use crate::ui::icons::Icon;
 use crate::ui::theme::{MONO, Theme};
@@ -169,7 +169,7 @@ pub(crate) struct Replay {
     unplayable: Option<String>,
     _locate: Option<Task<()>>,
     /// The current machine's calls, on a live machine's timeline.
-    moments: Vec<Moment>,
+    timeline: Timeline,
     /// The screen's box and the strip's, as last laid out.
     screen: Rc<Cell<Option<Bounds<Pixels>>>>,
     strip: Rc<Cell<Option<Bounds<Pixels>>>>,
@@ -220,7 +220,7 @@ impl Replay {
             playing: None,
             unplayable: None,
             _locate: None,
-            moments: Vec::new(),
+            timeline: Timeline::default(),
             screen: Rc::default(),
             strip: Rc::default(),
             scrub: Rc::default(),
@@ -255,7 +255,7 @@ impl Replay {
         self.current = index;
         self.playing = None;
         self.unplayable = None;
-        self.moments = recordings::from_trace(&self.recording, &video.machine);
+        self.timeline = Timeline::from_trace(&self.recording, &video.machine);
         let located = self.daemon.video(&self.recording.id, &video.file);
         self._locate = Some(cx.spawn(async move |replay, cx| {
             let located = located.await;
@@ -435,7 +435,7 @@ impl Replay {
         now: Option<f64>,
         cx: &mut Context<Self>,
     ) -> (Option<timeline::SeenAt>, Result<Arc<AxSnapshot>, Empty>) {
-        let found = now.and_then(|now| timeline::seen_at(&self.moments, now));
+        let found = now.and_then(|now| self.timeline.seen_at(now));
         let line = match found.as_ref().map(|found| &found.seen) {
             Some(timeline::Seen::Recorded(line)) => *line,
             Some(timeline::Seen::Live(snapshot)) => return (found.clone(), Ok(snapshot.clone())),
@@ -469,16 +469,13 @@ impl Replay {
 
     /// The moments with each snapshot fetched so far in place, so the film
     /// shows what the agent took in as soon as it's here.
-    fn with_seen(&self) -> Vec<Moment> {
-        let mut moments = self.moments.clone();
-        for moment in &mut moments {
-            if let Some(timeline::Seen::Recorded(line)) = moment.seen
-                && let Some(Fetch::Seen(snapshot)) = self.fetched.get(&line)
-            {
-                moment.seen = Some(timeline::Seen::Live(snapshot.clone()));
-            }
-        }
-        moments
+    fn with_seen(&self) -> Timeline {
+        let mut timeline = self.timeline.clone();
+        timeline.fill_seen(|line| match self.fetched.get(&line) {
+            Some(Fetch::Seen(snapshot)) => Some(timeline::Seen::Live(snapshot.clone())),
+            Some(Fetch::Loading | Fetch::Failed(_)) | None => Some(timeline::Seen::Recorded(line)),
+        });
+        timeline
     }
 
     /// Takes in what a person did in the elements panel.
@@ -578,7 +575,7 @@ impl Replay {
             ));
         }
         if let (true, Some(picture), Some(now)) = (self.reading, picture, now) {
-            let read = timeline::read_at(&self.moments, now);
+            let read = self.timeline.read_at(now);
             let drawn = match &read {
                 Some(read) => reading::Drawn::Read {
                     read: &read.read,
@@ -601,10 +598,10 @@ impl Replay {
             ));
         }
         if let (Some(picture), Some(now)) = (picture, now)
-            && !self.moments.is_empty()
+            && !self.timeline.moments().is_empty()
         {
-            let moments = self.with_seen();
-            frame = frame.child(overlay::layer(&moments, picture, now));
+            let seen = self.with_seen();
+            frame = frame.child(overlay::layer(seen.moments(), picture, now));
         }
         if let Some(problem) = problem {
             frame = frame.child(
@@ -775,7 +772,7 @@ impl Replay {
             )
             .child(overlay::strip(
                 "replay-timeline",
-                &self.moments,
+                self.timeline.moments(),
                 overlay::Span {
                     from: 0.0,
                     to: length,
@@ -1014,7 +1011,7 @@ impl Render for Replay {
             stage = stage
                 .child(self.screen(now, (found.as_ref(), shown.as_ref().ok()), &act, &theme))
                 .child(self.controls(&theme, cx));
-            if lined && !self.moments.is_empty() {
+            if lined && !self.timeline.moments().is_empty() {
                 stage = stage.child(self.strip(now, &theme, cx));
                 let open = self.inspect.is_some();
                 stage = stage.child(

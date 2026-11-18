@@ -12,7 +12,7 @@ pub mod pacing;
 use self::pacing::Pace;
 use crate::attention::{Attention, Glance, LET_GO_MS, LOCK_MS, aimed};
 use crate::timeline::{
-    CALLOUT_FADE_MS, CalloutOn, CalloutShape, Gesture, MARK_FADE_MS, Mark, Moment, scene_at,
+    CALLOUT_FADE_MS, CalloutOn, CalloutShape, Gesture, MARK_FADE_MS, Mark, Moment, Scene,
 };
 
 /// A colour: red, green and blue in its low 24 bits.
@@ -490,7 +490,7 @@ impl Caption {
     /// to go beside.
     #[must_use]
     pub fn at(moments: &[Moment], at: f64) -> Vec<Self> {
-        let scene = scene_at(moments, at);
+        let scene = Scene::at(moments, at);
         let named = scene.agents.len() > 1;
         scene
             .agents
@@ -533,7 +533,7 @@ impl Picture {
     /// breath) moves at the film's pace, however fast the session plays.
     #[must_use]
     pub fn filmed(moments: &[Moment], display: Size, at: f64, film: impl Fn(f64) -> f64) -> Self {
-        let scene = scene_at(moments, at);
+        let scene = Scene::at(moments, at);
         let mut shapes = Vec::new();
         for attention in Attention::at(moments, display, at) {
             taken_in(&attention, at, &mut shapes);
