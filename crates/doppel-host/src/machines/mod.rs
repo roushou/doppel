@@ -5,7 +5,7 @@ use std::fs::{self, File};
 use std::io;
 use std::path::PathBuf;
 use std::process::Child;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant};
 
 use crate::provision::Setup;
 use doppel_machine::bundle::{
@@ -35,12 +35,11 @@ use doppel_protocol::pb::vmm::v1 as vmm;
 use nix::fcntl::Flock;
 
 use crate::agent::{AgentClient, AgentError};
-use crate::agent_grant::plan::CodeRequirement;
-use crate::agent_grant::{self, AgentGrantError};
+use crate::agent_grant::plan::AgentGrant;
+use crate::agent_grant::{AgentGrantError, DiskImage};
 use crate::capabilities::Clock;
 use crate::display::DisplayError;
 use crate::files::{FileOpError, Filesystem};
-use crate::golden::plan::GuestUserName;
 use crate::launcher::{Boot, LaunchError, VmmBinary, Window};
 use crate::login::{AwaitDesktopError, PasswordFile, PasswordFileError};
 use crate::store::{Listed, Store, StoreError};
@@ -476,23 +475,16 @@ impl<C: Clock, F: Filesystem> Claim<'_, C, F> {
         self.machines.mark_golden(self, template)
     }
 
-    /// Grants the guest agent Accessibility and Screen Recording for `user`
-    /// by writing the guest's own records of them into its disk, held to
-    /// `requirement`, the agent's code requirement: the guest boots with
-    /// them, and no prompt is answered by a person. The machine must be
-    /// stopped with no saved memory, which expects its disk as it was.
+    /// Writes `grant` into this machine's disk: the guest boots with the
+    /// agent's Accessibility and Screen Recording, and no prompt is answered
+    /// by a person. The machine must be stopped with no saved memory, which
+    /// expects its disk as it was.
     ///
     /// # Errors
     /// [`AgentGrantError`]: running, saved memory, no such user, a record
     /// of a shape this Doppel doesn't know (nothing is written then), or
     /// the disk tools failing.
-    pub fn grant_agent(
-        &self,
-        user: &GuestUserName,
-        requirement: &CodeRequirement,
-        at: SystemTime,
-        by: Deadline,
-    ) -> Result<(), AgentGrantError> {
+    pub fn grant_agent(&self, grant: &AgentGrant, by: Deadline) -> Result<(), AgentGrantError> {
         let machines = self.machines;
         let bundle = &self.bundle;
         let name = bundle.name();
@@ -515,7 +507,7 @@ impl<C: Clock, F: Filesystem> Claim<'_, C, F> {
             .runtime()
             .path()
             .join(format!("grant-{name}"));
-        agent_grant::grant(name, &bundle.image().disk, &mount, user, requirement, at)
+        grant.apply(name, DiskImage::at(&bundle.image().disk), &mount)
     }
 
     /// Makes a golden image a working machine again. Its origin stays.

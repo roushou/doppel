@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context as _, Result};
 use clap::Subcommand;
-use doppel_host::agent_grant::plan::CodeRequirement;
+use doppel_host::agent_grant::plan::{AgentGrant, CodeRequirement};
 use doppel_host::bootstrap::AgentArchive;
 use doppel_host::capabilities::{SystemClock, WallClock as _};
 use doppel_host::golden::plan::GuestUserName;
@@ -91,7 +91,10 @@ impl AgentCommand {
                     .with_context(|| csreq.display().to_string())?;
                 machines
                     .claim(&name, machines.within(CLAIM_TIMEOUT))?
-                    .grant_agent(&user, &requirement, SystemClock.wall(), machines.deadline())?;
+                    .grant_agent(
+                        &AgentGrant::new(user.clone(), requirement, SystemClock.wall()),
+                        machines.deadline(),
+                    )?;
                 Ok(Report::AgentGranted { name, user })
             }
             Self::Bootstrap {

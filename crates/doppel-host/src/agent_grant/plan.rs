@@ -3,7 +3,7 @@
 //! answers a prompt.
 //!
 //! Two records hold them, both Apple's own and undocumented, so each is
-//! checked before it's written and an unknown shape is refused:
+//! checked before either is written, and an unknown shape is refused:
 //!
 //! - **TCC**: the system privacy database's `access` table gets a row per
 //!   service (Accessibility, Screen Recording) for the agent's bundle id,
@@ -14,8 +14,9 @@
 //!   entry the alert comes up once the agent captures; with a hint date far
 //!   ahead it never does.
 //!
-//! The shell attaches the disk image, runs `sqlite3` with [`TccSchema`]'s
-//! and [`TccGrant`]'s SQL, and reads and writes the approvals plist.
+//! An [`AgentGrant`] is the request. Given what the guest has (its
+//! [`TccSchema`] and its approvals), [`AgentGrant::check`] gives the
+//! [`CheckedGrant`]: the only thing the shell writes.
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -100,15 +101,14 @@ impl std::fmt::Debug for CodeRequirement {
     }
 }
 
-/// The `access` table's layout as `sqlite3` lists it, known to take a grant
-/// row: every column a row sets exists, and every column a row leaves out
-/// may be.
+/// Proof that a TCC database's `access` table takes a grant row: every
+/// column a row sets exists, and every column a row leaves out may be.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TccSchema(());
 
 impl TccSchema {
-    /// What `sqlite3 -list -noheader` prints for this, one column a line:
-    /// `name|notnull|has a default`.
+    /// What `sqlite3 -list -noheader` prints for [`Self::parse`], one
+    /// column a line: `name|notnull|has a default`.
     pub const QUERY: &str =
         "select name, \"notnull\", dflt_value is not null from pragma_table_info('access');";
 
@@ -144,25 +144,75 @@ impl TccSchema {
     }
 }
 
-/// The rows that grant the agent its services, replacing any the guest
-/// wrote (a denial after a prompt, an older grant).
+/// Granting the agent, run as `user`, its services from `at`, held to
+/// `requirement`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TccGrant {
-    sql: String,
+pub struct AgentGrant {
+    user: GuestUserName,
+    requirement: CodeRequirement,
+    at: SystemTime,
 }
 
-impl TccGrant {
-    /// Only for a database whose layout was checked.
+impl AgentGrant {
+    #[must_use]
+    pub const fn new(user: GuestUserName, requirement: CodeRequirement, at: SystemTime) -> Self {
+        Self {
+            user,
+            requirement,
+            at,
+        }
+    }
+
+    #[must_use]
+    pub const fn user(&self) -> &GuestUserName {
+        &self.user
+    }
+
+    /// The user's home, from the Data volume's root.
+    #[must_use]
+    pub fn home(&self) -> PathBuf {
+        PathBuf::from("Users").join(self.user.as_str())
+    }
+
+    /// replayd's group container, from the Data volume's root.
+    #[must_use]
+    pub fn approvals_dir(&self) -> PathBuf {
+        self.home()
+            .join("Library/Group Containers/group.com.apple.replayd")
+    }
+
+    /// The approvals plist, from the Data volume's root.
+    #[must_use]
+    pub fn approvals_file(&self) -> PathBuf {
+        self.approvals_dir().join("ScreenCaptureApprovals.plist")
+    }
+
+    /// What to write, given a TCC database known to take it and the
+    /// approvals the guest has (if any).
     ///
     /// # Errors
-    /// [`GrantPlanError::Time`] for a time before 1970.
-    pub fn new(
-        _checked: &TccSchema,
-        requirement: &CodeRequirement,
-        at: SystemTime,
-    ) -> Result<Self, GrantPlanError> {
-        let at = unix_seconds(at)?;
-        let csreq = requirement.hex();
+    /// [`GrantPlanError::Approvals`] when the approvals aren't a
+    /// dictionary, [`GrantPlanError::Time`] for a time before 1970.
+    pub fn check(
+        &self,
+        _layout: &TccSchema,
+        approvals: Option<plist::Value>,
+    ) -> Result<CheckedGrant, GrantPlanError> {
+        Ok(CheckedGrant {
+            sql: self.sql()?,
+            approvals: self.approvals(approvals)?,
+        })
+    }
+
+    /// The rows for both services in one transaction, replacing any the
+    /// guest wrote (a denial after a prompt, an older grant).
+    fn sql(&self) -> Result<String, GrantPlanError> {
+        let at = self
+            .at
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map_err(|_| GrantPlanError::Time(format!("{:?}", self.at)))?
+            .as_secs();
+        let csreq = self.requirement.hex();
         let mut sql = String::from("BEGIN;\n");
         for service in SERVICES {
             // client_type 0: a bundle id. auth_value 2: allowed.
@@ -173,65 +223,12 @@ impl TccGrant {
             ));
         }
         sql.push_str("COMMIT;\n");
-        Ok(Self { sql })
+        Ok(sql)
     }
 
-    /// For `sqlite3`'s standard input.
-    #[must_use]
-    pub fn sql(&self) -> &str {
-        &self.sql
-    }
-}
-
-/// replayd's approvals of the agent's screen capture, for one guest user.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CaptureApprovals {
-    user: GuestUserName,
-}
-
-impl CaptureApprovals {
-    #[must_use]
-    pub const fn new(user: GuestUserName) -> Self {
-        Self { user }
-    }
-
-    /// The user's home, from the Data volume's root.
-    #[must_use]
-    pub fn home(&self) -> PathBuf {
-        PathBuf::from("Users").join(self.user.as_str())
-    }
-
-    /// The directory of the plist, from the Data volume's root.
-    #[must_use]
-    pub fn dir(&self) -> PathBuf {
-        self.home()
-            .join("Library/Group Containers/group.com.apple.replayd")
-    }
-
-    /// The plist, from the Data volume's root.
-    #[must_use]
-    pub fn path(&self) -> PathBuf {
-        self.dir().join("ScreenCaptureApprovals.plist")
-    }
-
-    /// The agent app as replayd names it: where `agent install` puts it.
-    fn app_url(&self) -> String {
-        format!(
-            "file:///Users/{}/Applications/Doppel%20Agent.app/",
-            self.user.as_str()
-        )
-    }
-
-    /// The approvals with the agent's set: seen and used `at`, and never to
+    /// The approvals with the agent's set: seen and used now, and never to
     /// be reminded. Every other app's entry stays.
-    ///
-    /// # Errors
-    /// [`GrantPlanError::Approvals`] when what's there isn't a dictionary.
-    pub fn merged(
-        &self,
-        existing: Option<plist::Value>,
-        at: SystemTime,
-    ) -> Result<plist::Value, GrantPlanError> {
+    fn approvals(&self, existing: Option<plist::Value>) -> Result<plist::Value, GrantPlanError> {
         let mut approvals = match existing {
             None => plist::Dictionary::new(),
             Some(plist::Value::Dictionary(approvals)) => approvals,
@@ -240,21 +237,51 @@ impl CaptureApprovals {
         let date = |time: SystemTime| plist::Value::Date(time.into());
         let mut entry = plist::Dictionary::new();
         entry.insert("kScreenCaptureAlertableUsageCount".into(), 1.into());
-        entry.insert("kScreenCaptureApprovalLastAlerted".into(), date(at));
-        entry.insert("kScreenCaptureApprovalLastUsed".into(), date(at));
+        entry.insert("kScreenCaptureApprovalLastAlerted".into(), date(self.at));
+        entry.insert("kScreenCaptureApprovalLastUsed".into(), date(self.at));
         entry.insert(
             "kScreenCapturePrivacyHintDate".into(),
-            date(at + NO_REMINDER),
+            date(self.at + NO_REMINDER),
         );
         entry.insert("kScreenCapturePrivacyHintPolicy".into(), HINT_POLICY.into());
-        approvals.insert(self.app_url(), plist::Value::Dictionary(entry));
+        // The app as replayd names it: where `agent install` puts it.
+        let app = format!(
+            "file:///Users/{}/Applications/Doppel%20Agent.app/",
+            self.user.as_str()
+        );
+        approvals.insert(app, plist::Value::Dictionary(entry));
         Ok(plist::Value::Dictionary(approvals))
     }
 }
 
-/// An attached disk image, as `diskutil image attach --plist` describes it.
+/// A grant checked against what the guest has: both records' new contents.
+/// Only [`AgentGrant::check`] makes one, so nothing is written unless both
+/// records were known.
+#[derive(Debug, Clone, PartialEq)]
+#[must_use]
+pub struct CheckedGrant {
+    sql: String,
+    approvals: plist::Value,
+}
+
+impl CheckedGrant {
+    /// For `sqlite3`'s standard input.
+    #[must_use]
+    pub fn sql(&self) -> &str {
+        &self.sql
+    }
+
+    /// The approvals plist's new contents.
+    #[must_use]
+    pub const fn approvals(&self) -> &plist::Value {
+        &self.approvals
+    }
+}
+
+/// The devices of an attached disk image, as `diskutil image attach
+/// --plist` describes them.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AttachedImage {
+pub struct AttachedDevices {
     /// The whole disk: what is ejected.
     pub disk: String,
     /// The macOS Data volume: what is mounted.
@@ -276,7 +303,7 @@ struct Entity {
     role: Option<String>,
 }
 
-impl AttachedImage {
+impl AttachedDevices {
     /// # Errors
     /// [`GrantPlanError::Attach`] for an answer that isn't one,
     /// [`GrantPlanError::NoDataVolume`] unless exactly one volume is the
@@ -305,12 +332,6 @@ impl AttachedImage {
             several => Err(GrantPlanError::NoDataVolume(several.join(", "))),
         }
     }
-}
-
-fn unix_seconds(at: SystemTime) -> Result<u64, GrantPlanError> {
-    at.duration_since(SystemTime::UNIX_EPOCH)
-        .map(|since| since.as_secs())
-        .map_err(|_| GrantPlanError::Time(format!("{at:?}")))
 }
 
 #[cfg(test)]
@@ -358,11 +379,18 @@ mod tests {
         assert!(TccSchema::parse("service|1").is_err());
     }
 
+    fn grant() -> AgentGrant {
+        AgentGrant::new(user(), requirement(), at())
+    }
+
+    fn checked(approvals: Option<plist::Value>) -> Result<CheckedGrant, GrantPlanError> {
+        grant().check(&TccSchema::parse(MACOS_27).unwrap(), approvals)
+    }
+
     #[test]
     fn the_grant_replaces_both_services_rows_in_one_transaction() {
-        let schema = TccSchema::parse(MACOS_27).unwrap();
-        let sql = TccGrant::new(&schema, &requirement(), at()).unwrap();
-        let sql = sql.sql();
+        let checked = checked(None).unwrap();
+        let sql = checked.sql();
         assert!(sql.starts_with("BEGIN;\n") && sql.ends_with("COMMIT;\n"));
         for service in SERVICES {
             assert!(
@@ -377,19 +405,16 @@ mod tests {
 
     #[test]
     fn approvals_keep_other_apps_and_never_remind_of_the_agent() {
-        let approvals = CaptureApprovals::new(user());
         assert_eq!(
-            approvals.path(),
+            grant().approvals_file(),
             PathBuf::from(
                 "Users/doppel/Library/Group Containers/group.com.apple.replayd/ScreenCaptureApprovals.plist"
             )
         );
         let mut other = plist::Dictionary::new();
         other.insert("file:///Applications/Other.app/".into(), 7.into());
-        let merged = approvals
-            .merged(Some(plist::Value::Dictionary(other)), at())
-            .unwrap();
-        let merged = merged.as_dictionary().unwrap();
+        let checked = checked(Some(plist::Value::Dictionary(other))).unwrap();
+        let merged = checked.approvals().as_dictionary().unwrap();
         assert!(merged.contains_key("file:///Applications/Other.app/"));
         let agent = merged
             .get("file:///Users/doppel/Applications/Doppel%20Agent.app/")
@@ -403,13 +428,24 @@ mod tests {
     }
 
     #[test]
-    fn approvals_that_are_not_a_dictionary_are_left_alone() {
-        let approvals = CaptureApprovals::new(user());
+    fn approvals_that_are_not_a_dictionary_stop_the_whole_grant() {
         assert_eq!(
-            approvals.merged(Some(plist::Value::Integer(1.into())), at()),
+            checked(Some(plist::Value::Integer(1.into()))),
             Err(GrantPlanError::Approvals)
         );
-        assert!(approvals.merged(None, at()).is_ok());
+    }
+
+    #[test]
+    fn a_grant_before_1970_is_refused() {
+        let early = AgentGrant::new(
+            user(),
+            requirement(),
+            SystemTime::UNIX_EPOCH - Duration::from_secs(1),
+        );
+        assert!(matches!(
+            early.check(&TccSchema::parse(MACOS_27).unwrap(), None),
+            Err(GrantPlanError::Time(_))
+        ));
     }
 
     #[test]
@@ -422,15 +458,15 @@ mod tests {
 <dict><key>content-hint</key><string>Apple_APFS_Volume</string><key>role</key><string>Data</string><key>dev-entry</key><string>disk11s5</string></dict>
 </array></dict></plist>"#;
         assert_eq!(
-            AttachedImage::parse(answer).unwrap(),
-            AttachedImage {
+            AttachedDevices::parse(answer).unwrap(),
+            AttachedDevices {
                 disk: "disk6".to_owned(),
                 data: "disk11s5".to_owned()
             }
         );
         let no_data = String::from_utf8_lossy(answer).replace(">Data<", ">VM<");
         assert!(matches!(
-            AttachedImage::parse(no_data.as_bytes()),
+            AttachedDevices::parse(no_data.as_bytes()),
             Err(GrantPlanError::NoDataVolume(_))
         ));
     }
