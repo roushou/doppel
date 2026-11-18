@@ -1,6 +1,7 @@
 //! What the guest agent reports about its session.
 
 use std::fmt;
+use std::str::FromStr;
 
 use crate::geometry::Size;
 
@@ -170,9 +171,64 @@ pub enum AgentReport {
     NotRunning,
 }
 
+/// An agent build, from its bundle's `build-id` resource.
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct AgentBuild(String);
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("a build id is 1 to 64 characters of A-Z a-z 0-9 . _ - (got {0:?})")]
+pub struct AgentBuildError(String);
+
+impl FromStr for AgentBuild {
+    type Err = AgentBuildError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let valid = (1..=64).contains(&s.len())
+            && s.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'));
+        if valid {
+            Ok(Self(s.to_owned()))
+        } else {
+            Err(AgentBuildError(s.to_owned()))
+        }
+    }
+}
+
+impl AgentBuild {
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for AgentBuild {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl fmt::Debug for AgentBuild {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "AgentBuild({})", self.0)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn build_ids_are_short_and_plain() {
+        assert_eq!(
+            "20261105T082500Z-4ecdbb1"
+                .parse::<AgentBuild>()
+                .unwrap()
+                .as_str(),
+            "20261105T082500Z-4ecdbb1"
+        );
+        for bad in ["", "a b", "a/b", "x\n", &"a".repeat(65)] {
+            assert!(bad.parse::<AgentBuild>().is_err(), "{bad:?}");
+        }
+    }
 
     #[test]
     fn a_bundle_id_is_never_empty() {

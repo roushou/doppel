@@ -8,7 +8,6 @@
 //! app's code identity: with ad-hoc signing every new build needs them again.
 
 use std::fmt;
-use std::str::FromStr;
 use std::time::Duration;
 
 use doppel_machine::exec::{ExecError, ExecOutput, ExecRequest, Termination};
@@ -20,46 +19,7 @@ pub const LABEL: &str = "dev.doppel.agent";
 const APP: &str = "Doppel Agent.app";
 const SH: &str = "/bin/sh";
 
-/// An agent build, from its bundle's `build-id` resource.
-#[derive(Clone, PartialEq, Eq, Hash)]
-pub struct AgentBuild(String);
-
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("a build id is 1 to 64 characters of A-Z a-z 0-9 . _ - (got {0:?})")]
-pub struct AgentBuildError(String);
-
-impl FromStr for AgentBuild {
-    type Err = AgentBuildError;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let valid = (1..=64).contains(&s.len())
-            && s.bytes()
-                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'));
-        if valid {
-            Ok(Self(s.to_owned()))
-        } else {
-            Err(AgentBuildError(s.to_owned()))
-        }
-    }
-}
-
-impl AgentBuild {
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Display for AgentBuild {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl fmt::Debug for AgentBuild {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "AgentBuild({})", self.0)
-    }
-}
+pub use doppel_machine::agent::{AgentBuild, AgentBuildError};
 
 /// The guest user the agent runs as: whose GUI domain and home it installs into.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -337,20 +297,6 @@ mod tests {
 
     fn account() -> GuestAccount {
         GuestAccount::parse(&output(Termination::Exited(0), "501\n/Users/a & <b>", "")).unwrap()
-    }
-
-    #[test]
-    fn build_ids_are_short_and_plain() {
-        assert_eq!(
-            "20261105T082500Z-4ecdbb1"
-                .parse::<AgentBuild>()
-                .unwrap()
-                .as_str(),
-            "20261105T082500Z-4ecdbb1"
-        );
-        for bad in ["", "a b", "a/b", "x\n", &"a".repeat(65)] {
-            assert!(bad.parse::<AgentBuild>().is_err(), "{bad:?}");
-        }
     }
 
     #[test]
