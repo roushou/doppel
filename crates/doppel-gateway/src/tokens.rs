@@ -76,13 +76,17 @@ impl FromStr for TokenSecret {
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TokenDigest([u8; 32]);
 
-impl TokenDigest {
-    /// # Errors
-    /// The bytes aren't 32 long.
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, TokenError> {
+/// A digest as the wire carries it; [`TokenError::Digest`] unless it is
+/// 32 bytes long.
+impl TryFrom<&[u8]> for TokenDigest {
+    type Error = TokenError;
+
+    fn try_from(bytes: &[u8]) -> Result<Self, TokenError> {
         bytes.try_into().map(Self).map_err(|_| TokenError::Digest)
     }
+}
 
+impl TokenDigest {
     #[must_use]
     pub const fn as_bytes(&self) -> &[u8; 32] {
         &self.0
@@ -113,7 +117,7 @@ impl FromStr for TokenDigest {
     /// 64 lowercase hex digits.
     fn from_str(raw: &str) -> Result<Self, Self::Err> {
         let bytes = unhex(raw).ok_or(TokenError::Digest)?;
-        Self::from_bytes(&bytes)
+        Self::try_from(bytes.as_slice())
     }
 }
 

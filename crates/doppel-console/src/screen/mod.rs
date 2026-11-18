@@ -457,7 +457,8 @@ impl ScreenView {
 
     fn press_pointer(&mut self, event: &MouseDownEvent, window: &mut Window, cx: &mut App) {
         window.focus(&self.focus, cx);
-        let (Some(button), Some(placement)) = (Button::from_gpui(event.button), self.placement())
+        let (Some(button), Some(placement)) =
+            (Button::try_from(event.button).ok(), self.placement())
         else {
             return;
         };
@@ -478,7 +479,7 @@ impl ScreenView {
 
     /// A release anywhere ends a press made on this screen.
     fn release(&mut self, event: &MouseUpEvent) {
-        let button = Button::from_gpui(event.button);
+        let button = Button::try_from(event.button).ok();
         if button.is_none() || button != self.pressed {
             return;
         }

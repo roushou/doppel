@@ -17,9 +17,9 @@ use doppel_protocol::display::RingLayout;
 use doppel_protocol::exchange::{DaemonCall, ExchangeConfig, Unrecognized};
 use doppel_protocol::pb::daemon::v1 as daemon;
 use doppel_protocol::pb::daemon::v1::daemon_response::Outcome;
-use doppel_protocol::pb::vmm::v1 as vmm;
 use doppel_protocol::rpc::Rpc;
 use doppel_protocol::transport::Channel;
+use doppel_scene::encoded::EncodedFrame;
 
 use crate::{ClientError, Clock, MachineFailure};
 
@@ -123,27 +123,6 @@ pub struct EncodedSize {
     pub points: Option<Size>,
 }
 
-/// One H.264 frame, in AVCC: each NAL unit prefixed by its length (4 bytes,
-/// big endian). It needs every frame since the last key frame.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EncodedFrame {
-    /// Increases from frame to frame; a gap means frames were skipped,
-    /// which happens only before a key frame.
-    pub sequence: u64,
-    pub kind: FrameKind,
-    pub data: Vec<u8>,
-}
-
-/// Whether a frame starts afresh.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FrameKind {
-    /// Decodable alone, with its parameter sets: the SPS, then the PPS,
-    /// each without a length prefix.
-    Key { parameter_sets: Vec<Vec<u8>> },
-    /// Decodable after the frames before it.
-    Delta,
-}
-
 /// An open encoded display: its frames, until the machine stops.
 #[derive(Debug)]
 pub struct EncodedDisplay<C> {
@@ -200,35 +179,13 @@ impl<C: Clock> EncodedDisplay<C> {
     /// # Errors
     /// [`ClientError::Timeout`] when none comes by `by` (the screen didn't
     /// change); [`ClientError::Closed`] once the machine stops;
-    /// [`ClientError::Protocol`] for a key frame without parameter sets.
+    /// [`ClientError::Parse`] for a key frame without parameter sets.
     pub fn next_frame(&mut self, by: Deadline) -> Result<EncodedFrame, ClientError> {
         loop {
             if let Some(daemon::daemon_event::Kind::EncodedFrame(frame)) = self.channel.event(by)? {
-                return EncodedFrame::from_wire(frame);
+                return Ok(EncodedFrame::try_from(frame)?);
             }
         }
-    }
-}
-
-impl EncodedFrame {
-    fn from_wire(frame: vmm::EncodedFrame) -> Result<Self, ClientError> {
-        let kind = if frame.key {
-            if frame.parameter_sets.is_empty() {
-                return Err(ClientError::Protocol(
-                    "a key frame without its parameter sets",
-                ));
-            }
-            FrameKind::Key {
-                parameter_sets: frame.parameter_sets.into_iter().map(Vec::from).collect(),
-            }
-        } else {
-            FrameKind::Delta
-        };
-        Ok(Self {
-            sequence: frame.sequence,
-            kind,
-            data: Vec::from(frame.data),
-        })
     }
 }
 
@@ -283,41 +240,5 @@ impl<C: Clock> Stream<C> {
             Some(event) => Ok(event.kind),
             None => Err(ClientError::Timeout),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_key_frame_carries_its_parameter_sets_and_a_delta_none() {
-        let wire = |key, parameter_sets: Vec<Vec<u8>>| vmm::EncodedFrame {
-            sequence: 4,
-            key,
-            parameter_sets: parameter_sets.into_iter().map(Into::into).collect(),
-            data: vec![0, 0, 0, 1, 0x65].into(),
-        };
-        assert!(matches!(
-            EncodedFrame::from_wire(wire(true, Vec::new())),
-            Err(ClientError::Protocol(_))
-        ));
-        assert_eq!(
-            EncodedFrame::from_wire(wire(true, vec![vec![0x67], vec![0x68]])).ok(),
-            Some(EncodedFrame {
-                sequence: 4,
-                kind: FrameKind::Key {
-                    parameter_sets: vec![vec![0x67], vec![0x68]],
-                },
-                data: vec![0, 0, 0, 1, 0x65],
-            })
-        );
-        assert_eq!(
-            EncodedFrame::from_wire(wire(false, vec![vec![0x67]]))
-                .ok()
-                .map(|frame| frame.kind),
-            Some(FrameKind::Delta),
-            "a delta's stray parameter sets are dropped"
-        );
     }
 }

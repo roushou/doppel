@@ -561,7 +561,7 @@ where
         &self,
         request: &daemon::IssueToken,
     ) -> Result<daemon::TokenEntry, Refusal> {
-        let digest = TokenDigest::from_bytes(&request.sha256)
+        let digest = TokenDigest::try_from(&request.sha256[..])
             .map_err(|error| Refusal::argument("sha256", &error))?;
         let ttl = Ttl::from_secs(u64::from(request.ttl_seconds))
             .map_err(|error| Refusal::argument("ttl_seconds", &error))?;

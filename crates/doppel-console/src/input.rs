@@ -122,13 +122,15 @@ impl Modifier {
     }
 }
 
-impl Button {
-    /// `None` for buttons the guest isn't sent.
-    pub(crate) const fn from_gpui(button: gpui::MouseButton) -> Option<Self> {
+impl TryFrom<gpui::MouseButton> for Button {
+    /// A button the guest isn't sent: middle, back, forward.
+    type Error = ();
+
+    fn try_from(button: gpui::MouseButton) -> Result<Self, Self::Error> {
         match button {
-            gpui::MouseButton::Left => Some(Self::Left),
-            gpui::MouseButton::Right => Some(Self::Right),
-            gpui::MouseButton::Middle | gpui::MouseButton::Navigate(_) => None,
+            gpui::MouseButton::Left => Ok(Self::Left),
+            gpui::MouseButton::Right => Ok(Self::Right),
+            gpui::MouseButton::Middle | gpui::MouseButton::Navigate(_) => Err(()),
         }
     }
 }
