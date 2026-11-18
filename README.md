@@ -78,6 +78,9 @@ Then:
   claude mcp add doppel -- "$PWD/target/debug/doppel" mcp --from dev
   ```
 
+- `doppel doctor` checks that an agent can be given a machine, and says
+  what to fix if not; `--json` is the same for programs that set Doppel up.
+
 - `doppel --help` lists every command.
 
 ## Screenshots

@@ -58,3 +58,40 @@ fn host_with_a_this_mac_command_fails_before_doing_anything() {
     let err = String::from_utf8(out.stderr).unwrap();
     assert!(err.starts_with("Error: --host is for commands"), "{err:?}");
 }
+
+#[test]
+fn doctor_on_an_empty_store_says_not_ready_in_json_and_exits_1() {
+    let home = std::env::temp_dir().join(format!("doppel-doctor-{}", std::process::id()));
+    let out = Command::new(env!("CARGO_BIN_EXE_doppel"))
+        .arg("--home")
+        .arg(&home)
+        .args(["--vmm", "/nonexistent/doppel-vmm", "doctor", "--json"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(json["ready"], false);
+    let statuses: Vec<_> = json["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|check| {
+            (
+                check["check"].as_str().unwrap(),
+                check["status"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        statuses,
+        [
+            ("vmm", "fail"),
+            // Beside the test binary, built or not.
+            ("agent-archive", statuses[1].1),
+            ("daemon", "fail"),
+            ("golden-image", "skipped"),
+            ("room", "skipped"),
+        ]
+    );
+    let _ = std::fs::remove_dir_all(home);
+}

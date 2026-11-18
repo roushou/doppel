@@ -43,6 +43,10 @@ use doppel_protocol::pb::common::v1 as common;
 use doppel_protocol::pb::daemon::v1 as daemon;
 use doppel_protocol::transport::{Cancel, ChannelError, Replies, Requests};
 
+/// Apple's limit on VMs running at once on a Mac: the daemon starts no
+/// fork, temporary machine included, beyond it.
+pub const MAX_RUNNING_VMS: usize = forks::ForkPlan::MAX_RUNNING;
+
 #[derive(Debug, thiserror::Error)]
 pub enum DaemonError {
     #[error(transparent)]

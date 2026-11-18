@@ -186,6 +186,16 @@ impl JobState {
     }
 }
 
+/// Which daemon launchd starts on demand, if any.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Installation {
+    /// This store's, run by this `doppel`.
+    This,
+    /// Another store's or another build's: installing this one replaces it.
+    Another,
+    None,
+}
+
 /// The installed job: its plist on disk, and launchd's view of it.
 #[derive(Debug)]
 pub(crate) struct Service {
@@ -243,6 +253,16 @@ impl Service {
                 Ok(Some(pid))
             }
             JobState::NotLoaded | JobState::Waiting => Ok(None),
+        }
+    }
+
+    /// Whether launchd has this job's plist, to start this daemon on
+    /// demand: one per user, so another store's or build's replaces it.
+    pub(crate) fn installation(&self) -> Installation {
+        match std::fs::read_to_string(&self.plist) {
+            Ok(installed) if installed == self.agent.plist() => Installation::This,
+            Ok(_) => Installation::Another,
+            Err(_) => Installation::None,
         }
     }
 

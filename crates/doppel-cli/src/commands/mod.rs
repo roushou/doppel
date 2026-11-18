@@ -6,6 +6,7 @@ pub(crate) mod agent;
 pub(crate) mod checkpoints;
 pub(crate) mod daemon;
 pub(crate) mod debug;
+pub(crate) mod doctor;
 pub(crate) mod golden;
 pub(crate) mod guest;
 pub(crate) mod lifecycle;
