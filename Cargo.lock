@@ -1408,6 +1408,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "doppel-desktop"
+version = "0.2.1"
+dependencies = [
+ "insta",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "doppel-gateway"
 version = "0.2.1"
 dependencies = [
@@ -1443,6 +1451,7 @@ dependencies = [
 name = "doppel-machine"
 version = "0.2.1"
 dependencies = [
+ "doppel-desktop",
  "insta",
  "proptest",
  "thiserror 2.0.21",

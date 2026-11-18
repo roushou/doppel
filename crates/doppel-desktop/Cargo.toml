@@ -1,0 +1,17 @@
+[package]
+name = "doppel-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+description = "What is seen and done on a Mac's desktop: the screen and its text, the accessibility tree, input, files, programs and waits. No I/O."
+
+[dependencies]
+thiserror.workspace = true
+
+[dev-dependencies]
+insta.workspace = true
+
+[lints]
+workspace = true
