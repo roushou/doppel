@@ -9,15 +9,15 @@ use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use doppel_desktop::exec::ExecRequest;
+use doppel_desktop::input::{Input, Key, KeyChord, NamedKey};
+use doppel_desktop::outcome::{Certainty, Failure};
 use doppel_machine::bundle::MachineBundle;
-use doppel_machine::exec::ExecRequest;
-use doppel_machine::input::{Input, Key, KeyChord, NamedKey};
 use doppel_machine::login::{
     Action, Credentials, Event, LoginOutcome, LoginPassword, LoginPolicy, Observation,
     PasswordError, Unattended,
 };
 use doppel_machine::machine::MachineName;
-use doppel_machine::outcome::{Certainty, Failure};
 
 use crate::capabilities::Clock;
 use crate::files::Filesystem;

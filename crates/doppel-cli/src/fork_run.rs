@@ -230,7 +230,7 @@ impl ForkRun {
 mod tests {
     use std::os::unix::process::ExitStatusExt as _;
 
-    use doppel_machine::outcome::Certainty;
+    use doppel_desktop::outcome::Certainty;
 
     use super::*;
 

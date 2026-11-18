@@ -7,8 +7,8 @@ use std::process::Command;
 use std::sync::Arc;
 
 use anyhow::{Context as _, Result, bail};
-use doppel_machine::ax::tree::AxSnapshot;
-use doppel_machine::geometry::Size;
+use doppel_desktop::ax::tree::AxSnapshot;
+use doppel_desktop::geometry::Size;
 use doppel_scene::film::{POINTER_MS, Reel};
 use doppel_scene::recordings::{Recording, Video};
 use doppel_scene::timeline::{Seen, from_trace};

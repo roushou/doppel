@@ -15,12 +15,12 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::time::Duration;
 
+use doppel_desktop::deadline::Deadline;
 use doppel_host::capabilities::{Clock, SystemClock};
 use doppel_host::display::{DisplayError, DisplayStream, Nv12Frame};
 use doppel_host::store::Store;
 use doppel_host::vmm::{VmmClient, VmmError};
 use doppel_machine::bundle::{DataRoot, RuntimeDir};
-use doppel_machine::deadline::Deadline;
 use doppel_protocol::frame::{FrameDecoder, FrameEncoder, MaxFrameLen, Received};
 use doppel_protocol::pb::common::v1 as common;
 use doppel_protocol::pb::vmm::v1 as vmm;
@@ -212,7 +212,7 @@ fn whole_frames_are_copied_and_torn_ones_skipped() {
     assert_eq!(stream.pixels(), (4, 2));
     assert_eq!(
         stream.points(),
-        doppel_machine::geometry::Size::new(2.0, 1.0).ok()
+        doppel_desktop::geometry::Size::new(2.0, 1.0).ok()
     );
     let mut frame = Nv12Frame::default();
     assert_eq!(stream.next_frame(soon(), &mut frame).unwrap(), 3);

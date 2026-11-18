@@ -2,10 +2,10 @@
 
 use std::collections::HashMap;
 
-use doppel_machine::ax::changes::{Carried, Known};
-use doppel_machine::ax::compact::{CompactSnapshot, CompactionPolicy, Show};
-use doppel_machine::ax::refs::{Generation, Ref, RefError, RefTable, RefTarget, SnapshotRefs};
-use doppel_machine::ax::tree::AxSnapshot;
+use doppel_desktop::ax::changes::{Carried, Known};
+use doppel_desktop::ax::compact::{CompactSnapshot, CompactionPolicy, Show};
+use doppel_desktop::ax::refs::{Generation, Ref, RefError, RefTable, RefTarget, SnapshotRefs};
+use doppel_desktop::ax::tree::AxSnapshot;
 use doppel_machine::machine::MachineName;
 
 /// What the model holds of a machine's UI after its latest listing.

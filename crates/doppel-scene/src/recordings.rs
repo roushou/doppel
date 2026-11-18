@@ -2,7 +2,7 @@
 //! session, the trace's calls, and the arithmetic between a video's
 //! playhead and the session's clock. Pure.
 
-use doppel_machine::geometry::Size;
+use doppel_desktop::geometry::Size;
 use std::fmt;
 
 use doppel_machine::machine::MachineName;
@@ -123,7 +123,7 @@ pub struct TraceCall {
     /// saw: [`crate::Daemon::seen_snapshot`] reads it.
     pub seen: Option<u32>,
     /// What the agent named the elements of that snapshot.
-    pub refs: Option<std::sync::Arc<doppel_machine::ax::refs::SnapshotRefs>>,
+    pub refs: Option<std::sync::Arc<doppel_desktop::ax::refs::SnapshotRefs>>,
     /// What it read off the screen by text recognition.
     pub read: Option<std::sync::Arc<crate::timeline::TextRead>>,
 }

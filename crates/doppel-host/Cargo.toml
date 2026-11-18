@@ -8,6 +8,7 @@ rust-version.workspace = true
 description = "Doppel's imperative shell on the host: VMM client, file operations, machine lifecycle."
 
 [dependencies]
+doppel-desktop = { path = "../doppel-desktop" }
 doppel-machine = { path = "../doppel-machine" }
 doppel-protocol = { path = "../doppel-protocol" }
 getrandom.workspace = true

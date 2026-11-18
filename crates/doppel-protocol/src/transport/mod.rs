@@ -33,7 +33,7 @@ use std::os::unix::net::UnixStream;
 use crate::exchange::{Answer, Exchange, ExchangeConfig, ExchangeError, Protocol, RequestError};
 use crate::frame::EncodeError;
 use crate::pb::common::v1 as common;
-use doppel_machine::deadline::{Clock, Deadline, Remaining};
+use doppel_desktop::deadline::{Clock, Deadline, Remaining};
 use nix::errno::Errno;
 use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
 use nix::sys::socket::{ControlMessageOwned, MsgFlags, recv, recvmsg};

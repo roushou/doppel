@@ -5,10 +5,10 @@ use std::path::PathBuf;
 
 use anyhow::{Context as _, Result, bail};
 use clap::Subcommand;
+use doppel_desktop::deadline::Deadline;
 use doppel_host::capabilities::{Clock as _, SystemClock};
 use doppel_host::machines::{CALL_TIMEOUT, FINISH_RECORDING_TIMEOUT};
 use doppel_host::vmm::RecordingStart;
-use doppel_machine::deadline::Deadline;
 use doppel_machine::machine::MachineName;
 
 use crate::context::Context;

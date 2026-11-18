@@ -20,9 +20,10 @@ or from another computer.
   can't race it.
 - **The VMM and agent protocols** (`doppel.vmm.v1`, `doppel.agent.v1`) and
   the fd passing for the agent channel. The daemon is a client of the VMMs.
-- **The pure core.** Lifecycle, checkpoint, login, screen probe and wait
-  state machines, AX compaction, refs and captions live in `doppel-machine`
-  and `doppel-mcp`; the daemon is a shell around them.
+- **The pure core.** Lifecycle, checkpoint, login and screen probe state
+  machines and captions live in `doppel-machine`; waits, AX compaction and
+  refs in `doppel-desktop`; the tool surface in `doppel-mcp`. The daemon is
+  a shell around them.
 
 ## Shape
 

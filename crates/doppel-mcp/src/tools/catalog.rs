@@ -7,22 +7,22 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use base64::Engine as _;
-use doppel_machine::ax::compact::{CompactionPolicy, Show, Tokens};
-use doppel_machine::ax::refs::Ref;
-use doppel_machine::ax::tree::{ActOn, ActionName, ElementAction, Menus};
-use doppel_machine::ax::tree::{SnapshotScope, SnapshotSpec};
-use doppel_machine::bundle::CheckpointLabel;
-use doppel_machine::exec::ExecRequest;
-use doppel_machine::files::{FileMode, ReadRequest, WritePolicy, WriteRequest};
-use doppel_machine::geometry::Point;
-use doppel_machine::guest_path::GuestPath;
-use doppel_machine::input::{Button, ClickCount, Input, KeyChord};
-use doppel_machine::machine::MachineName;
-use doppel_machine::mark::{
+use doppel_desktop::ax::compact::{CompactionPolicy, Show, Tokens};
+use doppel_desktop::ax::refs::Ref;
+use doppel_desktop::ax::tree::{ActOn, ActionName, ElementAction, Menus};
+use doppel_desktop::ax::tree::{SnapshotScope, SnapshotSpec};
+use doppel_desktop::exec::ExecRequest;
+use doppel_desktop::files::{FileMode, ReadRequest, WritePolicy, WriteRequest};
+use doppel_desktop::geometry::Point;
+use doppel_desktop::guest_path::GuestPath;
+use doppel_desktop::input::{Button, ClickCount, Input, KeyChord};
+use doppel_desktop::mark::{
     Area, DEFAULT_LASTS, Lasts, MAX_LASTS, MarkAt, NOTE_MAX_CHARS, Note, Shape,
 };
-use doppel_machine::screen_text::TextQuery;
-use doppel_machine::wait::{self, Condition, TextCondition, WaitSpec};
+use doppel_desktop::screen_text::TextQuery;
+use doppel_desktop::wait::{self, Condition, TextCondition, WaitSpec};
+use doppel_machine::bundle::CheckpointLabel;
+use doppel_machine::machine::MachineName;
 use rmcp::model::{JsonObject, Tool as Definition};
 use rmcp::schemars::generate::SchemaSettings;
 use rmcp::schemars::transform::RecursiveTransform;
@@ -31,8 +31,8 @@ use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
 
-use doppel_machine::input::Via;
-use doppel_machine::screen::ScreenshotSize;
+use doppel_desktop::input::Via;
+use doppel_desktop::screen::ScreenshotSize;
 
 use super::{
     ArgumentError, MCP_MAX_FILE, MCP_MAX_OUTPUT, SnapshotListing, ToolAction, ToolCall, Why,
@@ -81,7 +81,7 @@ impl Parsing<'_> {
         &self,
         machine: &MachineName,
         raw: &str,
-    ) -> Result<(Ref, doppel_machine::ax::refs::RefTarget), ArgumentError> {
+    ) -> Result<(Ref, doppel_desktop::ax::refs::RefTarget), ArgumentError> {
         let r: Ref = raw.parse().map_err(|e| value(&e))?;
         let target = self
             .refs
@@ -796,7 +796,7 @@ impl Tool for Mark {
             why: None,
             machine,
             action: ToolAction::Mark {
-                mark: doppel_machine::mark::Mark::new(place, shape, note, lasts)
+                mark: doppel_desktop::mark::Mark::new(place, shape, note, lasts)
                     .map_err(|e| value(&e))?,
                 on,
             },

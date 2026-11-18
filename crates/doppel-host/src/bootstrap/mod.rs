@@ -21,7 +21,7 @@ use crate::bootstrap::plan::{
 };
 use crate::dhcp_leases::{self, DhcpLeases};
 use crate::golden::plan::GuestUserName;
-use doppel_machine::guest_path::GuestPath;
+use doppel_desktop::guest_path::GuestPath;
 use doppel_machine::machine::{MacAddress, MachineName, NetworkSpec};
 
 use crate::agent_install::{AgentInstallError, Installed};

@@ -2,9 +2,9 @@
 //! its guest agent answers, the app in front, the display's size, and how
 //! many checkpoints it keeps.
 
-use doppel_machine::agent::Session as GuestSession;
+use doppel_desktop::agent::Session as GuestSession;
 
-use doppel_machine::agent::AgentReport;
+use doppel_desktop::agent::AgentReport;
 use doppel_machine::vm::MachineReport;
 
 /// Whether someone is logged in to the guest and its screen unlocked.
@@ -98,8 +98,8 @@ pub fn calls_per_minute(starts: impl IntoIterator<Item = f64>, now: f64) -> usiz
 
 #[cfg(test)]
 mod tests {
-    use doppel_machine::agent::{AgentStatus, ProcessId, RunningApp};
-    use doppel_machine::geometry::Size;
+    use doppel_desktop::agent::{AgentStatus, ProcessId, RunningApp};
+    use doppel_desktop::geometry::Size;
     use doppel_machine::vm::{NextStart, RunState, Status};
 
     use super::*;

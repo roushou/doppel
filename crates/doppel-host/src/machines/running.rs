@@ -6,14 +6,14 @@
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 
-use doppel_machine::agent::VsockPort;
-use doppel_machine::deadline::Deadline;
-use doppel_machine::geometry::Point;
-use doppel_machine::input::Input;
+use doppel_desktop::deadline::Deadline;
+use doppel_desktop::geometry::Point;
+use doppel_desktop::input::Input;
+use doppel_desktop::screen::Screenshot;
+use doppel_desktop::screen_text::ScreenText;
 use doppel_machine::machine::MachineName;
-use doppel_machine::screen::Screenshot;
 use doppel_machine::screen_probe::Rgb;
-use doppel_machine::screen_text::ScreenText;
+use doppel_machine::vm::VsockPort;
 
 use super::MachineError;
 use crate::agent::AgentClient;

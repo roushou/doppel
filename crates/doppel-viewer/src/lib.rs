@@ -52,11 +52,11 @@ use web as platform;
 #[cfg(target_family = "wasm")]
 pub use web::Screen;
 
-pub use doppel_machine::agent::AgentReport;
-pub use doppel_machine::agent::AgentStatus;
-pub use doppel_machine::ax::tree::AxSnapshot;
+pub use doppel_desktop::agent::AgentReport;
+pub use doppel_desktop::agent::AgentStatus;
+pub use doppel_desktop::ax::tree::AxSnapshot;
+pub use doppel_desktop::geometry::Size;
 pub use doppel_machine::bundle::CheckpointLabel;
-pub use doppel_machine::geometry::Size;
 pub use doppel_machine::machine::MachineName;
 pub use doppel_machine::vm::MachineReport;
 pub use doppel_scene::encoded::{EncodedFrame, FrameKind};

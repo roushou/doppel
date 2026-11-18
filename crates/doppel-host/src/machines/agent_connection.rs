@@ -8,7 +8,7 @@
 
 use std::time::Instant;
 
-use doppel_machine::deadline::Deadline;
+use doppel_desktop::deadline::Deadline;
 use doppel_machine::machine::MachineName;
 use doppel_protocol::transport::{Cancel, Slept, Waited, Wakeup};
 

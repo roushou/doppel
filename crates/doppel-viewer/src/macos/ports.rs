@@ -2,7 +2,7 @@
 //! encoded, and where its input and requests for control go. Each is called
 //! on a thread of its own, and may block.
 
-use doppel_machine::geometry::Size;
+use doppel_desktop::geometry::Size;
 use doppel_scene::encoded::EncodedFrame;
 
 use crate::{GuestInput, SourceError};

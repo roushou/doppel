@@ -670,7 +670,7 @@ mod tests {
         let (ours, theirs) = UnixStream::pair().unwrap();
         std::thread::scope(|scope| {
             scope.spawn(|| daemon.serve_connection(theirs));
-            let by = doppel_machine::deadline::Deadline::after(
+            let by = doppel_desktop::deadline::Deadline::after(
                 SystemClock.now(),
                 Duration::from_secs(5),
             );
@@ -730,7 +730,7 @@ mod tests {
             .unwrap();
         let (ours, theirs) = UnixStream::pair().unwrap();
         let soon = || {
-            doppel_machine::deadline::Deadline::after(
+            doppel_desktop::deadline::Deadline::after(
                 SystemClock.now(),
                 std::time::Duration::from_secs(10),
             )
@@ -764,8 +764,8 @@ mod tests {
                     Err(doppel_client::ClientError::Machine(failure)) => {
                         assert_eq!(failure.message(), "cancelled");
                         assert_eq!(
-                            doppel_machine::outcome::Failure::certainty(&failure),
-                            doppel_machine::outcome::Certainty::NotDone
+                            doppel_desktop::outcome::Failure::certainty(&failure),
+                            doppel_desktop::outcome::Certainty::NotDone
                         );
                     }
                     other => panic!("{other:?}"),

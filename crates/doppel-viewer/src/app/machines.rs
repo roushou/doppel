@@ -2249,7 +2249,7 @@ fn ago(ms: f64) -> String {
 /// What a machine's elements panel shows, worked out from its timeline and
 /// the person's latest look.
 pub(super) struct ElementsShown {
-    pub(super) snapshot: Result<Arc<doppel_machine::ax::tree::AxSnapshot>, Empty>,
+    pub(super) snapshot: Result<Arc<doppel_desktop::ax::tree::AxSnapshot>, Empty>,
     /// The agent's refs for it; none for a person's look.
     pub(super) named: Named,
     pub(super) age: SharedString,

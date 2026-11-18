@@ -3,7 +3,7 @@
 
 use std::time::{Instant, SystemTime};
 
-pub use doppel_machine::deadline::Clock;
+pub use doppel_desktop::deadline::Clock;
 use doppel_machine::machine::Entropy;
 
 /// Time as people name it, beside the monotonic [`Clock`] to measure with:

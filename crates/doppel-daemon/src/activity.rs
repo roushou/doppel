@@ -9,10 +9,10 @@ use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Instant;
 
-use doppel_machine::ax::tree::Subrole;
+use doppel_desktop::ax::tree::Subrole;
+use doppel_desktop::mark::{Lasts, Mark, MarkAt, Shape};
+use doppel_desktop::screen_text::{ScreenText, TextQuery};
 use doppel_machine::machine::MachineName;
-use doppel_machine::mark::{Lasts, Mark, MarkAt, Shape};
-use doppel_machine::screen_text::{ScreenText, TextQuery};
 use doppel_protocol::pb::agent::v1 as agent;
 use doppel_protocol::pb::common::v1 as common;
 use doppel_protocol::pb::daemon::v1 as daemon;

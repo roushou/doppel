@@ -1360,6 +1360,7 @@ dependencies = [
  "clap",
  "doppel-client",
  "doppel-daemon",
+ "doppel-desktop",
  "doppel-gateway",
  "doppel-host",
  "doppel-machine",
@@ -1381,6 +1382,7 @@ dependencies = [
 name = "doppel-client"
 version = "0.2.1"
 dependencies = [
+ "doppel-desktop",
  "doppel-gateway",
  "doppel-machine",
  "doppel-protocol",
@@ -1394,6 +1396,7 @@ version = "0.2.1"
 dependencies = [
  "base64 0.22.1",
  "doppel-client",
+ "doppel-desktop",
  "doppel-gateway",
  "doppel-host",
  "doppel-machine",
@@ -1405,6 +1408,14 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "tungstenite",
+]
+
+[[package]]
+name = "doppel-desktop"
+version = "0.2.1"
+dependencies = [
+ "insta",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -1428,6 +1439,7 @@ dependencies = [
 name = "doppel-host"
 version = "0.2.1"
 dependencies = [
+ "doppel-desktop",
  "doppel-machine",
  "doppel-protocol",
  "getrandom 0.4.3",
@@ -1443,6 +1455,7 @@ dependencies = [
 name = "doppel-machine"
 version = "0.2.1"
 dependencies = [
+ "doppel-desktop",
  "insta",
  "proptest",
  "thiserror 2.0.21",
@@ -1453,6 +1466,7 @@ name = "doppel-mcp"
 version = "0.2.1"
 dependencies = [
  "base64 0.22.1",
+ "doppel-desktop",
  "doppel-machine",
  "rmcp",
  "serde",
@@ -1467,6 +1481,7 @@ name = "doppel-protocol"
 version = "0.2.1"
 dependencies = [
  "bytes",
+ "doppel-desktop",
  "doppel-machine",
  "doppel-scene",
  "insta",
@@ -1482,6 +1497,7 @@ dependencies = [
 name = "doppel-scene"
 version = "0.2.1"
 dependencies = [
+ "doppel-desktop",
  "doppel-machine",
  "thiserror 2.0.21",
 ]
@@ -1492,6 +1508,7 @@ version = "0.2.1"
 dependencies = [
  "core-foundation 0.10.0",
  "core-video",
+ "doppel-desktop",
  "doppel-machine",
  "doppel-protocol",
  "doppel-scene",

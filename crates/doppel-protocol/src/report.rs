@@ -7,9 +7,9 @@ use std::time::Duration;
 
 use crate::convert::ParseError;
 use crate::pb::daemon::v1 as daemon;
+use doppel_desktop::outcome::{Certainty, Failure};
 use doppel_machine::checkpoint::{GuestAfterFailure, GuestSync, Step};
 use doppel_machine::machine::MachineName;
-use doppel_machine::outcome::{Certainty, Failure};
 
 /// Why a machine operation failed on the daemon's side: its description,
 /// whether the operation may still have taken effect, and its causes.

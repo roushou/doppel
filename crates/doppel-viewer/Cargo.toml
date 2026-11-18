@@ -8,6 +8,7 @@ rust-version.workspace = true
 description = "The window for running machines, drawn with GPUI: on the desktop, and in a browser."
 
 [dependencies]
+doppel-desktop = { path = "../doppel-desktop" }
 doppel-machine = { path = "../doppel-machine" }
 doppel-protocol = { path = "../doppel-protocol" }
 doppel-scene = { path = "../doppel-scene" }

@@ -2,6 +2,21 @@
 //! blocks until it's done. They speak in machines, not tools: refs,
 //! rendering and the model's vocabulary belong to the MCP side.
 
+use doppel_desktop::agent::AgentReport;
+use doppel_desktop::ax::tree::{ActOn, AxSnapshot, Menus, Scope, SnapshotRequest};
+use doppel_desktop::ax::tree::{SnapshotScope, SnapshotSpec};
+use doppel_desktop::deadline::Deadline;
+use doppel_desktop::exec::{ExecOutput, ExecRequest};
+use doppel_desktop::files::{ReadRequest, WriteRequest};
+use doppel_desktop::input::Input;
+use doppel_desktop::input::Via;
+use doppel_desktop::outcome::{Certainty, Failure, Outcome, Unconfirmed};
+use doppel_desktop::screen::Screenshot;
+use doppel_desktop::screen::ScreenshotSize;
+use doppel_desktop::screen_text::ScreenText;
+use doppel_desktop::wait::{
+    Condition, Next, Poll, TextCondition, WaitOutcome, WaitSpec, Waiting, Watch,
+};
 use doppel_host::agent::{AgentClient, AgentError};
 use doppel_host::capabilities::Clock;
 use doppel_host::files::Filesystem;
@@ -14,28 +29,13 @@ use doppel_host::machines::{
 };
 use doppel_host::store::{Listed, StoreError};
 use doppel_host::vmm::{StopMode, VmmError};
-use doppel_machine::agent::AgentReport;
-use doppel_machine::ax::tree::{ActOn, AxSnapshot, Menus, Scope, SnapshotRequest};
-use doppel_machine::ax::tree::{SnapshotScope, SnapshotSpec};
 use doppel_machine::bundle::CheckpointLabel;
 use doppel_machine::checkpoint::AfterCheckpoint;
-use doppel_machine::deadline::Deadline;
-use doppel_machine::exec::{ExecOutput, ExecRequest};
-use doppel_machine::files::{ReadRequest, WriteRequest};
-use doppel_machine::input::Input;
-use doppel_machine::input::Via;
 use doppel_machine::lineage::{RecordedLineage, Role};
 use doppel_machine::login::{Desktop, LoginPolicy};
 use doppel_machine::machine::MachineName;
-use doppel_machine::outcome::{Certainty, Failure, Outcome, Unconfirmed};
-use doppel_machine::screen::Screenshot;
-use doppel_machine::screen::ScreenshotSize;
-use doppel_machine::screen_text::ScreenText;
 use doppel_machine::vm::MachineReport;
 use doppel_machine::vm::{NextStart, RunState, Status};
-use doppel_machine::wait::{
-    Condition, Next, Poll, TextCondition, WaitOutcome, WaitSpec, Waiting, Watch,
-};
 use doppel_protocol::convert::RemoteError;
 use doppel_protocol::transport::Cancel;
 

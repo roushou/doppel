@@ -8,6 +8,7 @@ rust-version.workspace = true
 description = "A client of doppeld, the daemon that owns a user's machines."
 
 [dependencies]
+doppel-desktop = { path = "../doppel-desktop" }
 doppel-gateway = { path = "../doppel-gateway" }
 doppel-machine = { path = "../doppel-machine" }
 doppel-protocol = { path = "../doppel-protocol" }

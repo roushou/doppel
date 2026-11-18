@@ -11,9 +11,9 @@
 
 use std::fmt;
 
-use crate::agent::AgentBuild;
 use crate::bundle::CheckpointLabel;
 use crate::machine::MachineName;
+use doppel_desktop::agent::AgentBuild;
 
 /// What a machine is for.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

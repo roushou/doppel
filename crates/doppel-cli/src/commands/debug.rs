@@ -7,8 +7,8 @@ use std::time::Duration;
 use anyhow::{Context as _, Result, bail};
 use clap::{Subcommand, ValueEnum};
 use doppel_host::capabilities::{Clock as _, SystemClock};
-use doppel_machine::agent::VsockPort;
 use doppel_machine::machine::MachineName;
+use doppel_machine::vm::VsockPort;
 
 use crate::context::Context;
 use crate::report::Report;
@@ -76,9 +76,9 @@ fn ax_dump(
     max_tokens: u32,
     out: Option<PathBuf>,
 ) -> Result<Report> {
-    use doppel_machine::ax::compact::{CompactSnapshot, CompactionPolicy, Tokens};
-    use doppel_machine::ax::refs::Generation;
-    use doppel_machine::ax::tree::{AxSnapshot, Menus, Scope, SnapshotRequest};
+    use doppel_desktop::ax::compact::{CompactSnapshot, CompactionPolicy, Tokens};
+    use doppel_desktop::ax::refs::Generation;
+    use doppel_desktop::ax::tree::{AxSnapshot, Menus, Scope, SnapshotRequest};
     use prost::Message as _;
 
     let machines = ctx.machines();

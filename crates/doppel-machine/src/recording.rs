@@ -5,8 +5,8 @@
 use std::fmt;
 use std::str::FromStr;
 
-use crate::geometry::Size;
 use crate::machine::MachineName;
+use doppel_desktop::geometry::Size;
 
 /// A recording's name, as the daemon lists it (`2026-11-14T06-15-42Z-s1`).
 /// Only ASCII letters, digits and `-`: safe as a single path component.
@@ -149,7 +149,7 @@ pub struct TraceCall {
     /// saw: the daemon reads it back by that line.
     pub seen: Option<u32>,
     /// What the session's client named the elements of that snapshot.
-    pub refs: Option<Box<crate::ax::refs::SnapshotRefs>>,
+    pub refs: Option<Box<doppel_desktop::ax::refs::SnapshotRefs>>,
     /// What it read off the screen by text recognition.
     pub read: Option<Box<crate::activity::TextRead>>,
 }

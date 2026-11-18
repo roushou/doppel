@@ -5,7 +5,7 @@
 //! display points. A renderer draws them on the frames without deciding
 //! anything.
 
-use doppel_machine::geometry::{Point, Rect, Size};
+use doppel_desktop::geometry::{Point, Rect, Size};
 
 pub mod pacing;
 

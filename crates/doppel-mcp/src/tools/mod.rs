@@ -5,24 +5,24 @@ use std::fmt::Write as _;
 use std::time::Duration;
 
 use base64::Engine as _;
-use doppel_machine::agent::AgentReport;
-use doppel_machine::ax::compact::CompactionPolicy;
-use doppel_machine::ax::refs::{Ref, RefTarget};
-use doppel_machine::ax::tree::{ActOn, AxSnapshot, SnapshotSpec};
+use doppel_desktop::agent::AgentReport;
+use doppel_desktop::ax::compact::CompactionPolicy;
+use doppel_desktop::ax::refs::{Ref, RefTarget};
+use doppel_desktop::ax::tree::{ActOn, AxSnapshot, SnapshotSpec};
+use doppel_desktop::exec::{Completeness, ExecOutput, ExecRequest, Termination};
+use doppel_desktop::files::{ReadRequest, WritePolicy, WriteRequest};
+use doppel_desktop::guest_path::GuestPath;
+use doppel_desktop::input::{Button, ClickCount, Input, Via};
+use doppel_desktop::mark::{Lasts, Mark, MarkAt};
+use doppel_desktop::outcome::Unconfirmed;
+use doppel_desktop::screen::{Screenshot, ScreenshotSize};
+use doppel_desktop::screen_text::{ScreenText, TextQuery};
+use doppel_desktop::wait::{Condition, TextCondition, WaitOutcome, WaitSpec};
 use doppel_machine::bundle::CheckpointLabel;
 use doppel_machine::checkpoint::{GuestAfterFailure, GuestSync, Step};
-use doppel_machine::exec::{Completeness, ExecOutput, ExecRequest, Termination};
-use doppel_machine::files::{ReadRequest, WritePolicy, WriteRequest};
-use doppel_machine::guest_path::GuestPath;
-use doppel_machine::input::{Button, ClickCount, Input, Via};
 use doppel_machine::login::Desktop;
 use doppel_machine::machine::MachineName;
-use doppel_machine::mark::{Lasts, Mark, MarkAt};
-use doppel_machine::outcome::Unconfirmed;
-use doppel_machine::screen::{Screenshot, ScreenshotSize};
 use doppel_machine::screen_probe::HostScreen;
-use doppel_machine::screen_text::{ScreenText, TextQuery};
-use doppel_machine::wait::{Condition, TextCondition, WaitOutcome, WaitSpec};
 use rmcp::model::{CallToolResult, ContentBlock};
 
 use crate::refs::Refs;
@@ -770,17 +770,17 @@ impl StatusReport {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use doppel_machine::agent::{Permission, Session};
-    use doppel_machine::ax::tree::ElementAction;
-    use doppel_machine::files::FileMode;
-    use doppel_machine::geometry::Point;
-    use doppel_machine::geometry::Size;
-    use doppel_machine::mark::{DEFAULT_LASTS, Shape};
-    use doppel_machine::screen::ImageFormat;
+    use doppel_desktop::agent::{Permission, Session};
+    use doppel_desktop::ax::tree::ElementAction;
+    use doppel_desktop::files::FileMode;
+    use doppel_desktop::geometry::Point;
+    use doppel_desktop::geometry::Size;
+    use doppel_desktop::mark::{DEFAULT_LASTS, Shape};
+    use doppel_desktop::screen::ImageFormat;
     use serde_json::{Map, Value, json};
 
     use super::*;
-    use doppel_machine::agent::AgentStatus;
+    use doppel_desktop::agent::AgentStatus;
 
     type TestOutcome = ToolOutcome<String>;
 
@@ -1011,8 +1011,8 @@ pub(crate) mod tests {
 
     #[test]
     fn found_text_renders_click_points_and_misses_are_not_errors() {
-        use doppel_machine::geometry::Rect;
-        use doppel_machine::screen_text::{Confidence, TextLine};
+        use doppel_desktop::geometry::Rect;
+        use doppel_desktop::screen_text::{Confidence, TextLine};
         let region = |x, w| Rect::new(x, 100.0, w, 20.0).unwrap();
         let line = TextLine::new(
             "Cancel Save".into(),
@@ -1082,8 +1082,8 @@ pub(crate) mod tests {
 
     #[test]
     fn text_waits_show_where_it_appeared_or_where_it_still_is() {
-        use doppel_machine::geometry::Rect;
-        use doppel_machine::screen_text::{Confidence, TextLine};
+        use doppel_desktop::geometry::Rect;
+        use doppel_desktop::screen_text::{Confidence, TextLine};
         let screen = |line: &str| {
             let region = Rect::new(100.0, 200.0, 80.0, 20.0).unwrap();
             let line =
@@ -1466,8 +1466,8 @@ pub(crate) mod tests {
     }
 
     pub(crate) mod ax {
-        use doppel_machine::agent::{ProcessId, RunningApp};
-        use doppel_machine::ax::tree::{
+        use doppel_desktop::agent::{ProcessId, RunningApp};
+        use doppel_desktop::ax::tree::{
             AxNode, AxText, AxTree, NodeIndex, Role, SnapshotId, States, Truncation,
         };
 
@@ -1579,7 +1579,7 @@ pub(crate) mod tests {
             };
             assert_eq!(
                 on.at(),
-                MarkAt::Element(doppel_machine::ax::tree::ElementTarget {
+                MarkAt::Element(doppel_desktop::ax::tree::ElementTarget {
                     snapshot: SnapshotId::new(900),
                     node: NodeIndex::new(1),
                 })
@@ -1779,7 +1779,7 @@ pub(crate) mod tests {
         fn a_listing_of_changes_keeps_the_refs_of_what_is_as_it_was() {
             let mut refs = Refs::default();
             let changes = CompactionPolicy {
-                show: doppel_machine::ax::compact::Show::Changes,
+                show: doppel_desktop::ax::compact::Show::Changes,
                 ..CompactionPolicy::default()
             };
             let shown = |refs: &mut Refs, id, title| {

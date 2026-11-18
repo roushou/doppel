@@ -9,6 +9,7 @@ description = "Doppel's MCP server, on rmcp: typed tool calls out to a runner, r
 
 [dependencies]
 base64.workspace = true
+doppel-desktop = { path = "../doppel-desktop" }
 doppel-machine = { path = "../doppel-machine" }
 rmcp = { workspace = true, features = ["server"] }
 serde.workspace = true

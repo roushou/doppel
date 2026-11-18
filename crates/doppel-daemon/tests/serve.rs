@@ -17,16 +17,16 @@ use std::time::Duration;
 
 use doppel_client::{Client, ClientError, Listing, StopMode};
 use doppel_daemon::{Daemon, DaemonError, EntropyMacs};
+use doppel_desktop::deadline::Deadline;
+use doppel_desktop::outcome::{Certainty, Failure};
 use doppel_host::capabilities::{Clock, SystemClock, WallClock};
 use doppel_host::files::LocalFilesystem;
 use doppel_host::launcher::VmmBinary;
 use doppel_host::machines::Machines;
 use doppel_host::store::Store;
 use doppel_machine::bundle::{DataRoot, RuntimeDir};
-use doppel_machine::deadline::Deadline;
 use doppel_machine::lineage::{Lineage, Origin, RecordedLineage, Role};
 use doppel_machine::machine::{Entropy, MachineName, NetworkSpec};
-use doppel_machine::outcome::{Certainty, Failure};
 use doppel_machine::vm::{NextStart, Status};
 
 struct Scratch(PathBuf);
@@ -310,28 +310,28 @@ fn a_session_is_listed_with_its_machines_until_its_connection_closes() {
     let dev: MachineName = "dev".parse().unwrap();
     let report = agent.report(&dev, soon()).unwrap();
     assert_eq!(report.status, Status::Stopped(NextStart::ColdBoot));
-    assert_eq!(report.agent, doppel_machine::agent::AgentReport::NotRunning);
+    assert_eq!(report.agent, doppel_desktop::agent::AgentReport::NotRunning);
     assert!(report.checkpoints.is_empty());
     // Not running: nothing to record, and the failure is still answered.
     assert!(
         agent
             .screenshot(
                 &dev,
-                doppel_machine::input::Via::Host,
-                doppel_machine::screen::ScreenshotSize::MatchPoints,
+                doppel_desktop::input::Via::Host,
+                doppel_desktop::screen::ScreenshotSize::MatchPoints,
                 soon(),
             )
             .is_err()
     );
     // A wait is answered even when it doesn't succeed.
-    let wait = doppel_machine::wait::WaitSpec::new(
-        doppel_machine::wait::TextCondition::Appears("saved".parse().unwrap()),
+    let wait = doppel_desktop::wait::WaitSpec::new(
+        doppel_desktop::wait::TextCondition::Appears("saved".parse().unwrap()),
         Duration::from_millis(300),
     )
     .unwrap();
     let waited = agent.wait_for_text(&dev, &wait, soon()).unwrap();
     assert!(
-        !matches!(waited, doppel_machine::wait::WaitOutcome::Satisfied { .. }),
+        !matches!(waited, doppel_desktop::wait::WaitOutcome::Satisfied { .. }),
         "{waited:?}"
     );
 
@@ -465,9 +465,9 @@ fn an_agent_s_calls_wait_while_a_person_has_the_machine_and_learn_of_it_after() 
         .unwrap();
     agent.status(&dev, soon()).unwrap();
     let viewer = Client::connect(&socket, SystemClock, soon()).unwrap();
-    let click = doppel_machine::input::Input::Key(doppel_machine::input::KeyChord {
+    let click = doppel_desktop::input::Input::Key(doppel_desktop::input::KeyChord {
         modifiers: Vec::new(),
-        key: doppel_machine::input::Key::Character('a'),
+        key: doppel_desktop::input::Key::Character('a'),
     });
     // Input needs control first.
     assert!(matches!(
@@ -677,7 +677,7 @@ fn an_encoded_display_passes_the_vmm_s_frames_on_in_order_until_the_machine_stop
         EncodedSize {
             width_pixels: 2560,
             height_pixels: 1600,
-            points: doppel_machine::geometry::Size::new(1280.0, 800.0).ok(),
+            points: doppel_desktop::geometry::Size::new(1280.0, 800.0).ok(),
         }
     );
     let key = |sequence| EncodedFrame {

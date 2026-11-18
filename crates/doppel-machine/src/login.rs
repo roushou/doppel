@@ -11,9 +11,9 @@
 use std::fmt;
 use std::time::{Duration, Instant};
 
-use crate::agent::Session;
 use crate::machine::Entropy;
 use crate::screen_probe::HostScreen;
+use doppel_desktop::agent::Session;
 
 /// The guest user's login password. No `Display`, and `Debug` is redacted:
 /// it reaches the guest only through [`LoginPassword::keystrokes`].

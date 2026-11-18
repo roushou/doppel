@@ -6,8 +6,8 @@
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 
+use doppel_desktop::deadline::Deadline;
 use doppel_machine::activity::Activity;
-use doppel_machine::deadline::Deadline;
 use doppel_protocol::pb::daemon::v1 as daemon;
 
 use crate::display::Stream;

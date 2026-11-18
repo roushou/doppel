@@ -7,7 +7,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use crate::geometry::{Scale, Size};
+use doppel_desktop::geometry::{Scale, Size};
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum SpecError {

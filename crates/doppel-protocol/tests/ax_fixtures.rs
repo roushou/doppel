@@ -13,9 +13,9 @@
 
 use std::path::PathBuf;
 
-use doppel_machine::ax::compact::{CompactSnapshot, CompactionPolicy, Tokens};
-use doppel_machine::ax::refs::{Generation, Ref};
-use doppel_machine::ax::tree::AxSnapshot;
+use doppel_desktop::ax::compact::{CompactSnapshot, CompactionPolicy, Tokens};
+use doppel_desktop::ax::refs::{Generation, Ref};
+use doppel_desktop::ax::tree::AxSnapshot;
 use doppel_protocol::pb::agent::v1 as agent;
 use prost::Message as _;
 

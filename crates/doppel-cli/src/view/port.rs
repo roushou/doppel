@@ -515,7 +515,7 @@ pub(super) fn local(at: SystemTime) -> LocalTime {
 mod tests {
     use super::*;
     use doppel_client::MachineFailure;
-    use doppel_machine::outcome::Certainty;
+    use doppel_desktop::outcome::Certainty;
 
     #[test]
     fn strays_are_left_out() {

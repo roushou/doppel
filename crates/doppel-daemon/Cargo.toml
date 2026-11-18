@@ -9,6 +9,7 @@ description = "doppeld: the daemon that owns a user's machines and serves doppel
 
 [dependencies]
 base64.workspace = true
+doppel-desktop = { path = "../doppel-desktop" }
 doppel-gateway = { path = "../doppel-gateway" }
 doppel-host = { path = "../doppel-host" }
 doppel-machine = { path = "../doppel-machine" }

@@ -5,9 +5,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use doppel_machine::ax::refs::{Ref, SnapshotRefs};
-use doppel_machine::ax::tree::{AxNode, AxSnapshot, AxValue, NodeIndex, Role};
-use doppel_machine::geometry::{Point, Rect};
+use doppel_desktop::ax::refs::{Ref, SnapshotRefs};
+use doppel_desktop::ax::tree::{AxNode, AxSnapshot, AxValue, NodeIndex, Role};
+use doppel_desktop::geometry::{Point, Rect};
 
 /// The refs the agent's model was given for a snapshot's elements, by the
 /// node each names. Empty when the agent named none, or named another
@@ -359,8 +359,8 @@ mod tests {
     }
 
     use super::*;
-    use doppel_machine::agent::{ProcessId, RunningApp};
-    use doppel_machine::ax::tree::{AxText, AxTree, SnapshotId, States, Truncation};
+    use doppel_desktop::agent::{ProcessId, RunningApp};
+    use doppel_desktop::ax::tree::{AxText, AxTree, SnapshotId, States, Truncation};
 
     fn node(role: Role, title: &str, frame: Option<(f64, f64, f64, f64)>) -> AxNode {
         AxNode {
@@ -475,7 +475,7 @@ mod tests {
 
     #[test]
     fn refs_are_found_by_node_and_only_for_their_own_snapshot() {
-        use doppel_machine::ax::refs::Generation;
+        use doppel_desktop::ax::refs::Generation;
         let shown = snapshot();
         let refs = |id| {
             SnapshotRefs::new(

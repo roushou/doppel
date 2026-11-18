@@ -21,7 +21,7 @@ use crate::platform::{self, Frame};
 use crate::steering::{SteerEvent, SteerRequest, Steering};
 use crate::theme::Theme;
 use crate::{Button, GuestInput, Key, Modifier, PointerPhase, Screen};
-use doppel_machine::geometry::Size;
+use doppel_desktop::geometry::Size;
 
 /// What a feed leaves for its view.
 #[derive(Debug)]

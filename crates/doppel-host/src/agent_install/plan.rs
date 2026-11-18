@@ -10,16 +10,16 @@
 use std::fmt;
 use std::time::Duration;
 
-use doppel_machine::exec::{ExecError, ExecOutput, ExecRequest, Termination};
-use doppel_machine::files::{FileError, FileMode, WritePolicy, WriteRequest};
-use doppel_machine::guest_path::{GuestPath, GuestPathError};
+use doppel_desktop::exec::{ExecError, ExecOutput, ExecRequest, Termination};
+use doppel_desktop::files::{FileError, FileMode, WritePolicy, WriteRequest};
+use doppel_desktop::guest_path::{GuestPath, GuestPathError};
 
 /// The LaunchAgent's label, also the app's bundle identifier.
 pub const LABEL: &str = "dev.doppel.agent";
 const APP: &str = "Doppel Agent.app";
 const SH: &str = "/bin/sh";
 
-pub use doppel_machine::agent::{AgentBuild, AgentBuildError};
+pub use doppel_desktop::agent::{AgentBuild, AgentBuildError};
 
 /// The guest user the agent runs as: whose GUI domain and home it installs into.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -284,7 +284,7 @@ impl LaunchAgent<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use doppel_machine::exec::Completeness;
+    use doppel_desktop::exec::Completeness;
 
     fn output(termination: Termination, stdout: &str, stderr: &str) -> ExecOutput {
         ExecOutput {

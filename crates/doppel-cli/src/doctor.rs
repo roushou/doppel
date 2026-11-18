@@ -5,7 +5,7 @@
 use std::fmt;
 use std::path::PathBuf;
 
-use doppel_machine::agent::AgentBuild;
+use doppel_desktop::agent::AgentBuild;
 use doppel_machine::bundle::CheckpointLabel;
 use doppel_machine::lineage::TemplateAgent;
 use doppel_machine::machine::MachineName;

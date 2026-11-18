@@ -3,9 +3,9 @@
 //! the browser's both map through here, so the two windows read the daemon
 //! the same way.
 
+use doppel_desktop::outcome::Failure;
 use doppel_machine::lineage::RecordedLineage;
 use doppel_machine::machine::MachineName;
-use doppel_machine::outcome::Failure;
 use doppel_machine::vm::{RunState, Status};
 use doppel_protocol::report::{
     CheckpointResult, MachineFailure, SessionInfo, SessionStatus, StopOutcome,
@@ -131,16 +131,16 @@ pub fn checkpoint(result: CheckpointResult) -> Verdict {
 pub fn failed(failure: &MachineFailure) -> Verdict {
     let words = failure.to_string();
     match failure.certainty() {
-        doppel_machine::outcome::Certainty::NotDone => Verdict::Refused(words),
-        doppel_machine::outcome::Certainty::MaybeDone => Verdict::Unknown(words),
+        doppel_desktop::outcome::Certainty::NotDone => Verdict::Refused(words),
+        doppel_desktop::outcome::Certainty::MaybeDone => Verdict::Unknown(words),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use doppel_desktop::outcome::Certainty;
     use doppel_machine::lineage::Lineage;
-    use doppel_machine::outcome::Certainty;
 
     #[test]
     fn listings_become_machines() {

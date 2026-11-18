@@ -8,6 +8,7 @@ rust-version.workspace = true
 description = "What a viewer shows of machines and the agents driving them, decided without drawing. No I/O."
 
 [dependencies]
+doppel-desktop = { path = "../doppel-desktop" }
 doppel-machine = { path = "../doppel-machine" }
 thiserror.workspace = true
 
