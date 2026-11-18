@@ -102,8 +102,10 @@ designed yet.
 
 Drive the user's real Mac with the same tools, with consent scoped by app and
 by action, and every call visible and interruptible as it is for a VM. The
-agent protocol already allows the agent to run on the host; nothing else
-exists. Not designed yet; the consent model is the first question.
+agent can listen on a unix socket on this Mac (`doppel-agent --socket
+PATH`): owner-only, serving only this user's connections. doppeld doesn't
+reach it yet, and nothing else exists. Not designed yet; the consent model
+is the first question.
 
 ### 6. Fleets
 

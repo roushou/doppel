@@ -1,17 +1,24 @@
-// The agent channel's transport inside the guest: a vsock listener speaking
-// framed AgentFrames. One thread per connection, requests answered in order.
-// The agent speaks first (Hello), like the VMM.
+// The agent channel's transport: a listener (vsock in a VM's guest, or a
+// unix socket on this Mac) speaking framed AgentFrames. One thread per
+// connection, requests answered in order. The agent speaks first (Hello),
+// like the VMM.
 
 import Darwin
 import Foundation
 import DoppelWire
 
-public enum AgentServerError: Error, CustomStringConvertible {
+public enum AgentServerError: Error, Equatable, CustomStringConvertible {
     case system(String, Int32)
+    /// Another agent already listens at this path.
+    case alreadyServed(UnixSocketPath)
+    /// Something that isn't a socket is at this path; it is left alone.
+    case notASocket(UnixSocketPath)
 
     public var description: String {
         switch self {
         case .system(let call, let code): "\(call): \(String(cString: strerror(code)))"
+        case .alreadyServed(let path): "another agent is listening at \(path)"
+        case .notASocket(let path): "\(path) exists and isn't a socket; remove it or choose another path"
         }
     }
 }
@@ -19,35 +26,25 @@ public enum AgentServerError: Error, CustomStringConvertible {
 public final class AgentServer: Sendable {
     public typealias Handler = @Sendable (Doppel_Agent_V1_AgentRequest.OneOf_Operation?) async -> Doppel_Agent_V1_AgentResponse.OneOf_Outcome
 
-    /// The agent's well-known port. doppeld asks the VMM to connect here.
-    public static let defaultPort: UInt32 = 7400
+    public let listener: Listener
+    private let socket: Int32
 
-    private let listener: Int32
-
-    public init(port: UInt32) throws {
-        listener = socket(AF_VSOCK, SOCK_STREAM, 0)
-        guard listener >= 0 else { throw AgentServerError.system("socket(AF_VSOCK)", errno) }
-        var address = sockaddr_vm()
-        address.svm_len = UInt8(MemoryLayout<sockaddr_vm>.size)
-        address.svm_family = sa_family_t(AF_VSOCK)
-        address.svm_port = port
-        address.svm_cid = UInt32(VMADDR_CID_ANY)
-        let bound = withUnsafePointer(to: &address) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(listener, $0, socklen_t(MemoryLayout<sockaddr_vm>.size)) }
-        }
-        guard bound == 0 else { throw AgentServerError.system("bind", errno) }
-        guard listen(listener, 8) == 0 else { throw AgentServerError.system("listen", errno) }
+    public init(listening listener: Listener) throws(AgentServerError) {
+        self.listener = listener
+        socket = try listener.bind()
     }
 
-    deinit { close(listener) }
+    deinit { close(socket) }
 
     /// Serves connections; those that subscribe get `events`' pushes.
     public func serve(hello: Doppel_Common_V1_Hello, events: EventHub, handler: @escaping Handler) {
+        let socket = self.socket
         let listener = self.listener
         Thread {
             while true {
-                let fd = accept(listener, nil, nil)
+                let fd = accept(socket, nil, nil)
                 if fd < 0 { if errno == EINTR || errno == ECONNABORTED { continue }; return }
+                guard listener.admits(fd) else { close(fd); continue }
                 Thread { AgentConnection(fd: fd, events: events).run(hello: hello, handler: handler) }.start()
             }
         }.start()
