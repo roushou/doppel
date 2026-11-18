@@ -11,6 +11,7 @@
 
 use std::fmt;
 
+use crate::agent::AgentBuild;
 use crate::bundle::CheckpointLabel;
 use crate::machine::MachineName;
 
@@ -21,12 +22,25 @@ pub enum Role {
     #[default]
     Working,
     /// A template to fork from: new machines start from its `template`
-    /// checkpoint. Starting it lets it drift from that checkpoint.
-    Golden { template: CheckpointLabel },
+    /// checkpoint, and run the `agent` it holds. Starting it lets it drift
+    /// from that checkpoint.
+    Golden {
+        template: CheckpointLabel,
+        agent: TemplateAgent,
+    },
     /// Made for one client of the daemon (`doppel mcp --from`): deleted when
     /// the connection that asked for it closes, or when the daemon next
     /// starts if it couldn't be then.
     Temporary,
+}
+
+/// Which agent build a golden image's template holds: what its forks run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TemplateAgent {
+    /// As the running agent said when the template was taken.
+    Recorded(AgentBuild),
+    /// Not known: marked by hand, or prepared before Doppel recorded it.
+    Unrecorded,
 }
 
 /// How a machine came to be. Only what was recorded when it was made.
@@ -82,7 +96,7 @@ impl Lineage {
     #[must_use]
     pub const fn template(&self) -> Option<&CheckpointLabel> {
         match &self.role {
-            Role::Golden { template } => Some(template),
+            Role::Golden { template, .. } => Some(template),
             Role::Working | Role::Temporary => None,
         }
     }
@@ -152,7 +166,7 @@ pub enum CheckpointKept {
 impl fmt::Display for Lineage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let role = match &self.role {
-            Role::Golden { template } => Some(format!("golden (template {template})")),
+            Role::Golden { template, .. } => Some(format!("golden (template {template})")),
             Role::Temporary => Some("temporary".to_owned()),
             Role::Working => None,
         };
@@ -186,6 +200,7 @@ mod tests {
     fn only_a_golden_image_s_template_or_an_unreadable_lineage_keeps_a_checkpoint() {
         let golden = RecordedLineage::Known(Lineage::default().with_role(Role::Golden {
             template: label("ready"),
+            agent: TemplateAgent::Unrecorded,
         }));
         assert_eq!(
             golden.may_delete(&label("ready")),
@@ -224,6 +239,7 @@ mod tests {
     fn a_role_change_keeps_the_origin() {
         let golden = Lineage::made(Origin::Installed).with_role(Role::Golden {
             template: label("ready"),
+            agent: TemplateAgent::Unrecorded,
         });
         assert_eq!(golden.origin, Origin::Installed);
         assert_eq!(golden.template(), Some(&label("ready")));
@@ -249,6 +265,7 @@ mod tests {
         let lineage =
             Lineage::forked("base".parse().unwrap(), label("clean")).with_role(Role::Golden {
                 template: label("ready"),
+                agent: TemplateAgent::Unrecorded,
             });
         assert_eq!(
             lineage.to_string(),

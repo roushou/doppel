@@ -934,7 +934,7 @@ where
                 });
             }
             Some(RecordedLineage::Known(lineage)) => match lineage.role {
-                Role::Golden { template } => template,
+                Role::Golden { template, .. } => template,
                 Role::Working | Role::Temporary => {
                     return Err(TemporaryMachineError::NotGolden(golden.clone()));
                 }

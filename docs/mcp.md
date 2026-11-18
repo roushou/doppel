@@ -33,6 +33,14 @@ claude mcp add doppel -- /path/to/doppel mcp --from ready
   VM. It exits 1 unless ready. A tool that sets Doppel up reads `doppel
   doctor --json`: `ready`, the `golden_images` to pass to `--from`, and each
   check's `status` (`pass`, `warn`, `fail`, `skipped`), `detail` and `fix`.
+- A golden image's forks run the agent its template holds, which an
+  upgrade doesn't change. `golden prepare` records that agent's build, and
+  `doctor` warns (`golden-agent`) when it isn't the one beside `doppel`, or
+  wasn't recorded. An older agent still works; forks miss what the newer
+  one adds. To refresh: `doppel start NAME`, `doppel agent install NAME`,
+  `doppel golden prepare NAME --checkpoint NEW-LABEL`. Grants follow the
+  agent's signature, so a build signed by another identity also needs
+  `doppel stop`, `doppel agent grant`, `doppel start` before preparing.
 - Each `doppel mcp` process is one session in the daemon. People see it in
   the viewers and `doppel sessions`, by the name the client gives itself.
 

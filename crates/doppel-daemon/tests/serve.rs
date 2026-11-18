@@ -110,6 +110,7 @@ fn clients_read_machines_through_the_daemon() {
     // A golden image: its lineage comes through the list.
     let golden = Lineage::made(Origin::Installed).with_role(Role::Golden {
         template: "ready".parse().unwrap(),
+        agent: doppel_machine::lineage::TemplateAgent::Unrecorded,
     });
     let store = scratch.store();
     store
@@ -1264,6 +1265,7 @@ fn a_checkpoint_is_deleted_unless_it_is_a_golden_image_s_template() {
     fs::write(&half.image.disk, b"a disk").unwrap();
     let golden = Lineage::made(Origin::Installed).with_role(Role::Golden {
         template: label("ready"),
+        agent: doppel_machine::lineage::TemplateAgent::Unrecorded,
     });
     store.write_lineage(&gold.lineage(), &golden).unwrap();
     // A fork of `gold`'s template doesn't keep it.
@@ -1568,6 +1570,7 @@ fn golden_with_template(scratch: &Scratch, name: &str) {
     fs::write(&checkpoint.memory, "cp-memory").unwrap();
     let golden = Lineage::made(Origin::Installed).with_role(Role::Golden {
         template: "clean".parse().unwrap(),
+        agent: doppel_machine::lineage::TemplateAgent::Unrecorded,
     });
     store.write_lineage(&bundle.lineage(), &golden).unwrap();
 }

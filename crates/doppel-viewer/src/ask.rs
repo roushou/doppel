@@ -759,6 +759,7 @@ mod tests {
             state: crate::model::MachineState::Stopped,
             lineage: RecordedLineage::Known(Lineage::default().with_role(Role::Golden {
                 template: "ready".parse().unwrap(),
+                agent: doppel_machine::lineage::TemplateAgent::Unrecorded,
             })),
         };
         assert_eq!(

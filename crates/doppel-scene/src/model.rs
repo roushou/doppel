@@ -212,7 +212,7 @@ impl Machine {
             RecordedLineage::Unreadable(_) => return Some(Provenance::Unreadable),
         };
         match (&lineage.role, &lineage.origin) {
-            (Role::Golden { template }, _) => {
+            (Role::Golden { template, .. }, _) => {
                 Some(Provenance::Said(format!("Template · {template}")))
             }
             (Role::Temporary, Origin::Forked { from, checkpoint }) => Some(Provenance::Said(
@@ -599,6 +599,7 @@ mod tests {
             lineage: RecordedLineage::Known(Lineage::made(Origin::Installed).with_role(
                 Role::Golden {
                     template: "ready".parse().unwrap(),
+                    agent: doppel_machine::lineage::TemplateAgent::Unrecorded,
                 },
             )),
             ..machine(name, state)
