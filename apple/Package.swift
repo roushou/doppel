@@ -36,8 +36,9 @@ let package = Package(
         ),
         .executableTarget(name: "doppel-vmm", dependencies: ["DoppelVMM"]),
         .testTarget(name: "DoppelVMMTests", dependencies: ["DoppelVMM"]),
-        // Inside the guest's GUI session: serves the agent channel on vsock.
-        // Needs Accessibility (input) and Screen Recording (capture) in the guest.
+        // In a GUI session: serves the agent channel on vsock in a VM's guest,
+        // or on a unix socket on this Mac. Needs Accessibility (input) and
+        // Screen Recording (capture) in that session.
         .target(
             name: "DoppelAgent",
             dependencies: ["DoppelWire", "DoppelKeys"],
