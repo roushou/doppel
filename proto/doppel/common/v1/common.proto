@@ -6,7 +6,10 @@ package doppel.common.v1;
 
 // First frame each peer sends on any channel.
 message Hello {
-  // Incompatible wire changes bump this. Peers refuse a different value.
+  // This channel's protocol version: each channel (agent, VMM, daemon) has
+  // its own, and peers refuse a different value. Incompatible changes to a
+  // channel bump its version; the agent's stays put (golden images keep
+  // their agent), growing by fields and capabilities instead.
   uint32 protocol_version = 1;
   // Free-form build identifier, for diagnostics only. Never parsed.
   string software_version = 2;

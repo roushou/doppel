@@ -163,7 +163,6 @@ mod tests {
     use std::time::Duration;
 
     use crate::capabilities::SystemClock;
-    use doppel_protocol::PROTOCOL_VERSION;
     use doppel_protocol::frame::{FrameEncoder, MaxFrameLen};
     use doppel_protocol::pb::agent::v1 as agent;
     use doppel_protocol::pb::common::v1 as common;
@@ -195,7 +194,7 @@ mod tests {
         };
         theirs
             .write_all(&frame(agent::agent_frame::Kind::Hello(common::Hello {
-                protocol_version: PROTOCOL_VERSION,
+                protocol_version: <doppel_protocol::pb::agent::v1::AgentFrame as doppel_protocol::exchange::Protocol>::VERSION,
                 capabilities,
                 ..Default::default()
             })))

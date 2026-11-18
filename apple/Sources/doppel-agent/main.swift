@@ -39,7 +39,7 @@ let agent = MainActor.assumeIsolated { Agent() }
 let events = EventHub()
 let watcher = MainActor.assumeIsolated { UiWatcher(hub: events) }
 server.serve(hello: .with {
-    $0.protocolVersion = 1
+    $0.protocolVersion = WireVersion.agent
     $0.softwareVersion = "doppel-agent 0.1.0"
     $0.buildID = Agent.buildID
     $0.capabilities = Agent.capabilities

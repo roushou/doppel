@@ -92,7 +92,7 @@ public final class MachineRuntime: NSObject, VZVirtualMachineDelegate {
             }
         }
         var hello = Doppel_Common_V1_Hello()
-        hello.protocolVersion = 1
+        hello.protocolVersion = WireVersion.vmm
         hello.softwareVersion = "doppel-vmm 0.1.0"
         hello.capabilities = [.checkpoint, .hostInput, .screenshot, .displayStream, .recording]
         // Serve first, so a failing start is observable by clients.

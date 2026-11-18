@@ -28,7 +28,6 @@ use doppel_machine::machine::{
     CpuCount, DiskSize, DisplaySpec, Hardware, MachineName, MemorySize, NetworkSpec,
 };
 use doppel_machine::outcome::Unconfirmed;
-use doppel_protocol::PROTOCOL_VERSION;
 use doppel_protocol::frame::{FrameDecoder, FrameEncoder, MaxFrameLen, Received};
 use doppel_protocol::pb::common::v1 as common;
 use doppel_protocol::pb::vmm::v1 as vmm;
@@ -513,7 +512,7 @@ impl FakeVmm {
             decoder: FrameDecoder::new(MaxFrameLen::DEFAULT),
         };
         vmm.send(vmm::vmm_frame::Kind::Hello(common::Hello {
-            protocol_version: PROTOCOL_VERSION,
+            protocol_version: <doppel_protocol::pb::vmm::v1::VmmFrame as doppel_protocol::exchange::Protocol>::VERSION,
             ..Default::default()
         }));
         assert!(matches!(vmm.receive(), vmm::vmm_frame::Kind::Hello(_)));

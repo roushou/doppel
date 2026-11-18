@@ -591,7 +591,7 @@ impl FakeVmm {
         };
         vmm.send(vmm::vmm_frame::Kind::Hello(
             doppel_protocol::pb::common::v1::Hello {
-                protocol_version: doppel_protocol::PROTOCOL_VERSION,
+                protocol_version: <doppel_protocol::pb::vmm::v1::VmmFrame as doppel_protocol::exchange::Protocol>::VERSION,
                 ..Default::default()
             },
         ));
@@ -951,7 +951,7 @@ impl RawConnection {
         };
         connection.send(doppel_protocol::pb::daemon::v1::daemon_frame::Kind::Hello(
             doppel_protocol::pb::common::v1::Hello {
-                protocol_version: doppel_protocol::PROTOCOL_VERSION,
+                protocol_version: <doppel_protocol::pb::daemon::v1::DaemonFrame as doppel_protocol::exchange::Protocol>::VERSION,
                 ..Default::default()
             },
         ));
@@ -1187,7 +1187,7 @@ fn a_token_holder_reaches_the_daemon_through_the_listener() {
     };
     send(daemon::daemon_frame::Kind::Hello(
         doppel_protocol::pb::common::v1::Hello {
-            protocol_version: doppel_protocol::PROTOCOL_VERSION,
+            protocol_version: <doppel_protocol::pb::daemon::v1::DaemonFrame as doppel_protocol::exchange::Protocol>::VERSION,
             ..Default::default()
         },
     ));

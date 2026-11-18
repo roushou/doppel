@@ -8,7 +8,7 @@ import Foundation
 enum Canonical {
     static var agentStream: [Doppel_Agent_V1_AgentFrame] {
         var hello = Doppel_Agent_V1_AgentFrame()
-        hello.hello.protocolVersion = 1
+        hello.hello.protocolVersion = WireVersion.agent
         hello.hello.softwareVersion = "doppel-agent 0.1.0"
         hello.hello.capabilities = [.screenshot, .input, .axSnapshot, .axObserve]
 
@@ -190,9 +190,13 @@ enum Canonical {
         sampled.response.id = 15
         sampled.response.displaySample.color = .with { $0.red = 236; $0.green = 237; $0.blue = 238 }
 
+        var hello = Doppel_Vmm_V1_VmmFrame()
+        hello.hello.protocolVersion = WireVersion.vmm
+        hello.hello.softwareVersion = "doppel-vmm 0.1.0"
+
         return [
             request, response, state, progress, openDisplay, opened, frame, drag, stop, stopped,
-            openEncoded, encodedOpened, encoded, shown, sample, sampled,
+            openEncoded, encodedOpened, encoded, shown, sample, sampled, hello,
         ]
     }
 

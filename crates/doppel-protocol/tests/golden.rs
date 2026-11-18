@@ -13,7 +13,7 @@
 
 use std::path::PathBuf;
 
-use doppel_protocol::PROTOCOL_VERSION;
+use doppel_protocol::exchange::Protocol;
 use doppel_protocol::frame::{Envelope, FrameDecoder, FrameEncoder, MaxFrameLen, Received};
 use doppel_protocol::pb::agent::v1 as agent;
 use doppel_protocol::pb::common::v1 as common;
@@ -37,7 +37,7 @@ fn agent_stream() -> Vec<agent::AgentFrame> {
     vec![
         agent::AgentFrame {
             kind: Some(Kind::Hello(common::Hello {
-                protocol_version: PROTOCOL_VERSION,
+                protocol_version: agent::AgentFrame::VERSION,
                 software_version: "doppel-agent 0.1.0".into(),
                 build_id: String::new(),
                 capabilities: vec![
@@ -404,6 +404,14 @@ fn vmm_stream() -> Vec<vmm::VmmFrame> {
                 )),
             })),
         },
+        vmm::VmmFrame {
+            kind: Some(Kind::Hello(common::Hello {
+                protocol_version: vmm::VmmFrame::VERSION,
+                software_version: "doppel-vmm 0.1.0".into(),
+                build_id: String::new(),
+                capabilities: Vec::new(),
+            })),
+        },
     ]
 }
 
@@ -436,7 +444,7 @@ fn daemon_stream() -> Vec<daemon::DaemonFrame> {
     vec![
         daemon::DaemonFrame {
             kind: Some(Kind::Hello(common::Hello {
-                protocol_version: PROTOCOL_VERSION,
+                protocol_version: daemon::DaemonFrame::VERSION,
                 software_version: "doppel 0.1.0".into(),
                 build_id: String::new(),
                 capabilities: Vec::new(),

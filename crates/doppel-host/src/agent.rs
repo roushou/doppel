@@ -523,7 +523,6 @@ mod tests {
 
     use std::io::{Read, Write};
 
-    use doppel_protocol::PROTOCOL_VERSION;
     use doppel_protocol::frame::{FrameDecoder, FrameEncoder, MaxFrameLen, Received};
 
     use super::*;
@@ -582,7 +581,7 @@ mod tests {
 
     fn hello_pushing() -> Vec<u8> {
         frame(agent::agent_frame::Kind::Hello(common::Hello {
-            protocol_version: PROTOCOL_VERSION,
+            protocol_version: <doppel_protocol::pb::agent::v1::AgentFrame as doppel_protocol::exchange::Protocol>::VERSION,
             capabilities: vec![common::Capability::Events as i32],
             ..Default::default()
         }))
@@ -604,7 +603,7 @@ mod tests {
             let asked = asked.clone();
             fake_agent(
                 frame(agent::agent_frame::Kind::Hello(common::Hello {
-                    protocol_version: PROTOCOL_VERSION,
+                    protocol_version: <doppel_protocol::pb::agent::v1::AgentFrame as doppel_protocol::exchange::Protocol>::VERSION,
                     capabilities,
                     ..Default::default()
                 })),
@@ -671,7 +670,7 @@ mod tests {
 
     #[test]
     fn an_older_agent_is_never_asked_to_push() {
-        let stream = fake_agent(hello(PROTOCOL_VERSION), |_| panic!("no request expected"));
+        let stream = fake_agent(hello(<doppel_protocol::pb::agent::v1::AgentFrame as doppel_protocol::exchange::Protocol>::VERSION), |_| panic!("no request expected"));
         let mut client = AgentClient::connect(stream, SystemClock, soon()).unwrap();
         assert_eq!(client.subscribe(soon()).unwrap(), Pushes::Unsupported);
     }
@@ -679,7 +678,7 @@ mod tests {
     #[test]
     fn a_closed_session_is_seen_without_reading() {
         let (ours, mut theirs) = UnixStream::pair().unwrap();
-        theirs.write_all(&hello(PROTOCOL_VERSION)).unwrap();
+        theirs.write_all(&hello(<doppel_protocol::pb::agent::v1::AgentFrame as doppel_protocol::exchange::Protocol>::VERSION)).unwrap();
         let client = AgentClient::connect(ours, SystemClock, soon()).unwrap();
         assert!(client.is_open());
         drop(theirs);
@@ -690,7 +689,7 @@ mod tests {
     #[test]
     fn cancelling_an_exec_hangs_up_and_says_so_at_once() {
         // The fake agent never replies: it waits for the hang-up.
-        let stream = fake_agent(hello(PROTOCOL_VERSION), |_| Vec::new());
+        let stream = fake_agent(hello(<doppel_protocol::pb::agent::v1::AgentFrame as doppel_protocol::exchange::Protocol>::VERSION), |_| Vec::new());
         let mut client = AgentClient::connect(stream, SystemClock, soon()).unwrap();
         let request = ExecRequest::new(
             "/bin/sleep".parse().unwrap(),
@@ -725,7 +724,7 @@ mod tests {
 
     #[test]
     fn input_round_trip_and_remote_errors() {
-        let stream = fake_agent(hello(PROTOCOL_VERSION), |request| match request.operation {
+        let stream = fake_agent(hello(<doppel_protocol::pb::agent::v1::AgentFrame as doppel_protocol::exchange::Protocol>::VERSION), |request| match request.operation {
             Some(Operation::Input(_)) if request.id == 1 => {
                 respond(1, Outcome::Done(agent::Done {}))
             }
@@ -754,7 +753,7 @@ mod tests {
 
     #[test]
     fn mismatched_response_id_is_a_protocol_error() {
-        let stream = fake_agent(hello(PROTOCOL_VERSION), |request| {
+        let stream = fake_agent(hello(<doppel_protocol::pb::agent::v1::AgentFrame as doppel_protocol::exchange::Protocol>::VERSION), |request| {
             respond(request.id + 7, Outcome::Done(agent::Done {}))
         });
         let mut client = AgentClient::connect(stream, SystemClock, soon()).unwrap();
@@ -769,7 +768,7 @@ mod tests {
         use doppel_machine::ax::tree::{
             ActionName, ElementAction, ElementTarget, Menus, NodeIndex, Scope, SnapshotId,
         };
-        let stream = fake_agent(hello(PROTOCOL_VERSION), |request| match request.operation {
+        let stream = fake_agent(hello(<doppel_protocol::pb::agent::v1::AgentFrame as doppel_protocol::exchange::Protocol>::VERSION), |request| match request.operation {
             Some(Operation::TakeAxSnapshot(_)) => respond(
                 request.id,
                 Outcome::AxSnapshot(agent::AxSnapshot {
@@ -821,7 +820,7 @@ mod tests {
 
     #[test]
     fn invalid_status_is_rejected_at_the_boundary() {
-        let stream = fake_agent(hello(PROTOCOL_VERSION), |request| {
+        let stream = fake_agent(hello(<doppel_protocol::pb::agent::v1::AgentFrame as doppel_protocol::exchange::Protocol>::VERSION), |request| {
             respond(request.id, Outcome::Status(agent::AgentStatus::default()))
         });
         let mut client = AgentClient::connect(stream, SystemClock, soon()).unwrap();
@@ -834,7 +833,7 @@ mod tests {
     fn a_trickling_reply_ends_at_the_call_deadline() {
         let (ours, mut theirs) = UnixStream::pair().unwrap();
         thread::spawn(move || {
-            theirs.write_all(&hello(PROTOCOL_VERSION)).unwrap();
+            theirs.write_all(&hello(<doppel_protocol::pb::agent::v1::AgentFrame as doppel_protocol::exchange::Protocol>::VERSION)).unwrap();
             let mut buffer = [0u8; 4096];
             // Wait for the request, then answer it very slowly.
             if theirs.read(&mut buffer).is_err() {
@@ -862,7 +861,7 @@ mod tests {
 
     #[test]
     fn a_passed_deadline_fails_without_waiting() {
-        let stream = fake_agent(hello(PROTOCOL_VERSION), |request| {
+        let stream = fake_agent(hello(<doppel_protocol::pb::agent::v1::AgentFrame as doppel_protocol::exchange::Protocol>::VERSION), |request| {
             respond(request.id, Outcome::Done(agent::Done {}))
         });
         let clock = SystemClock;

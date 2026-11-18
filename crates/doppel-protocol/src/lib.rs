@@ -60,7 +60,3 @@ pub mod pb {
         }
     }
 }
-
-/// Wire protocol version carried in `Hello.protocol_version`.
-/// Bump on any change that an older peer would misinterpret.
-pub const PROTOCOL_VERSION: u32 = 1;

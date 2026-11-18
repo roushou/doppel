@@ -61,6 +61,15 @@ The same framing as the other channels (`[u32 length][protobuf]`, `Hello`
 first, unknown messages kept). Its own package, since the VMM speaks for one
 VM and the daemon for the host.
 
+Each channel has its own protocol version in `Hello` (`Protocol::VERSION`
+in doppel-protocol, `WireVersion` in Swift), and a peer refuses another:
+
+| Channel         | Ends                 | When it changes                                                                                                     |
+| --------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `doppel.vmm`    | host and VMM         | Any incompatible change: both ship together. A VM started before an upgrade is refused until restarted.             |
+| `doppel.daemon` | clients and daemon   | Any incompatible change. A daemon started before an upgrade is refused until restarted.                             |
+| `doppel.agent`  | host and guest agent | Never if it can help it: golden images keep the agent they were prepared with. It grows by fields and capabilities. |
+
 | Group      | Requests                                                                                                                     | Events                                           |
 | ---------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
 | Machines   | list, status, create, import, start, stop, pause, resume, checkpoint, delete checkpoint, fork, restore, delete, set password | machine state changed                            |

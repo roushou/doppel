@@ -31,7 +31,7 @@ private func decodeAll<M: Envelope>(_ data: Data, as: M.Type) throws -> [M] {
         let frames = try decodeAll(bytes, as: Doppel_Agent_V1_AgentFrame.self)
         try #require(frames.count == 13)
 
-        #expect(frames[0].hello.protocolVersion == 1)
+        #expect(frames[0].hello.protocolVersion == WireVersion.agent)
         #expect(frames[0].hello.softwareVersion == "doppel-agent 0.1.0")
         #expect(frames[0].hello.capabilities == [.screenshot, .input, .axSnapshot, .axObserve])
 
@@ -84,7 +84,7 @@ private func decodeAll<M: Envelope>(_ data: Data, as: M.Type) throws -> [M] {
     @Test func vmmStreamDecodesToRustValuesAndReencodesIdentically() throws {
         let bytes = try fixture("vmm_stream.v1.bin")
         let frames = try decodeAll(bytes, as: Doppel_Vmm_V1_VmmFrame.self)
-        try #require(frames.count == 16)
+        try #require(frames.count == 17)
         #expect(frames[0].request.saveState.path == "/tmp/checkpoints/before-install/memory.vzsave")
         #expect(frames[1].response.stateSaved.bytes == 1_744_830_464)
         #expect(frames[2].event.stateChanged.runState == .paused)
@@ -99,6 +99,7 @@ private func decodeAll<M: Envelope>(_ data: Data, as: M.Type) throws -> [M] {
         #expect(frames[13].response.state.window == .shown)
         #expect(frames[14].request.sampleDisplay.at.x == 2)
         #expect(frames[15].response.displaySample.color.green == 237)
+        #expect(frames[16].hello.protocolVersion == WireVersion.vmm)
 
         #expect(frames == Canonical.vmmStream)
         let swiftBytes = try Canonical.vmmStream.reduce(into: Data()) { $0.append(try FrameEncoder().encode($1)) }

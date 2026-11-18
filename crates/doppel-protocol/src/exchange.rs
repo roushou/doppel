@@ -20,7 +20,6 @@ use std::num::NonZeroUsize;
 
 use bytes::{Buf, Bytes, BytesMut};
 
-use crate::PROTOCOL_VERSION;
 use crate::frame::{
     EncodeError, Envelope, FrameDecoder, FrameEncoder, MaxFrameLen, Received, StreamError,
 };
@@ -55,6 +54,12 @@ pub trait Protocol: Envelope + Sized {
     type Response: fmt::Debug;
     /// Something the peer pushes without being asked.
     type Event: fmt::Debug;
+
+    /// This channel's wire protocol version, carried in `Hello.protocol_version`.
+    /// Peers refuse a different one. Each channel has its own, so a change
+    /// to one never strands the peers of another; see each implementation
+    /// for when its version may change.
+    const VERSION: u32;
 
     fn hello(hello: common::Hello) -> Self;
     fn request(id: RequestId, request: Self::Request) -> Self;
@@ -407,9 +412,9 @@ impl<P: Protocol, A> Exchange<P, A> {
     }
 
     fn greeted(&mut self, peer: common::Hello) -> (State, Result<(), ExchangeError>) {
-        if peer.protocol_version != PROTOCOL_VERSION {
+        if peer.protocol_version != P::VERSION {
             let error = ExchangeError::VersionMismatch {
-                ours: PROTOCOL_VERSION,
+                ours: P::VERSION,
                 theirs: peer.protocol_version,
             };
             return (State::Over(error.clone()), Err(error));
@@ -417,7 +422,7 @@ impl<P: Protocol, A> Exchange<P, A> {
         // Our own greeting is small and fixed: within any frame limit.
         match self
             .encoder
-            .encode_into(&P::hello(greeting()), &mut self.outgoing)
+            .encode_into(&P::hello(greeting(P::VERSION)), &mut self.outgoing)
         {
             Ok(()) => (State::Open { peer }, Ok(())),
             Err(error) => {
@@ -471,10 +476,10 @@ pub enum RequestError {
     Over(ExchangeError),
 }
 
-/// Our greeting: this build's protocol and version.
-fn greeting() -> common::Hello {
+/// Our greeting on a channel of `version`: it and this build's version.
+fn greeting(version: u32) -> common::Hello {
     common::Hello {
-        protocol_version: PROTOCOL_VERSION,
+        protocol_version: version,
         software_version: concat!("doppel ", env!("CARGO_PKG_VERSION")).into(),
         build_id: String::new(),
         capabilities: Vec::new(),
@@ -485,6 +490,11 @@ impl Protocol for vmm::VmmFrame {
     type Request = vmm::vmm_request::Operation;
     type Response = vmm::VmmResponse;
     type Event = vmm::VmmEvent;
+
+    /// The VMM ships beside `doppel` and is started by it, so both ends
+    /// always come from one build: bump on any change an older peer would
+    /// misread. A VM started before an upgrade is refused until restarted.
+    const VERSION: u32 = 1;
 
     fn hello(hello: common::Hello) -> Self {
         Self {
@@ -519,6 +529,12 @@ impl Protocol for agent::AgentFrame {
     type Request = agent::agent_request::Operation;
     type Response = agent::AgentResponse;
     type Event = agent::AgentEvent;
+
+    /// Golden images keep the agent they were prepared with, and every fork
+    /// runs it, so a host must keep talking to agents older than itself.
+    /// Grow this channel with new fields and capabilities instead: bumping
+    /// it makes every existing golden image unusable until prepared again.
+    const VERSION: u32 = 1;
 
     fn hello(hello: common::Hello) -> Self {
         Self {
@@ -562,6 +578,11 @@ impl Protocol for daemon::DaemonFrame {
     type Request = DaemonCall;
     type Response = daemon::DaemonResponse;
     type Event = daemon::DaemonEvent;
+
+    /// Clients (the CLI, MCP relays, viewers) ship with the daemon, but a
+    /// daemon started before an upgrade keeps running: bump on any change
+    /// an older peer would misread, and clients say to restart it.
+    const VERSION: u32 = 1;
 
     fn hello(hello: common::Hello) -> Self {
         Self {
@@ -666,7 +687,7 @@ impl<P: ServerProtocol> Reception<P> {
     /// The greeting a server sends first: this build's protocol and version.
     #[must_use]
     pub fn greeting() -> P {
-        <P as Protocol>::hello(greeting())
+        <P as Protocol>::hello(greeting(P::VERSION))
     }
 
     /// Takes in bytes the transport read.
@@ -700,9 +721,9 @@ impl<P: ServerProtocol> Reception<P> {
             };
             match (&self.hearing, message.incoming()) {
                 (Hearing::Greeting, Incoming::Hello(hello)) => {
-                    if hello.protocol_version != PROTOCOL_VERSION {
+                    if hello.protocol_version != P::VERSION {
                         return Err(self.end(ExchangeError::VersionMismatch {
-                            ours: PROTOCOL_VERSION,
+                            ours: P::VERSION,
                             theirs: hello.protocol_version,
                         }));
                     }
@@ -769,7 +790,7 @@ mod tests {
     fn hello(version: u32) -> Vec<u8> {
         frame(&vmm::VmmFrame::hello(common::Hello {
             protocol_version: version,
-            ..greeting()
+            ..greeting(0)
         }))
     }
 
@@ -798,7 +819,9 @@ mod tests {
 
     fn greeted(config: ExchangeConfig) -> Vmm {
         let mut exchange = Vmm::new(config);
-        exchange.receive(&hello(PROTOCOL_VERSION), []).unwrap();
+        exchange
+            .receive(&hello(vmm::VmmFrame::VERSION), [])
+            .unwrap();
         let reply = exchange.outgoing().len();
         exchange.wrote(reply);
         exchange
@@ -809,23 +832,25 @@ mod tests {
         let mut exchange = Vmm::new(ExchangeConfig::STRICT);
         assert_eq!(exchange.request(pause()), Err(RequestError::NotGreeted));
         assert!(exchange.outgoing().is_empty());
-        exchange.receive(&hello(PROTOCOL_VERSION), []).unwrap();
+        exchange
+            .receive(&hello(vmm::VmmFrame::VERSION), [])
+            .unwrap();
         assert_eq!(
             exchange.peer().map(|peer| peer.protocol_version),
-            Some(PROTOCOL_VERSION)
+            Some(vmm::VmmFrame::VERSION)
         );
-        assert_eq!(exchange.outgoing(), hello(PROTOCOL_VERSION));
+        assert_eq!(exchange.outgoing(), hello(vmm::VmmFrame::VERSION));
     }
 
     #[test]
     fn another_version_ends_the_conversation_unanswered() {
         let mut exchange = Vmm::new(ExchangeConfig::STRICT);
         let mismatch = ExchangeError::VersionMismatch {
-            ours: PROTOCOL_VERSION,
-            theirs: PROTOCOL_VERSION + 1,
+            ours: vmm::VmmFrame::VERSION,
+            theirs: vmm::VmmFrame::VERSION + 1,
         };
         assert_eq!(
-            exchange.receive(&hello(PROTOCOL_VERSION + 1), []),
+            exchange.receive(&hello(vmm::VmmFrame::VERSION + 1), []),
             Err(mismatch.clone())
         );
         assert!(exchange.outgoing().is_empty());
@@ -895,8 +920,8 @@ mod tests {
         let mut daemon = Exchange::<daemon::DaemonFrame>::new(ExchangeConfig::STRICT);
         let greeting = FrameEncoder::new(MaxFrameLen::DEFAULT)
             .encode(&daemon::DaemonFrame::hello(common::Hello {
-                protocol_version: PROTOCOL_VERSION,
-                ..greeting()
+                protocol_version: daemon::DaemonFrame::VERSION,
+                ..greeting(0)
             }))
             .unwrap();
         daemon.receive(&greeting, []).unwrap();
@@ -1075,7 +1100,7 @@ mod tests {
         fn client_hello(version: u32) -> Vec<u8> {
             daemon_bytes(&<daemon::DaemonFrame as Protocol>::hello(common::Hello {
                 protocol_version: version,
-                ..greeting()
+                ..greeting(0)
             }))
         }
 
@@ -1104,14 +1129,14 @@ mod tests {
         #[test]
         fn requests_and_cancels_are_heard_once_the_client_greets() {
             let mut reception = Reception::<daemon::DaemonFrame>::new(MaxFrameLen::DEFAULT);
-            reception.receive(&client_hello(PROTOCOL_VERSION));
+            reception.receive(&client_hello(daemon::DaemonFrame::VERSION));
             reception.receive(&request(1));
             reception.receive(&daemon_bytes(&daemon::DaemonFrame {
                 kind: Some(daemon::daemon_frame::Kind::Cancel(daemon::CancelRequest {
                     id: 1,
                 })),
             }));
-            reception.receive(&client_hello(PROTOCOL_VERSION));
+            reception.receive(&client_hello(daemon::DaemonFrame::VERSION));
             assert_eq!(
                 heard(&mut reception),
                 vec!["request 1", "cancel 1", "unexpected: a second Hello"]
@@ -1124,7 +1149,7 @@ mod tests {
             reception.receive(&request(1));
             let refused = ExchangeError::Unexpected("expected the client's Hello");
             assert_eq!(reception.hear().map(|_| ()), Err(refused.clone()));
-            reception.receive(&client_hello(PROTOCOL_VERSION));
+            reception.receive(&client_hello(daemon::DaemonFrame::VERSION));
             assert_eq!(
                 reception.hear().map(|_| ()),
                 Err(refused),
@@ -1135,12 +1160,12 @@ mod tests {
         #[test]
         fn another_version_is_refused() {
             let mut reception = Reception::<daemon::DaemonFrame>::new(MaxFrameLen::DEFAULT);
-            reception.receive(&client_hello(PROTOCOL_VERSION + 1));
+            reception.receive(&client_hello(daemon::DaemonFrame::VERSION + 1));
             assert_eq!(
                 reception.hear().map(|_| ()),
                 Err(ExchangeError::VersionMismatch {
-                    ours: PROTOCOL_VERSION,
-                    theirs: PROTOCOL_VERSION + 1
+                    ours: daemon::DaemonFrame::VERSION,
+                    theirs: daemon::DaemonFrame::VERSION + 1
                 })
             );
         }
@@ -1148,7 +1173,7 @@ mod tests {
         #[test]
         fn a_frame_this_build_cannot_read_is_passed_over() {
             let mut reception = Reception::<daemon::DaemonFrame>::new(MaxFrameLen::DEFAULT);
-            reception.receive(&client_hello(PROTOCOL_VERSION));
+            reception.receive(&client_hello(daemon::DaemonFrame::VERSION));
             let mut garbled = 2u32.to_le_bytes().to_vec();
             garbled.extend_from_slice(&[0xff, 0xff]);
             reception.receive(&garbled);
