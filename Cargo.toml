@@ -17,6 +17,7 @@ futures = "0.3"
 getrandom = "0.4"
 insta = "1"
 nix = { version = "0.31", features = ["socket", "uio", "fs", "term", "user", "mman"] }
+plist = "1"
 proptest = "1"
 prost = "0.14"
 prost-build = "0.14"

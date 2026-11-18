@@ -35,6 +35,8 @@ use doppel_protocol::pb::vmm::v1 as vmm;
 use nix::fcntl::Flock;
 
 use crate::agent::{AgentClient, AgentError};
+use crate::agent_grant::plan::AgentGrant;
+use crate::agent_grant::{AgentGrantError, DiskImage};
 use crate::capabilities::Clock;
 use crate::display::DisplayError;
 use crate::files::{FileOpError, Filesystem};
@@ -471,6 +473,41 @@ impl<C: Clock, F: Filesystem> Claim<'_, C, F> {
     /// (rewriting it would lose an origin nobody could read), or I/O.
     pub fn mark_golden(&self, template: &CheckpointLabel) -> Result<Lineage, MachineError> {
         self.machines.mark_golden(self, template)
+    }
+
+    /// Writes `grant` into this machine's disk: the guest boots with the
+    /// agent's Accessibility and Screen Recording, and no prompt is answered
+    /// by a person. The machine must be stopped with no saved memory, which
+    /// expects its disk as it was.
+    ///
+    /// # Errors
+    /// [`AgentGrantError`]: running, saved memory, no such user, a record
+    /// of a shape this Doppel doesn't know (nothing is written then), or
+    /// the disk tools failing.
+    pub fn grant_agent(&self, grant: &AgentGrant, by: Deadline) -> Result<(), AgentGrantError> {
+        let machines = self.machines;
+        let bundle = &self.bundle;
+        let name = bundle.name();
+        machines
+            .store
+            .read_spec(bundle)
+            .map_err(MachineError::from)?;
+        if machines.connect(name, machines.step(by))?.is_some() {
+            return Err(MachineError::Running(name.clone()).into());
+        }
+        if machines
+            .files
+            .exists(&bundle.suspended_state())
+            .map_err(MachineError::from)?
+        {
+            return Err(AgentGrantError::SavedState(name.clone()));
+        }
+        let mount = machines
+            .store
+            .runtime()
+            .path()
+            .join(format!("grant-{name}"));
+        grant.apply(name, DiskImage::at(&bundle.image().disk), &mount)
     }
 
     /// Makes a golden image a working machine again. Its origin stays.

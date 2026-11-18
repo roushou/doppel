@@ -65,10 +65,15 @@ Then:
   doppel agent bootstrap dev --user doppel
   ```
 
-- Grant the agent Accessibility and Screen & System Audio Recording: open
-  `doppel view dev`, take control, and allow both in the guest's System
-  Settings. The account's password is in
-  `~/Library/Application Support/Doppel/machines/dev/login-password`.
+- Grant the agent Accessibility and Screen Recording. Doppel writes the
+  guest's own records of both into its disk while it's shut down, so no
+  prompt comes up:
+
+  ```sh
+  doppel stop dev
+  doppel agent grant dev --user doppel
+  doppel start dev
+  ```
 
 - Make it a golden image, and give each agent session a fresh fork of it,
   deleted when the session ends:

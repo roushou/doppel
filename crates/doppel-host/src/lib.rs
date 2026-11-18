@@ -4,6 +4,7 @@
 //! the resulting I/O (files, processes, sockets) and feeds results back.
 
 pub mod agent;
+pub mod agent_grant;
 pub mod agent_install;
 pub mod bootstrap;
 pub mod capabilities;

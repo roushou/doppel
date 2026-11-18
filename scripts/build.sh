@@ -52,5 +52,9 @@ codesign --verify --strict "$app"
 rm -f "$root/target/$profile/doppel-agent.zip"
 (cd "$root/target/$profile" && ditto -c -k --keepParent "Doppel Agent.app" doppel-agent.zip)
 printf '%s\n' "$build_id" > "$root/target/$profile/doppel-agent.build-id"
+# The code requirement a guest's privacy grants hold the app to: `doppel agent
+# grant` writes it into a stopped machine.
+codesign -d -r- "$app" 2>/dev/null | sed -n 's/^designated => //p' |
+  csreq -r- -b "$root/target/$profile/doppel-agent.csreq"
 
 echo "built $root/target/$profile/{doppel,doppel-vmm,doppel-agent,doppel-agent.zip} (signed: $identity; agent build $build_id)"

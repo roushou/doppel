@@ -4,8 +4,11 @@ use std::path::PathBuf;
 
 use anyhow::{Context as _, Result};
 use clap::Subcommand;
+use doppel_host::agent_grant::plan::{AgentGrant, CodeRequirement};
 use doppel_host::bootstrap::AgentArchive;
+use doppel_host::capabilities::{SystemClock, WallClock as _};
 use doppel_host::golden::plan::GuestUserName;
+use doppel_host::machines::CLAIM_TIMEOUT;
 use doppel_machine::machine::MachineName;
 
 use crate::context::Context;
@@ -34,6 +37,21 @@ pub(crate) enum AgentCommand {
         #[arg(long)]
         archive: Option<PathBuf>,
     },
+    /// Grant the agent Accessibility and Screen Recording in a stopped
+    /// machine, so it boots with them and no person answers a prompt. Writes
+    /// the guest's own privacy records into its disk, for the agent build
+    /// beside `doppel` (its code requirement, `<archive>.csreq`). The machine
+    /// must be shut down (`doppel stop`), not paused or saved. After
+    /// `bootstrap`: stop, grant, start.
+    Grant {
+        name: MachineName,
+        /// The guest account the agent runs as: `create --user`'s.
+        #[arg(long)]
+        user: GuestUserName,
+        /// The zipped app from scripts/build.sh. Defaults to the one next to `doppel`.
+        #[arg(long)]
+        archive: Option<PathBuf>,
+    },
 }
 
 impl AgentCommand {
@@ -55,6 +73,29 @@ impl AgentCommand {
                     over_ssh: None,
                     installed,
                 })
+            }
+            Self::Grant {
+                name,
+                user,
+                archive,
+            } => {
+                let path = match archive {
+                    Some(path) => path,
+                    None => std::env::current_exe()?.with_file_name("doppel-agent.zip"),
+                };
+                let csreq = path.with_extension("csreq");
+                let requirement =
+                    CodeRequirement::parse(std::fs::read(&csreq).with_context(|| {
+                        format!("{} (scripts/build.sh writes it)", csreq.display())
+                    })?)
+                    .with_context(|| csreq.display().to_string())?;
+                machines
+                    .claim(&name, machines.within(CLAIM_TIMEOUT))?
+                    .grant_agent(
+                        &AgentGrant::new(user.clone(), requirement, SystemClock.wall()),
+                        machines.deadline(),
+                    )?;
+                Ok(Report::AgentGranted { name, user })
             }
             Self::Bootstrap {
                 name,

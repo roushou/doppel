@@ -153,6 +153,11 @@ pub enum Report {
         over_ssh: Option<Ipv4Addr>,
         installed: Installed,
     },
+    /// Accessibility and Screen Recording written into a stopped machine.
+    AgentGranted {
+        name: MachineName,
+        user: GuestUserName,
+    },
     /// The LaunchAgent's state, in its own words.
     Service(String),
     DaemonUninstalled,
@@ -418,6 +423,11 @@ impl fmt::Display for Report {
                     installed.restart.as_millis()
                 )
             }
+            Self::AgentGranted { name, user } => writeln!(
+                f,
+                "{name}: the agent has Accessibility and Screen Recording for {}; they apply from its next start",
+                user.as_str()
+            ),
             Self::Service(status) => writeln!(f, "{status}"),
             Self::DaemonUninstalled => writeln!(f, "doppeld: uninstalled"),
             Self::DaemonStopped(pid) => writeln!(f, "doppeld: stopped (pid {pid})"),

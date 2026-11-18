@@ -2,7 +2,8 @@
 //! parse text, and the shell modules beside them perform what they say.
 
 /// Each pure module, outside its own tests.
-const PURE: [(&str, &str); 5] = [
+const PURE: [(&str, &str); 6] = [
+    ("agent_grant/plan.rs", include_str!("agent_grant/plan.rs")),
     ("golden/plan.rs", include_str!("golden/plan.rs")),
     (
         "agent_install/plan.rs",
@@ -14,7 +15,8 @@ const PURE: [(&str, &str); 5] = [
 ];
 
 /// The only modules of this crate a pure module may use.
-const PURE_PATHS: [&str; 5] = [
+const PURE_PATHS: [&str; 6] = [
+    "crate::agent_grant::plan",
     "crate::golden::plan",
     "crate::agent_install::plan",
     "crate::bootstrap::plan",
@@ -32,7 +34,8 @@ const FORBIDDEN: [&str; 11] = [
     "std::net::Tcp",
     "std::net::Udp",
     "Instant::now",
-    "SystemTime",
+    // A time handed in is a value; reading the clock is an effect.
+    "SystemTime::now",
     "doppel_protocol",
 ];
 

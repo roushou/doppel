@@ -83,6 +83,12 @@ impl Store {
         &self.root
     }
 
+    /// Where this store's sockets, and other short-lived paths, go.
+    #[must_use]
+    pub const fn runtime(&self) -> &RuntimeDir {
+        &self.runtime
+    }
+
     #[must_use]
     pub fn bundle(&self, name: &MachineName) -> MachineBundle {
         self.root.machine(name)
