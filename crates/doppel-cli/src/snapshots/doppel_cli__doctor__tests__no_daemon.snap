@@ -1,0 +1,36 @@
+---
+source: crates/doppel-cli/src/doctor.rs
+expression: "format!(\"{:#}\",\nDiagnosis::of(&facts(Daemon::NotRunning(Service::Installed))).json())"
+---
+{
+  "ready": false,
+  "golden_images": [],
+  "checks": [
+    {
+      "check": "vmm",
+      "status": "pass",
+      "detail": "/opt/doppel/doppel-vmm"
+    },
+    {
+      "check": "agent-archive",
+      "status": "pass",
+      "detail": "/opt/doppel/doppel-agent.zip (build abc123)"
+    },
+    {
+      "check": "daemon",
+      "status": "fail",
+      "detail": "not running, though launchd should start it",
+      "fix": "doppel daemon logs shows why; doppel daemon install loads it again"
+    },
+    {
+      "check": "golden-image",
+      "status": "skipped",
+      "detail": "needs daemon"
+    },
+    {
+      "check": "room",
+      "status": "skipped",
+      "detail": "needs daemon"
+    }
+  ]
+}

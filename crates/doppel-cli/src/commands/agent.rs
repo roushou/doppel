@@ -86,7 +86,7 @@ impl AgentCommand {
 }
 
 /// The zipped agent app and its build id, beside it as `<archive>.build-id`.
-fn agent_archive(archive: Option<PathBuf>) -> Result<AgentArchive> {
+pub(crate) fn agent_archive(archive: Option<PathBuf>) -> Result<AgentArchive> {
     let path = match archive {
         Some(path) => path,
         None => std::env::current_exe()?.with_file_name("doppel-agent.zip"),

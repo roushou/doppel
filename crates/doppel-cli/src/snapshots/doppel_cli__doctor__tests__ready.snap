@@ -1,0 +1,41 @@
+---
+source: crates/doppel-cli/src/doctor.rs
+expression: "format!(\"{:#}\", Diagnosis::of(&f).json())"
+---
+{
+  "ready": true,
+  "golden_images": [
+    {
+      "name": "golden-27",
+      "template": "ready"
+    }
+  ],
+  "checks": [
+    {
+      "check": "vmm",
+      "status": "pass",
+      "detail": "/opt/doppel/doppel-vmm"
+    },
+    {
+      "check": "agent-archive",
+      "status": "warn",
+      "detail": "/opt/doppel/doppel-agent.zip is missing",
+      "fix": "build it with scripts/build.sh; `doppel agent install` and `bootstrap` need it for machines without an agent"
+    },
+    {
+      "check": "daemon",
+      "status": "pass",
+      "detail": "answering, 2 machines"
+    },
+    {
+      "check": "golden-image",
+      "status": "pass",
+      "detail": "golden-27 (template ready)"
+    },
+    {
+      "check": "room",
+      "status": "pass",
+      "detail": "1 of 2 VMs running"
+    }
+  ]
+}

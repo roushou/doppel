@@ -12,6 +12,7 @@ mod commands;
 mod context;
 mod copy;
 mod daemon_at;
+mod doctor;
 mod error_message;
 mod export;
 mod fork_run;
@@ -31,7 +32,7 @@ use crate::commands::{
 };
 use crate::context::Context;
 pub use crate::error_message::ErrorMessage;
-pub use crate::report::{GuestAfter, Report};
+use crate::report::Report;
 
 /// The `doppel` command line: what to do, and where machines are.
 #[derive(Debug, Parser)]
@@ -102,6 +103,7 @@ enum Command {
     /// Golden images: machines to fork from.
     #[command(subcommand)]
     Golden(golden::GoldenCommand),
+    Doctor(commands::doctor::DoctorCmd),
     /// Diagnostics.
     #[command(subcommand)]
     Debug(debug::DebugCommand),
@@ -147,6 +149,7 @@ impl Command {
             | Self::Daemon(_)
             | Self::Agent(_)
             | Self::Golden(_)
+            | Self::Doctor(_)
             | Self::Debug(_) => Reach::ThisMac,
         }
     }
@@ -181,6 +184,7 @@ impl Command {
             Self::Mcp(cmd) => cmd.run(&ctx),
             Self::Agent(cmd) => cmd.run(&ctx),
             Self::Golden(cmd) => cmd.run(&ctx),
+            Self::Doctor(cmd) => cmd.run(&ctx),
             Self::Debug(cmd) => cmd.run(&ctx),
         }
     }

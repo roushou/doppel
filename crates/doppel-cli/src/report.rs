@@ -25,6 +25,7 @@ use doppel_machine::machine::MachineName;
 use doppel_machine::outcome::{Certainty, Failure as _};
 use doppel_machine::vm::{NextStart, RunState, Status};
 
+use crate::doctor::Diagnosis;
 use crate::tokens::{named, remaining};
 
 /// What a command did.
@@ -39,6 +40,12 @@ pub enum Report {
     Exit(i32),
     /// Text another component wrote, printed as it is.
     Verbatim(String),
+    /// `doctor`: whether an agent can be given a machine, and what to fix.
+    /// Not ready exits 1.
+    Doctor {
+        diagnosis: Diagnosis,
+        form: Form,
+    },
     /// `ls`.
     Machines(Vec<Listing>),
     Created {
@@ -185,13 +192,25 @@ pub enum GuestAfter {
 impl Report {
     /// The status `doppel` exits with when it isn't success.
     #[must_use]
-    pub const fn exit(&self) -> Option<i32> {
+    pub fn exit(&self) -> Option<i32> {
         if let Self::Exit(code) = self {
-            Some(*code)
-        } else {
-            None
+            return Some(*code);
         }
+        if let Self::Doctor { diagnosis, .. } = self
+            && !diagnosis.is_ready()
+        {
+            return Some(1);
+        }
+        None
     }
+}
+
+/// How a report that a program may read is printed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Form {
+    Text,
+    /// One JSON document, for programs.
+    Json,
 }
 
 impl fmt::Display for Report {
@@ -200,6 +219,14 @@ impl fmt::Display for Report {
         match self {
             Self::Nothing | Self::Exit(_) => Ok(()),
             Self::Verbatim(text) => f.write_str(text),
+            Self::Doctor {
+                diagnosis,
+                form: Form::Text,
+            } => diagnosis.fmt(f),
+            Self::Doctor {
+                diagnosis,
+                form: Form::Json,
+            } => writeln!(f, "{:#}", diagnosis.json()),
             Self::Machines(listings) => {
                 for listing in listings {
                     match listing {

@@ -27,13 +27,13 @@ futures.workspace = true
 nix = { workspace = true, features = ["signal"] }
 prost.workspace = true
 rmcp = { workspace = true, features = ["server", "transport-io"] }
+serde_json.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync"] }
 
 [dev-dependencies]
 base64.workspace = true
 insta.workspace = true
-serde_json.workspace = true
 
 [lints]
 workspace = true
