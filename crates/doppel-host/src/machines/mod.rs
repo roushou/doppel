@@ -12,8 +12,8 @@ use doppel_machine::bundle::{
     CheckpointLabel, FileOp, GuestRepair, KeptAux, MachineBundle, SocketPath, Trash,
 };
 use doppel_machine::checkpoint::{
-    Action, AfterCheckpoint, Checkpoint, CheckpointPlan, Event, GuestSync, IllegalTransition,
-    SyncSkipped,
+    Action, AfterCheckpoint, Aftermath, Checkpoint, CheckpointPlan, Event, GuestSync,
+    IllegalTransition, SyncSkipped,
 };
 use doppel_machine::deadline::{Deadline, Remaining};
 use doppel_machine::exec::{ExecError, ExecOutput, ExecRequest, Termination};
@@ -25,6 +25,7 @@ use doppel_machine::machine::{
     SpecError,
 };
 use doppel_machine::outcome::{Certainty, Failure, Outcome, Unconfirmed};
+use doppel_machine::screen_probe::{HostScreen, WhyUnconfirmed};
 use doppel_machine::startup::{
     IllegalStartupEvent, Startup, StartupAction, StartupEvent, StartupFailure,
 };
@@ -166,6 +167,8 @@ pub enum MachineError {
     Illegal(#[source] Box<IllegalTransition<MachineError>>),
     #[error(transparent)]
     Login(#[from] doppel_machine::login::IllegalLoginEvent),
+    #[error(transparent)]
+    ScreenProbe(#[from] doppel_machine::screen_probe::IllegalProbeEvent),
     #[error(
         "cannot reach doppel-agent in '{machine}': {source}. Is it running in the guest's logged-in session?"
     )]
@@ -223,6 +226,7 @@ impl Failure for MachineError {
             | Self::StopStalled(_)
             | Self::Illegal(_)
             | Self::Login(_)
+            | Self::ScreenProbe(_)
             | Self::Parse(_)
             | Self::Cancelled
             | Self::StillChanging { .. } => Certainty::MaybeDone,
@@ -309,6 +313,9 @@ pub struct CheckpointReport {
     pub paused_for: Option<Duration>,
     /// Cleanup that ran after a failure, and how it went.
     pub cleanup: Vec<(Action, Outcome<(), MachineError>)>,
+    /// Set when the guest was resumed: whether screenshots show it as it
+    /// is, rather than as it was saved.
+    pub screen: Option<HostScreen>,
 }
 
 /// Proof that this process owns a machine: it holds the machine's lock, and
@@ -1330,10 +1337,26 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
             state = next;
             queue.extend(more);
         }
+        let screen = match &state {
+            Checkpoint::Completed {
+                aftermath: Aftermath::AsRequested(AfterCheckpoint::Resume),
+                ..
+            } => Some(
+                self.catch_up_screen(name, &Cancel::never())
+                    .unwrap_or_else(|error| {
+                        HostScreen::Unconfirmed(WhyUnconfirmed::Failed(error.to_string()))
+                    }),
+            ),
+            Checkpoint::Completed { .. }
+            | Checkpoint::InProgress { .. }
+            | Checkpoint::Failed { .. }
+            | Checkpoint::Unknown { .. } => None,
+        };
         Ok(CheckpointReport {
             result: state,
             paused_for,
             cleanup,
+            screen,
         })
     }
 

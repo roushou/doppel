@@ -144,6 +144,20 @@ impl Rect {
         })
     }
 
+    /// A square of `side` points in the display's top-left corner.
+    #[must_use]
+    pub fn corner_square(side: u16) -> Self {
+        let side = f64::from(side);
+        Self {
+            x: 0.0,
+            y: 0.0,
+            size: Size {
+                width: side,
+                height: side,
+            },
+        }
+    }
+
     #[must_use]
     pub const fn left(self) -> f64 {
         self.x

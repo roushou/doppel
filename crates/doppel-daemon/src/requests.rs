@@ -803,6 +803,7 @@ where
 
     fn checkpoint_report(report: CheckpointReport) -> daemon::CheckpointReport {
         use daemon::checkpoint_report::Result as Wire;
+        let screen = report.screen.as_ref().map(daemon::HostScreen::in_micros);
         let result = match report.result {
             Checkpoint::Completed {
                 memory_bytes,
@@ -819,6 +820,7 @@ where
                     Aftermath::AsRequested(_) => None,
                     Aftermath::LeftPaused(why) => Some(Refusal::unconfirmed(&why)),
                 },
+                screen,
             }),
             Checkpoint::Failed {
                 at, error, guest, ..

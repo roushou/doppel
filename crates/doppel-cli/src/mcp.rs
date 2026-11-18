@@ -562,10 +562,12 @@ impl Calls<'_> {
                 memory_bytes,
                 sync_skipped,
                 left_paused,
+                screen,
             } => CheckpointEnd::Completed {
                 memory_bytes,
                 sync_skipped,
                 left_paused: left_paused.map(|why| Unconfirmed::new(why.certainty(), failure(why))),
+                screen,
             },
             CheckpointResult::Failed { at, error, guest } => CheckpointEnd::Failed {
                 at,

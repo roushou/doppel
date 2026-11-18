@@ -11,7 +11,9 @@ use std::path::{Path, PathBuf};
 
 use doppel_machine::bundle::SocketPath;
 use doppel_machine::deadline::Deadline;
+use doppel_machine::geometry::Point;
 use doppel_machine::outcome::{Certainty, Failure};
+use doppel_machine::screen_probe::Rgb;
 use doppel_machine::vm::{RunState, Window};
 use doppel_protocol::convert::RemoteError;
 use doppel_protocol::exchange::{ExchangeConfig, ExchangeError};
@@ -167,6 +169,7 @@ impl<'c, C: Clock> VmmClient<'c, C> {
         match outcome {
             vmm::vmm_response::Outcome::Done(_) => Ok(()),
             vmm::vmm_response::Outcome::Error(_)
+            | vmm::vmm_response::Outcome::DisplaySample(_)
             | vmm::vmm_response::Outcome::State(_)
             | vmm::vmm_response::Outcome::StateSaved(_)
             | vmm::vmm_response::Outcome::Image(_)
@@ -199,6 +202,7 @@ impl<'c, C: Clock> VmmClient<'c, C> {
         match self.call_outcome(vmm::vmm_request::Operation::GetState(vmm::GetState {}), by)? {
             vmm::vmm_response::Outcome::State(state) => Ok((state.state(), state.window_shown())),
             vmm::vmm_response::Outcome::Error(_)
+            | vmm::vmm_response::Outcome::DisplaySample(_)
             | vmm::vmm_response::Outcome::Done(_)
             | vmm::vmm_response::Outcome::StateSaved(_)
             | vmm::vmm_response::Outcome::Image(_)
@@ -253,6 +257,7 @@ impl<'c, C: Clock> VmmClient<'c, C> {
         )? {
             vmm::vmm_response::Outcome::StateSaved(saved) => Ok(saved.bytes),
             vmm::vmm_response::Outcome::Error(_)
+            | vmm::vmm_response::Outcome::DisplaySample(_)
             | vmm::vmm_response::Outcome::State(_)
             | vmm::vmm_response::Outcome::Done(_)
             | vmm::vmm_response::Outcome::Image(_)
@@ -283,6 +288,7 @@ impl<'c, C: Clock> VmmClient<'c, C> {
         match self.call_outcome(vmm::vmm_request::Operation::CaptureDisplay(request), by)? {
             vmm::vmm_response::Outcome::Image(image) => Ok(image),
             vmm::vmm_response::Outcome::Error(_)
+            | vmm::vmm_response::Outcome::DisplaySample(_)
             | vmm::vmm_response::Outcome::State(_)
             | vmm::vmm_response::Outcome::Done(_)
             | vmm::vmm_response::Outcome::StateSaved(_)
@@ -309,6 +315,7 @@ impl<'c, C: Clock> VmmClient<'c, C> {
         )? {
             vmm::vmm_response::Outcome::RecognizedText(text) => Ok(text),
             vmm::vmm_response::Outcome::Error(_)
+            | vmm::vmm_response::Outcome::DisplaySample(_)
             | vmm::vmm_response::Outcome::State(_)
             | vmm::vmm_response::Outcome::Done(_)
             | vmm::vmm_response::Outcome::StateSaved(_)
@@ -319,6 +326,39 @@ impl<'c, C: Clock> VmmClient<'c, C> {
             | vmm::vmm_response::Outcome::RecordingStarted(_)
             | vmm::vmm_response::Outcome::RecordingStopped(_) => {
                 Err(VmmError::Protocol("expected RecognizedText"))
+            }
+        }
+    }
+
+    /// The colour of the display at `at`, as a screenshot would show it.
+    ///
+    /// # Errors
+    /// See [`VmmError`]; a VMM that predates sampling answers `Remote`
+    /// unsupported.
+    pub fn sample_display(&mut self, at: Point, by: Deadline) -> Result<Rgb, VmmError> {
+        match self.call_outcome(
+            vmm::vmm_request::Operation::SampleDisplay(vmm::SampleDisplay {
+                at: Some(at.into()),
+            }),
+            by,
+        )? {
+            vmm::vmm_response::Outcome::DisplaySample(sample) => sample
+                .color
+                .ok_or(VmmError::Protocol("DisplaySample without a colour"))?
+                .try_into()
+                .map_err(|_| VmmError::Protocol("DisplaySample colour past 8 bits")),
+            vmm::vmm_response::Outcome::Error(_)
+            | vmm::vmm_response::Outcome::State(_)
+            | vmm::vmm_response::Outcome::Done(_)
+            | vmm::vmm_response::Outcome::StateSaved(_)
+            | vmm::vmm_response::Outcome::Image(_)
+            | vmm::vmm_response::Outcome::AgentChannelOpened(_)
+            | vmm::vmm_response::Outcome::RecognizedText(_)
+            | vmm::vmm_response::Outcome::DisplayOpened(_)
+            | vmm::vmm_response::Outcome::EncodedDisplayOpened(_)
+            | vmm::vmm_response::Outcome::RecordingStarted(_)
+            | vmm::vmm_response::Outcome::RecordingStopped(_) => {
+                Err(VmmError::Protocol("expected DisplaySample"))
             }
         }
     }
@@ -360,6 +400,7 @@ impl<'c, C: Clock> VmmClient<'c, C> {
                 }
             }
             vmm::vmm_response::Outcome::Error(_)
+            | vmm::vmm_response::Outcome::DisplaySample(_)
             | vmm::vmm_response::Outcome::State(_)
             | vmm::vmm_response::Outcome::Done(_)
             | vmm::vmm_response::Outcome::StateSaved(_)
@@ -396,6 +437,7 @@ impl<'c, C: Clock> VmmClient<'c, C> {
                 bytes: stopped.bytes,
             }),
             vmm::vmm_response::Outcome::Error(_)
+            | vmm::vmm_response::Outcome::DisplaySample(_)
             | vmm::vmm_response::Outcome::State(_)
             | vmm::vmm_response::Outcome::Done(_)
             | vmm::vmm_response::Outcome::StateSaved(_)
@@ -434,6 +476,7 @@ impl<'c, C: Clock> VmmClient<'c, C> {
                 Ok((layout, memory))
             }
             vmm::vmm_response::Outcome::Error(_)
+            | vmm::vmm_response::Outcome::DisplaySample(_)
             | vmm::vmm_response::Outcome::State(_)
             | vmm::vmm_response::Outcome::Done(_)
             | vmm::vmm_response::Outcome::StateSaved(_)
@@ -463,6 +506,7 @@ impl<'c, C: Clock> VmmClient<'c, C> {
         )? {
             vmm::vmm_response::Outcome::EncodedDisplayOpened(opened) => Ok(opened),
             vmm::vmm_response::Outcome::Error(_)
+            | vmm::vmm_response::Outcome::DisplaySample(_)
             | vmm::vmm_response::Outcome::State(_)
             | vmm::vmm_response::Outcome::Done(_)
             | vmm::vmm_response::Outcome::StateSaved(_)
@@ -496,6 +540,7 @@ impl<'c, C: Clock> VmmClient<'c, C> {
                 VmmError::Protocol("AgentChannelOpened without a file descriptor"),
             ),
             vmm::vmm_response::Outcome::Error(_)
+            | vmm::vmm_response::Outcome::DisplaySample(_)
             | vmm::vmm_response::Outcome::State(_)
             | vmm::vmm_response::Outcome::Done(_)
             | vmm::vmm_response::Outcome::StateSaved(_)

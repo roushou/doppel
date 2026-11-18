@@ -29,7 +29,7 @@ private func decodeAll<M: Envelope>(_ data: Data, as: M.Type) throws -> [M] {
     @Test func agentStreamDecodesToRustValuesAndReencodesIdentically() throws {
         let bytes = try fixture("agent_stream.v1.bin")
         let frames = try decodeAll(bytes, as: Doppel_Agent_V1_AgentFrame.self)
-        try #require(frames.count == 11)
+        try #require(frames.count == 13)
 
         #expect(frames[0].hello.protocolVersion == 1)
         #expect(frames[0].hello.softwareVersion == "doppel-agent 0.1.0")
@@ -71,6 +71,8 @@ private func decodeAll<M: Envelope>(_ data: Data, as: M.Type) throws -> [M] {
         #expect(frames[9].event.frontmostAppChanged.app.pid == 612)
         #expect(frames[9].event.frontmostAppChanged.app.bundleID == "com.apple.TextEdit")
         #expect(frames[10].event.uiChanged.pid == 612)
+        #expect(frames[11].request.showProbe.frame.size.width == 4 && frames[11].request.showProbe.color.blue == 255)
+        #expect(frames[12].request.id == 8 && frames[12].request.hideProbe == Doppel_Agent_V1_HideProbe())
 
         // The real cross-language check: values built independently in Swift
         // decode-equal Rust's, and encode to Rust's exact bytes.
@@ -82,7 +84,7 @@ private func decodeAll<M: Envelope>(_ data: Data, as: M.Type) throws -> [M] {
     @Test func vmmStreamDecodesToRustValuesAndReencodesIdentically() throws {
         let bytes = try fixture("vmm_stream.v1.bin")
         let frames = try decodeAll(bytes, as: Doppel_Vmm_V1_VmmFrame.self)
-        try #require(frames.count == 14)
+        try #require(frames.count == 16)
         #expect(frames[0].request.saveState.path == "/tmp/checkpoints/before-install/memory.vzsave")
         #expect(frames[1].response.stateSaved.bytes == 1_744_830_464)
         #expect(frames[2].event.stateChanged.runState == .paused)
@@ -95,6 +97,8 @@ private func decodeAll<M: Envelope>(_ data: Data, as: M.Type) throws -> [M] {
         #expect(frames[12].event.encodedFrame.parameterSets.count == 2)
         #expect(frames[9].response.recordingStopped.seconds == 95.5)
         #expect(frames[13].response.state.window == .shown)
+        #expect(frames[14].request.sampleDisplay.at.x == 2)
+        #expect(frames[15].response.displaySample.color.green == 237)
 
         #expect(frames == Canonical.vmmStream)
         let swiftBytes = try Canonical.vmmStream.reduce(into: Data()) { $0.append(try FrameEncoder().encode($1)) }
