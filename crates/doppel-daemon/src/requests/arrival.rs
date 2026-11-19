@@ -37,10 +37,7 @@ impl Arrival {
             askers: traits.askers,
             turn: traits.turn,
             guest: traits.guest,
-            machine: traits
-                .machine
-                .map(|(field, raw)| Refusal::name(field, raw))
-                .transpose()?,
+            machine: traits.machine?,
             looked_for: traits.looked_for.map(str::to_owned),
         })
     }

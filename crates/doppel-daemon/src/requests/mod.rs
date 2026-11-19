@@ -421,15 +421,15 @@ where
     /// Runs one kind of request; its answer is the outcome that kind gets.
     fn run<R: Handle>(&self, request: R, call: &Call, link: &Link) -> Outcome {
         request
-            .run(self, call, link)
+            .named()
+            .and_then(|named| request.run(named, self, call, link))
             .map_or_else(Refusal::outcome, R::answer)
     }
 
     pub(super) fn status_request(
         &self,
-        request: &daemon::GetStatus,
+        name: MachineName,
     ) -> Result<daemon::MachineStatus, Refusal> {
-        let name = Refusal::name("name", &request.name)?;
         let status = self
             .machines
             .machine(&name)
@@ -439,10 +439,10 @@ where
 
     pub(super) fn start_request(
         &self,
+        name: MachineName,
         request: &daemon::StartMachine,
         call: &Call,
     ) -> Result<daemon::MachineStarted, Refusal> {
-        let name = Refusal::name("name", &request.name)?;
         let window = ParseError::window("window", request.window)
             .map_err(|_| Refusal::argument("window", &request.window))?;
         let (state, next) = self.start(&name, window, call)?;
@@ -454,20 +454,19 @@ where
 
     pub(super) fn await_desktop_request(
         &self,
-        request: &daemon::AwaitDesktop,
+        name: MachineName,
         call: &Call,
     ) -> Result<daemon::LoginResult, Refusal> {
-        let name = Refusal::name("name", &request.name)?;
         let outcome = self.await_desktop(&name, call)?;
         Ok(daemon::LoginResult::in_micros(&outcome))
     }
 
     pub(super) fn stop_request(
         &self,
+        name: MachineName,
         request: &daemon::StopMachine,
         call: &Call,
     ) -> Result<daemon::MachineStopped, Refusal> {
-        let name = Refusal::name("name", &request.name)?;
         let mode = ParseError::stop_mode("mode", request.mode)
             .map_err(|_| Refusal::argument("mode", &request.mode))?;
         let report = self.stop(&name, mode, call)?;
@@ -476,20 +475,18 @@ where
 
     pub(super) fn pause_request(
         &self,
-        request: &daemon::PauseMachine,
+        name: MachineName,
         call: &Call,
     ) -> Result<daemon::Done, Refusal> {
-        let name = Refusal::name("name", &request.name)?;
         self.pause(&name, call)?;
         Ok(daemon::Done {})
     }
 
     pub(super) fn resume_request(
         &self,
-        request: &daemon::ResumeMachine,
+        name: MachineName,
         call: &Call,
     ) -> Result<daemon::MachineResumed, Refusal> {
-        let name = Refusal::name("name", &request.name)?;
         let outcome = daemon::ResumeOutcome::from(self.resume(&name, call)?);
         Ok(daemon::MachineResumed {
             outcome: outcome as i32,
@@ -498,10 +495,10 @@ where
 
     pub(super) fn checkpoint_request(
         &self,
+        name: MachineName,
         request: &daemon::TakeCheckpoint,
         call: &Call,
     ) -> Result<daemon::CheckpointReport, Refusal> {
-        let name = Refusal::name("name", &request.name)?;
         let label = Refusal::label("label", &request.label)?;
         let then = ParseError::after_checkpoint("then", request.then)?;
         let report = self.checkpoint(&name, &label, then, call)?;
@@ -510,20 +507,19 @@ where
 
     pub(super) fn delete_request(
         &self,
-        request: &daemon::DeleteMachine,
+        name: MachineName,
         call: &Call,
     ) -> Result<daemon::Done, Refusal> {
-        let name = Refusal::name("name", &request.name)?;
         self.delete(&name, call)?;
         Ok(daemon::Done {})
     }
 
     pub(super) fn delete_checkpoint_request(
         &self,
+        name: MachineName,
         request: &daemon::DeleteCheckpoint,
         call: &Call,
     ) -> Result<daemon::Done, Refusal> {
-        let name = Refusal::name("name", &request.name)?;
         let label = Refusal::label("label", &request.label)?;
         self.delete_checkpoint(&name, &label, call)?;
         Ok(daemon::Done {})
@@ -531,10 +527,10 @@ where
 
     pub(super) fn fork_request(
         &self,
+        source: MachineName,
         request: &daemon::ForkMachine,
         call: &Call,
     ) -> Result<daemon::Done, Refusal> {
-        let source = Refusal::name("source", &request.source)?;
         let label = Refusal::label("label", &request.label)?;
         let into = Refusal::name("into", &request.into)?;
         self.fork(&source, &label, &into, call)?;
@@ -658,10 +654,10 @@ where
 
     pub(super) fn run_forks_request(
         &self,
+        name: MachineName,
         request: &daemon::RunForks,
         call: &Call,
     ) -> Result<daemon::ForksRun, Refusal> {
-        let name = Refusal::name("name", &request.name)?;
         let label = Refusal::label("label", &request.label)?;
         let forks =
             self.run_forks(&name, &label, request.count, call)
@@ -706,11 +702,10 @@ where
     /// when the connection closes.
     pub(super) fn make_temporary_machine_request(
         &self,
-        request: &daemon::MakeTemporaryMachine,
+        golden: MachineName,
         call: &Call,
         link: &Link,
     ) -> Result<daemon::TemporaryMachineMade, Refusal> {
-        let golden = Refusal::name("golden", &request.golden)?;
         let name =
             self.make_temporary_machine(&golden, call)
                 .map_err(|error| match error {
@@ -737,10 +732,10 @@ where
 
     pub(super) fn restore_request(
         &self,
+        name: MachineName,
         request: &daemon::RestoreMachine,
         call: &Call,
     ) -> Result<daemon::Done, Refusal> {
-        let name = Refusal::name("name", &request.name)?;
         let label = Refusal::label("label", &request.label)?;
         self.restore(&name, &label, call)?;
         Ok(daemon::Done {})
@@ -980,10 +975,10 @@ where
     /// it would go nowhere.
     pub(super) fn mark_request(
         &self,
+        name: MachineName,
         request: &daemon::MarkScreen,
         link: &Link,
     ) -> Result<daemon::Done, Refusal> {
-        let name = Refusal::name("name", &request.name)?;
         if link.session().is_none() {
             return Err(Refusal::State(
                 "a mark is shown to the people watching a session; open one first".into(),
@@ -1137,21 +1132,20 @@ where
 
     pub(super) fn report_request(
         &self,
-        request: &daemon::GetMachineReport,
+        name: MachineName,
         call: &Call,
     ) -> Result<daemon::MachineReport, Refusal> {
-        let name = Refusal::name("name", &request.name)?;
         let report = self.status(&name, call)?;
         Ok(daemon::MachineReport::from(&report))
     }
 
     pub(super) fn screenshot_request(
         &self,
+        name: MachineName,
         request: &daemon::TakeScreenshot,
         call: &Call,
     ) -> Result<common::Image, Refusal> {
         use daemon::take_screenshot::Size;
-        let name = Refusal::name("name", &request.name)?;
         let size = match request.size {
             Some(Size::MatchPoints(_)) => ScreenshotSize::MatchPoints,
             Some(Size::MaxPixels(n)) => ScreenshotSize::MaxPixels(n),
@@ -1163,20 +1157,19 @@ where
 
     pub(super) fn screen_text_request(
         &self,
-        request: &daemon::ReadScreenText,
+        name: MachineName,
         call: &Call,
     ) -> Result<vmm::RecognizedText, Refusal> {
-        let name = Refusal::name("name", &request.name)?;
         let text = self.recognize_text(&name, call)?;
         Ok((&text).into())
     }
 
     pub(super) fn input_request(
         &self,
+        name: MachineName,
         request: daemon::SendInput,
         call: &Call,
     ) -> Result<daemon::Done, Refusal> {
-        let name = Refusal::name("name", &request.name)?;
         let input = request
             .input
             .ok_or(ParseError::Missing("input"))?
@@ -1187,10 +1180,9 @@ where
 
     pub(super) fn take_control_request(
         &self,
-        request: &daemon::TakeControl,
+        name: MachineName,
         link: &Link,
     ) -> Result<daemon::Done, Refusal> {
-        let name = Refusal::name("name", &request.name)?;
         self.scheduler
             .take_control(link.connection(), &name, self.machines.clock().now())
             .map_err(|error| Refusal::State(format!("{name}: {error}")))?;
@@ -1200,10 +1192,9 @@ where
 
     pub(super) fn hand_back_request(
         &self,
-        request: &daemon::HandBack,
+        name: MachineName,
         link: &Link,
     ) -> Result<daemon::Done, Refusal> {
-        let name = Refusal::name("name", &request.name)?;
         self.scheduler
             .hand_back(link.connection(), &name, self.machines.clock().now())
             .map_err(|error| Refusal::State(format!("{name}: {error}")))?;
@@ -1213,10 +1204,10 @@ where
 
     pub(super) fn host_input_request(
         &self,
+        name: MachineName,
         request: daemon::SendHostInput,
         link: &Link,
     ) -> Result<daemon::Done, Refusal> {
-        let name = Refusal::name("name", &request.name)?;
         if !self.scheduler.holds(link.connection(), &name) {
             return Err(Refusal::State(format!(
                 "{name}: take control of it before sending input"
@@ -1232,20 +1223,20 @@ where
 
     pub(super) fn snapshot_request(
         &self,
+        name: MachineName,
         request: &daemon::TakeSnapshot,
         call: &Call,
     ) -> Result<agent::AxSnapshot, Refusal> {
-        let name = Refusal::name("name", &request.name)?;
         let snapshot = self.snapshot(&name, Self::spec(request.spec)?, call)?;
         Ok((&snapshot).into())
     }
 
     pub(super) fn act_request(
         &self,
+        name: MachineName,
         request: daemon::ActOnElement,
         call: &Call,
     ) -> Result<daemon::ActResult, Refusal> {
-        let name = Refusal::name("name", &request.name)?;
         let act = request
             .action
             .ok_or(ParseError::Missing("action"))?
@@ -1258,10 +1249,10 @@ where
 
     pub(super) fn wait_request(
         &self,
+        name: MachineName,
         request: daemon::WaitForElement,
         call: &Call,
     ) -> Result<daemon::ElementWaitResult, Refusal> {
-        let name = Refusal::name("name", &request.name)?;
         let wait = ParseError::element_wait(request.condition, request.timeout_ms)?;
         let outcome = self.wait_for(&name, wait, Self::spec(request.spec)?, call)?;
         Ok(daemon::ElementWaitResult::in_micros(&outcome))
@@ -1269,10 +1260,10 @@ where
 
     pub(super) fn text_wait_request(
         &self,
+        name: MachineName,
         request: daemon::WaitForText,
         call: &Call,
     ) -> Result<daemon::TextWaitResult, Refusal> {
-        let name = Refusal::name("name", &request.name)?;
         let wait = ParseError::text_wait(request.condition, request.timeout_ms)?;
         let outcome = self.wait_for_text(&name, wait, call)?;
         Ok(daemon::TextWaitResult::in_micros(&outcome))
@@ -1280,10 +1271,10 @@ where
 
     pub(super) fn exec_request(
         &self,
+        name: MachineName,
         request: daemon::RunProgram,
         call: &Call,
     ) -> Result<agent::ExecResult, Refusal> {
-        let name = Refusal::name("name", &request.name)?;
         let exec = request
             .exec
             .ok_or(ParseError::Missing("exec"))?
@@ -1294,10 +1285,10 @@ where
 
     pub(super) fn read_request(
         &self,
+        name: MachineName,
         request: daemon::ReadGuestFile,
         call: &Call,
     ) -> Result<agent::FileContents, Refusal> {
-        let name = Refusal::name("name", &request.name)?;
         let read = request
             .read
             .ok_or(ParseError::Missing("read"))?
@@ -1308,10 +1299,10 @@ where
 
     pub(super) fn write_request(
         &self,
+        name: MachineName,
         request: daemon::WriteGuestFile,
         call: &Call,
     ) -> Result<daemon::Done, Refusal> {
-        let name = Refusal::name("name", &request.name)?;
         let write = request
             .write
             .ok_or(ParseError::Missing("write"))?
@@ -1322,10 +1313,10 @@ where
 
     pub(super) fn rollback_request(
         &self,
+        name: MachineName,
         request: &daemon::RollBack,
         call: &Call,
     ) -> Result<daemon::LoginResult, Refusal> {
-        let name = Refusal::name("name", &request.name)?;
         let label = Refusal::label("label", &request.label)?;
         let desktop = self.rollback(&name, &label, call)?;
         Ok(daemon::LoginResult::in_micros(&desktop))
