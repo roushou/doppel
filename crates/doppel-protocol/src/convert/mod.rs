@@ -14,7 +14,8 @@ use doppel_machine::lineage::{Lineage, Origin, RecordedLineage, Role, TemplateAg
 use doppel_machine::login::{Desktop, LoginOutcome};
 use doppel_machine::machine::SpecError;
 use doppel_machine::screen_probe::{HostScreen, Probe, Rgb, WhyUnconfirmed};
-use doppel_machine::vm::{MachineReport, NextStart, RunState, Status, Window};
+use doppel_machine::stop::{StopMode, StopOutcome};
+use doppel_machine::vm::{MachineReport, NextStart, Resumed, RunState, Status, Window};
 
 use crate::pb::agent::v1 as agent;
 use crate::pb::common::v1 as common;
@@ -72,10 +73,48 @@ impl From<SnapshotSpec> for daemon::SnapshotSpec {
 
 // --- MachineReport -----------------------------------------------------------
 
+impl From<&MachineReport> for daemon::MachineReport {
+    fn from(report: &MachineReport) -> Self {
+        use daemon::machine_report::Agent;
+        Self {
+            status: Some(report.status.into()),
+            agent: Some(match &report.agent {
+                AgentReport::Connected(status) => Agent::Connected(status.into()),
+                AgentReport::Unreachable(why) => Agent::Unreachable(why.clone()),
+                AgentReport::NotRunning => Agent::NotRunning(daemon::Done {}),
+            }),
+            checkpoints: report.checkpoints.iter().map(ToString::to_string).collect(),
+            incomplete_checkpoints: report.incomplete.iter().map(ToString::to_string).collect(),
+        }
+    }
+}
+
+/// A report's labels, each parsed.
+fn labels(field: &'static str, raw: &[String]) -> Result<Vec<CheckpointLabel>, ParseError> {
+    raw.iter()
+        .map(|label| label.parse())
+        .collect::<Result<_, _>>()
+        .map_err(|error| ParseError::Invalid {
+            field,
+            reason: format!("{error}"),
+        })
+}
+
 impl TryFrom<daemon::MachineReport> for MachineReport {
     type Error = ParseError;
     fn try_from(report: daemon::MachineReport) -> Result<Self, ParseError> {
         use daemon::machine_report::Agent;
+        let checkpoints = labels("machine_report.checkpoints", &report.checkpoints)?;
+        let incomplete = labels(
+            "machine_report.incomplete_checkpoints",
+            &report.incomplete_checkpoints,
+        )?;
+        if let Some(stray) = incomplete.iter().find(|label| !checkpoints.contains(label)) {
+            return Err(ParseError::Invalid {
+                field: "machine_report.incomplete_checkpoints",
+                reason: format!("'{stray}' isn't among the checkpoints"),
+            });
+        }
         Ok(Self {
             status: report
                 .status
@@ -89,15 +128,8 @@ impl TryFrom<daemon::MachineReport> for MachineReport {
                 Agent::Unreachable(why) => AgentReport::Unreachable(why),
                 Agent::NotRunning(_) => AgentReport::NotRunning,
             },
-            checkpoints: report
-                .checkpoints
-                .iter()
-                .map(|label| label.parse())
-                .collect::<Result<_, _>>()
-                .map_err(|error| ParseError::Invalid {
-                    field: "machine_report.checkpoints",
-                    reason: format!("{error}"),
-                })?,
+            checkpoints,
+            incomplete,
         })
     }
 }
@@ -167,6 +199,42 @@ impl From<RunState> for vmm::VmState {
 
 // --- Machine status (daemon) ---------------------------------------------------------
 
+impl From<Window> for daemon::Window {
+    fn from(window: Window) -> Self {
+        match window {
+            Window::Hidden => Self::Hidden,
+            Window::Shown => Self::Shown,
+        }
+    }
+}
+
+impl From<StopMode> for vmm::StopMode {
+    fn from(mode: StopMode) -> Self {
+        match mode {
+            StopMode::Graceful => Self::Graceful,
+            StopMode::Force => Self::Force,
+        }
+    }
+}
+
+impl From<StopOutcome> for daemon::StopOutcome {
+    fn from(outcome: StopOutcome) -> Self {
+        match outcome {
+            StopOutcome::Stopped => Self::Stopped,
+            StopOutcome::ShutdownPending => Self::ShutdownPending,
+        }
+    }
+}
+
+impl From<Resumed> for daemon::ResumeOutcome {
+    fn from(resumed: Resumed) -> Self {
+        match resumed {
+            Resumed::Resumed => Self::Resumed,
+            Resumed::AlreadyRunning => Self::AlreadyRunning,
+        }
+    }
+}
+
 impl From<NextStart> for daemon::NextStart {
     fn from(next: NextStart) -> Self {
         match next {
@@ -198,6 +266,42 @@ impl ParseError {
             Ok(common::Permission::Accessibility) => Permission::Accessibility,
             Ok(common::Permission::Unspecified) | Err(_) => Permission::Unrecognized(raw),
         }
+    }
+
+    /// Parses a daemon `Window` field.
+    pub fn window(field: &'static str, raw: i32) -> Result<Window, Self> {
+        Self::enumeration(field, raw, |window| match window {
+            daemon::Window::Hidden => Some(Window::Hidden),
+            daemon::Window::Shown => Some(Window::Shown),
+            daemon::Window::Unspecified => None,
+        })
+    }
+
+    /// Parses a VMM `StopMode` field.
+    pub fn stop_mode(field: &'static str, raw: i32) -> Result<StopMode, Self> {
+        Self::enumeration(field, raw, |mode| match mode {
+            vmm::StopMode::Graceful => Some(StopMode::Graceful),
+            vmm::StopMode::Force => Some(StopMode::Force),
+            vmm::StopMode::Unspecified => None,
+        })
+    }
+
+    /// Parses a daemon `StopOutcome` field.
+    pub fn stop_outcome(field: &'static str, raw: i32) -> Result<StopOutcome, Self> {
+        Self::enumeration(field, raw, |outcome| match outcome {
+            daemon::StopOutcome::Stopped => Some(StopOutcome::Stopped),
+            daemon::StopOutcome::ShutdownPending => Some(StopOutcome::ShutdownPending),
+            daemon::StopOutcome::Unspecified => None,
+        })
+    }
+
+    /// Parses a daemon `ResumeOutcome` field.
+    pub fn resumed(field: &'static str, raw: i32) -> Result<Resumed, Self> {
+        Self::enumeration(field, raw, |resumed| match resumed {
+            daemon::ResumeOutcome::Resumed => Some(Resumed::Resumed),
+            daemon::ResumeOutcome::AlreadyRunning => Some(Resumed::AlreadyRunning),
+            daemon::ResumeOutcome::Unspecified => None,
+        })
     }
 
     /// Parses a daemon `NextStart` field.
@@ -716,6 +820,23 @@ mod tests {
     }
 
     #[test]
+    fn a_machine_report_round_trips_and_its_incomplete_checkpoints_are_among_its_checkpoints() {
+        let report = MachineReport {
+            status: Status::Stopped(NextStart::ColdBoot),
+            agent: AgentReport::NotRunning,
+            checkpoints: vec!["ready".parse().unwrap(), "broken".parse().unwrap()],
+            incomplete: vec!["broken".parse().unwrap()],
+        };
+        let wire = daemon::MachineReport::from(&report);
+        assert_eq!(MachineReport::try_from(wire.clone()), Ok(report));
+        let stray = daemon::MachineReport {
+            incomplete_checkpoints: vec!["elsewhere".into()],
+            ..wire
+        };
+        assert!(MachineReport::try_from(stray).is_err());
+    }
+
+    #[test]
     fn lineage_round_trips() {
         let golden = Role::Golden {
             template: "ready".parse().unwrap(),
@@ -927,6 +1048,34 @@ mod tests {
                 certainty
             );
         }
+    }
+
+    #[test]
+    fn lifecycle_enums_round_trip_and_unspecified_is_rejected() {
+        for window in [Window::Hidden, Window::Shown] {
+            let raw = daemon::Window::from(window) as i32;
+            assert_eq!(ParseError::window("w", raw), Ok(window));
+        }
+        for mode in [StopMode::Graceful, StopMode::Force] {
+            let raw = vmm::StopMode::from(mode) as i32;
+            assert_eq!(ParseError::stop_mode("m", raw), Ok(mode));
+        }
+        for outcome in [StopOutcome::Stopped, StopOutcome::ShutdownPending] {
+            let raw = daemon::StopOutcome::from(outcome) as i32;
+            assert_eq!(ParseError::stop_outcome("o", raw), Ok(outcome));
+        }
+        for resumed in [Resumed::Resumed, Resumed::AlreadyRunning] {
+            let raw = daemon::ResumeOutcome::from(resumed) as i32;
+            assert_eq!(ParseError::resumed("r", raw), Ok(resumed));
+        }
+        let unspecified = ParseError::UnknownEnum {
+            field: "w",
+            value: 0,
+        };
+        assert_eq!(ParseError::window("w", 0), Err(unspecified));
+        assert!(ParseError::stop_mode("m", 0).is_err());
+        assert!(ParseError::stop_outcome("o", 0).is_err());
+        assert!(ParseError::resumed("r", 0).is_err());
     }
 
     #[test]

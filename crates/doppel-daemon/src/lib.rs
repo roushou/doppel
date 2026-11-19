@@ -14,6 +14,7 @@ mod serving;
 mod web;
 
 pub use recording::RecordingError;
+use requests::arrival::Arrival;
 pub use requests::forks::{EntropyMacs, MacError, MacSource};
 pub use requests::operations::{Acted, CallError};
 use scheduler::{ConnectionId, SessionId};
@@ -439,13 +440,18 @@ where
         link: &'scope Link,
         scope: &'scope std::thread::Scope<'scope, '_>,
     ) {
-        let askers = request
-            .operation
-            .as_ref()
-            .map_or(requests::handle::Askers::Anyone, |operation| {
-                requests::handle::Traits::of(operation).askers
-            });
-        if let (Reach::Remote(_), requests::handle::Askers::ThisMac) = (&link.reach, askers) {
+        let arrival = match Arrival::of(request.operation.as_ref()) {
+            Ok(arrival) => arrival,
+            // Refused as it arrives: it joins no session and no line.
+            Err(refusal) => {
+                if let Err(error) = link.write(&Link::response(request.id, refusal.outcome())) {
+                    eprintln!("doppeld: answering request {}: {error}", request.id);
+                }
+                return;
+            }
+        };
+        if let (Reach::Remote(_), requests::handle::Askers::ThisMac) = (&link.reach, arrival.askers)
+        {
             let refused = daemon::daemon_response::Outcome::Error(common::Error {
                 kind: Some(common::error::Kind::Unsupported(common::Unsupported {
                     what: "only on this Mac's daemon socket, not from a browser".into(),
@@ -460,11 +466,9 @@ where
         link.in_flight().insert(request.id, cancel.clone());
         // Noted here, as read: the request's thread may start after the
         // next one's.
-        let call = self.scheduler.arrive(
-            link.connection,
-            Self::reserves(request.operation.as_ref()),
-            cancel.clone(),
-        );
+        let call = self
+            .scheduler
+            .arrive(link.connection, arrival.reserves(), cancel.clone());
         scope.spawn(move || {
             let id = request.id;
             let opens = request
@@ -477,7 +481,7 @@ where
                 link.in_flight().remove(&id);
                 return;
             }
-            let (outcome, note) = self.answer(request, &call, link);
+            let (outcome, note) = self.answer(request, arrival, &call, link);
             // Answered: a session listing no longer shows it running.
             drop(call);
             link.in_flight().remove(&id);
@@ -485,10 +489,7 @@ where
             if let (Some(daemon::daemon_frame::Kind::Response(response)), Some(note)) =
                 (&mut response.kind, note)
             {
-                response.handed_back = Some(daemon::HandedBack {
-                    machine: note.machine.to_string(),
-                    held_millis: u64::try_from(note.held.as_millis()).unwrap_or(u64::MAX),
-                });
+                response.handed_back = Some(daemon::HandedBack::from(&note));
             }
             if let Err(error) = link.write(&response) {
                 eprintln!("doppeld: answering request {id}: {error}");

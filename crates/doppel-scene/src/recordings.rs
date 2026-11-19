@@ -3,55 +3,13 @@
 //! playhead and the session's clock. Pure.
 
 use doppel_desktop::geometry::Size;
-use std::fmt;
+use doppel_machine::activity::SessionId;
 
 use doppel_machine::machine::MachineName;
 use doppel_machine::recording as kept;
+pub use doppel_machine::recording::{RecordingId, VideoFile};
 
 use crate::timeline::{Call, CallKey, Gesture, Moment, Seen, Target, TextRead, on_screen};
-
-/// A recording's name, as the daemon lists it (`2026-11-14T06-15-42Z-s1`).
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct RecordingId(String);
-
-impl RecordingId {
-    #[must_use]
-    pub const fn new(name: String) -> Self {
-        Self(name)
-    }
-
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Display for RecordingId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-/// A video's file name in its recording (`live-001.mp4`).
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct VideoName(String);
-
-impl VideoName {
-    #[must_use]
-    pub const fn new(name: String) -> Self {
-        Self(name)
-    }
-
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    /// The name without its extension, as the video chips show it.
-    pub fn stem(&self) -> &str {
-        self.0.strip_suffix(".mp4").unwrap_or(&self.0)
-    }
-}
 
 /// A recording, as listed.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,7 +18,7 @@ pub struct RecordingSummary {
     /// When its session started, on this Mac's clock.
     pub started: LocalTime,
     /// The session it recorded: its agent's hue.
-    pub session: u64,
+    pub session: SessionId,
     /// The machines it has videos of, in the order they started.
     pub machines: Vec<MachineName>,
     pub videos: u32,
@@ -83,7 +41,7 @@ pub struct Recording {
 /// A video of one machine's run.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Video {
-    pub file: VideoName,
+    pub file: VideoFile,
     pub machine: MachineName,
     /// When in the session it starts, in ms; `None` when that wasn't kept.
     pub start_ms: Option<u64>,
@@ -421,12 +379,12 @@ impl Recording {
     #[must_use]
     pub fn of(recording: kept::Recording) -> Self {
         Self {
-            id: RecordingId::new(recording.id.to_string()),
+            id: recording.id,
             videos: recording
                 .videos
                 .into_iter()
                 .map(|video| Video {
-                    file: VideoName::new(video.file.to_string()),
+                    file: video.file,
                     machine: video.machine,
                     start_ms: video.start_ms,
                     points: video.points,
@@ -502,7 +460,7 @@ impl Recording {
                     end_ms: Some(traced.end_ms as f64),
                     call: Call {
                         key: CallKey {
-                            session: 0,
+                            session: 0.into(),
                             request: index as u64,
                         },
                         machine: machine.clone(),
@@ -565,7 +523,7 @@ mod tests {
 
     fn video(file: &str, machine: &str, start_ms: Option<u64>) -> Video {
         Video {
-            file: VideoName::new(file.into()),
+            file: file.parse().unwrap(),
             machine: name(machine),
             start_ms,
             points: None,
@@ -574,7 +532,7 @@ mod tests {
 
     fn recording(videos: Vec<Video>, trace: Vec<TraceLine>) -> Recording {
         Recording {
-            id: RecordingId::new("r".into()),
+            id: id(1),
             videos,
             trace,
         }
@@ -687,11 +645,16 @@ mod tests {
         }
     }
 
-    fn started(id: &str, when: LocalTime) -> RecordingSummary {
+    /// A recording's id; only its session tells fixtures apart.
+    fn id(session: u64) -> RecordingId {
+        RecordingId::new(0, SessionId::from(session))
+    }
+
+    fn started(session: u64, when: LocalTime) -> RecordingSummary {
         RecordingSummary {
-            id: RecordingId::new(id.into()),
+            id: id(session),
             started: when,
-            session: 1,
+            session: 1.into(),
             machines: Vec::new(),
             videos: 1,
             calls: 1,
@@ -702,28 +665,28 @@ mod tests {
     #[test]
     fn the_library_groups_by_day_newest_first() {
         let listed = [
-            started("a", at(2026, 11, 15, 9)),
-            started("b", at(2026, 11, 12, 12)),
-            started("c", at(2026, 11, 15, 16)),
-            started("d", at(2026, 11, 14, 23)),
+            started(1, at(2026, 11, 15, 9)),
+            started(2, at(2026, 11, 12, 12)),
+            started(3, at(2026, 11, 15, 16)),
+            started(4, at(2026, 11, 14, 23)),
         ];
         let groups = by_day(&listed, at(2026, 11, 15, 22));
         let days: Vec<Day> = groups.iter().map(|group| group.day).collect();
         assert_eq!(days[..2], [Day::Today, Day::Yesterday]);
         assert_eq!(days[2].name(), "Thu Nov 12");
-        let today: Vec<&str> = groups[0]
+        let today: Vec<u64> = groups[0]
             .recordings
             .iter()
-            .map(|summary| summary.id.as_str())
+            .map(|summary| summary.id.session().get())
             .collect();
-        assert_eq!(today, ["c", "a"]);
+        assert_eq!(today, [3, 1]);
     }
 
     #[test]
     fn yesterday_is_known_across_a_month_and_a_year() {
-        let listed = [started("a", at(2026, 11, 30, 8))];
+        let listed = [started(1, at(2026, 11, 30, 8))];
         assert_eq!(by_day(&listed, at(2026, 12, 1, 8))[0].day, Day::Yesterday);
-        let listed = [started("a", at(2025, 12, 31, 8))];
+        let listed = [started(1, at(2025, 12, 31, 8))];
         assert_eq!(by_day(&listed, at(2026, 1, 1, 8))[0].day, Day::Yesterday);
         assert!(by_day(&[], at(2026, 1, 1, 8)).is_empty());
     }
@@ -731,7 +694,7 @@ mod tests {
     #[test]
     fn a_summary_knows_its_machines() {
         let summary = |machines: &[&str], calls| RecordingSummary {
-            id: RecordingId::new("r".into()),
+            id: id(1),
             started: LocalTime {
                 year: 2026,
                 month: 11,
@@ -740,7 +703,7 @@ mod tests {
                 minute: 15,
                 second: 42,
             },
-            session: 1,
+            session: 1.into(),
             machines: machines.iter().map(|raw| name(raw)).collect(),
             videos: 1,
             calls,
@@ -757,7 +720,8 @@ mod tests {
 
     #[test]
     fn a_video_chip_drops_the_extension() {
-        assert_eq!(VideoName::new("live-001.mp4".into()).stem(), "live-001");
+        let file: VideoFile = "live-001.mp4".parse().unwrap();
+        assert_eq!(file.stem(), "live-001");
     }
 
     #[test]
@@ -786,7 +750,7 @@ mod tests {
             }))
         };
         let recording = Recording {
-            id: RecordingId::new("r".into()),
+            id: id(1),
             videos: Vec::new(),
             trace: vec![
                 traced(100, Some("dev"), Actor::Session, TraceOutcome::Done),

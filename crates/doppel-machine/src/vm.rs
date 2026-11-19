@@ -29,6 +29,8 @@ pub struct MachineReport {
     pub status: Status,
     pub agent: AgentReport,
     pub checkpoints: Vec<CheckpointLabel>,
+    /// Among `checkpoints`, those missing their memory or disk.
+    pub incomplete: Vec<CheckpointLabel>,
 }
 
 /// The VMM's view of the VM. Unrecognised values from a newer VMM are kept.
@@ -118,6 +120,14 @@ pub enum Window {
 pub enum NextStart {
     ColdBoot,
     ResumeSavedState,
+}
+
+/// How a resume found the guest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Resumed {
+    Resumed,
+    /// It was running already: nothing to do.
+    AlreadyRunning,
 }
 
 /// A machine's status: its VMM's run state, or how it would start.

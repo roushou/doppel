@@ -5,7 +5,7 @@ use super::*;
 #[test]
 fn activity_keeps_its_call_and_ending() {
     let started = ActivityEvent::of(told::Activity {
-        session: 2,
+        session: 2.into(),
         request: 5,
         machine: "dev".parse().unwrap(),
         client: "claude".into(),
@@ -23,14 +23,14 @@ fn activity_keeps_its_call_and_ending() {
     assert_eq!(
         call.key,
         CallKey {
-            session: 2,
+            session: 2.into(),
             request: 5
         }
     );
     assert_eq!(call.gesture, Gesture::Other);
     assert_eq!(call.target, Target::Point(Point::new(1.0, 2.0).unwrap()));
     let ended = ActivityEvent::of(told::Activity {
-        session: 2,
+        session: 2.into(),
         request: 5,
         machine: "dev".parse().unwrap(),
         client: String::new(),
@@ -51,7 +51,7 @@ fn activity_keeps_its_call_and_ending() {
 fn call(request: u64, gesture: Gesture, target: Target) -> Call {
     Call {
         key: CallKey {
-            session: 1,
+            session: 1.into(),
             request,
         },
         machine: "dev".parse().unwrap(),
@@ -71,7 +71,7 @@ fn at(x: f64, y: f64) -> Point {
 fn ended(request: u64, ending: Ending) -> ActivityEvent {
     ActivityEvent::Ended {
         key: CallKey {
-            session: 1,
+            session: 1.into(),
             request,
         },
         machine: "dev".parse().unwrap(),
@@ -119,7 +119,7 @@ fn the_snapshot_shown_is_the_latest_taken_and_says_when_the_agent_acted_since() 
         timeline.record(
             ActivityEvent::Ended {
                 key: CallKey {
-                    session: 1,
+                    session: 1.into(),
                     request,
                 },
                 machine: "dev".parse().unwrap(),
@@ -227,7 +227,7 @@ fn a_recent_call_is_placed_back_in_time_once() {
 #[test]
 fn the_reading_band_finishes_its_pass_after_a_look_ends() {
     let look = || ActivityEvent::Started(call(1, Gesture::Look, Target::Nowhere));
-    let scan = |timeline: &Timeline, at: f64| timeline.scene_at(at).of(1).unwrap().scan;
+    let scan = |timeline: &Timeline, at: f64| timeline.scene_at(at).of(1.into()).unwrap().scan;
     let mut quick = Timeline::new();
     quick.record(look(), 0.0);
     quick.record(ended(1, Ending::Done), 300.0);
@@ -257,20 +257,37 @@ fn a_call_is_under_way_until_it_ends_and_a_little_after() {
         0.0,
     );
     let scene = timeline.scene_at(100.0);
-    assert_eq!(scene.of(1).unwrap().cursor, Some(at(10.0, 20.0)));
-    assert!(scene.of(1).unwrap().current.is_some());
+    assert_eq!(scene.of(1.into()).unwrap().cursor, Some(at(10.0, 20.0)));
+    assert!(scene.of(1.into()).unwrap().current.is_some());
     assert!(matches!(
-        scene.of(1).unwrap().marks.as_slice(),
+        scene.of(1.into()).unwrap().marks.as_slice(),
         [Mark::Ripple { .. }]
     ));
     timeline.record(ended(1, Ending::Done), 200.0);
     assert!(
-        timeline.scene_at(500.0).of(1).unwrap().current.is_some(),
+        timeline
+            .scene_at(500.0)
+            .of(1.into())
+            .unwrap()
+            .current
+            .is_some(),
         "shown at least 600 ms"
     );
-    assert!(timeline.scene_at(700.0).of(1).unwrap().current.is_none());
     assert!(
-        timeline.scene_at(2000.0).of(1).unwrap().marks.is_empty(),
+        timeline
+            .scene_at(700.0)
+            .of(1.into())
+            .unwrap()
+            .current
+            .is_none()
+    );
+    assert!(
+        timeline
+            .scene_at(2000.0)
+            .of(1.into())
+            .unwrap()
+            .marks
+            .is_empty(),
         "the ripple faded"
     );
 }
@@ -280,32 +297,36 @@ fn each_session_has_its_own_pointer_call_and_lane() {
     let mut timeline = Timeline::new();
     let by = |session, request, gesture, target| Call {
         key: CallKey { session, request },
-        client: format!("agent {session}"),
+        client: format!("agent {}", SessionId::get(session)),
         ..call(request, gesture, target)
     };
     timeline.record(
-        ActivityEvent::Started(by(4, 1, Gesture::Click, Target::Point(at(1.0, 1.0)))),
+        ActivityEvent::Started(by(4.into(), 1, Gesture::Click, Target::Point(at(1.0, 1.0)))),
         0.0,
     );
     timeline.record(
-        ActivityEvent::Started(by(2, 1, Gesture::Click, Target::Point(at(9.0, 9.0)))),
+        ActivityEvent::Started(by(2.into(), 1, Gesture::Click, Target::Point(at(9.0, 9.0)))),
         10.0,
     );
     timeline.record(
-        ActivityEvent::Started(by(4, 2, Gesture::Type, Target::Nowhere)),
+        ActivityEvent::Started(by(4.into(), 2, Gesture::Type, Target::Nowhere)),
         20.0,
     );
     let scene = timeline.scene_at(30.0);
-    let sessions: Vec<u64> = scene.agents.iter().map(|agent| agent.session).collect();
+    let sessions: Vec<u64> = scene
+        .agents
+        .iter()
+        .map(|agent| agent.session.get())
+        .collect();
     assert_eq!(sessions, [2, 4], "by session id");
-    let four = scene.of(4).unwrap();
+    let four = scene.of(4.into()).unwrap();
     assert_eq!(four.cursor, Some(at(1.0, 1.0)));
     assert_eq!(four.client, "agent 4");
     assert_eq!(
         four.current.as_ref().map(|(call, _)| call.gesture),
         Some(Gesture::Type)
     );
-    let two = scene.of(2).unwrap();
+    let two = scene.of(2.into()).unwrap();
     assert_eq!(two.cursor, Some(at(9.0, 9.0)));
     assert_eq!(
         two.current.as_ref().map(|(call, _)| call.key.request),
@@ -314,7 +335,7 @@ fn each_session_has_its_own_pointer_call_and_lane() {
     let lanes = lanes(timeline.moments());
     let lanes: Vec<(u64, &str, usize)> = lanes
         .iter()
-        .map(|lane| (lane.session, lane.client, lane.moments.len()))
+        .map(|lane| (lane.session.get(), lane.client, lane.moments.len()))
         .collect();
     assert_eq!(lanes, [(2, "agent 2", 1), (4, "agent 4", 2)]);
 }
@@ -333,11 +354,11 @@ fn a_mark_goes_just_after_its_call_ends_or_when_the_next_starts() {
     };
     let mut timeline = Timeline::new();
     timeline.record(ActivityEvent::Started(press()), 0.0);
-    let marks = |timeline: &Timeline, at| timeline.scene_at(at).of(1).unwrap().marks.len();
+    let marks = |timeline: &Timeline, at| timeline.scene_at(at).of(1.into()).unwrap().marks.len();
     assert_eq!(marks(&timeline, 900.0), 1, "under way, it shows");
     timeline.record(ended(1, Ending::Done), 30.0);
     let scene = timeline.scene_at(100.0);
-    let shown = &scene.of(1).unwrap().marks[0];
+    let shown = &scene.of(1.into()).unwrap().marks[0];
     assert_eq!(shown.until(), 30.0 + SETTLE_MS);
     assert_eq!(shown.opacity(30.0 + SETTLE_MS - MARK_FADE_MS), 1.0);
     assert_eq!(
@@ -368,7 +389,7 @@ fn a_failure_marks_where_the_pointer_was() {
     );
     timeline.record(ended(2, Ending::Failed("no focus".into())), 50.0);
     let scene = timeline.scene_at(60.0);
-    assert!(scene.of(1).unwrap().marks.contains(&Mark::Failed {
+    assert!(scene.of(1.into()).unwrap().marks.contains(&Mark::Failed {
         at: at(5.0, 5.0),
         reason: "no focus".into(),
         since: 50.0,
@@ -376,7 +397,7 @@ fn a_failure_marks_where_the_pointer_was() {
     }));
     assert_eq!(
         scene
-            .of(1)
+            .of(1.into())
             .unwrap()
             .current
             .as_ref()
@@ -446,7 +467,7 @@ fn the_panel_shows_the_newer_of_the_agents_snapshot_and_a_persons_look() {
     timeline.record(
         ActivityEvent::Ended {
             key: CallKey {
-                session: 1,
+                session: 1.into(),
                 request: 1,
             },
             machine: "dev".parse().unwrap(),
@@ -456,10 +477,7 @@ fn the_panel_shows_the_newer_of_the_agents_snapshot_and_a_persons_look() {
         },
         100.0,
     );
-    let look = Look {
-        at_ms: 200.0,
-        outcome: Looked::Loading,
-    };
+    let look = Look::new(Ticket::default(), 200.0);
     assert!(matches!(timeline.showing(None, 300.0), Showing::Agent(_)));
     assert!(matches!(
         timeline.showing(Some(&look), 300.0),
@@ -489,7 +507,7 @@ fn the_panel_shows_the_newer_of_the_agents_snapshot_and_a_persons_look() {
     timeline.record(
         ActivityEvent::Ended {
             key: CallKey {
-                session: 1,
+                session: 1.into(),
                 request: 3,
             },
             machine: "dev".parse().unwrap(),
@@ -530,7 +548,7 @@ fn the_text_layer_shows_the_newer_of_the_agents_read_and_a_persons() {
         timeline.record(
             ActivityEvent::Ended {
                 key: CallKey {
-                    session: 1,
+                    session: 1.into(),
                     request,
                 },
                 machine: "dev".parse().unwrap(),
@@ -548,10 +566,7 @@ fn the_text_layer_shows_the_newer_of_the_agents_read_and_a_persons() {
     };
     assert_eq!(words(timeline.reading(None, 10.0)), None);
     assert_eq!(words(timeline.reading(None, 100.0)), Some("Save".into()));
-    let mine = TextLook {
-        at_ms: 200.0,
-        outcome: TextLooked::Loading,
-    };
+    let mine = TextLook::new(Ticket::default(), 200.0);
     assert!(matches!(
         timeline.reading(Some(&mine), 300.0),
         Reading::Person {
@@ -626,7 +641,7 @@ fn a_mark_shows_for_its_time_without_moving_the_pointer() {
     );
     timeline.record(ended(2, Ending::Done), 101.0);
     let scene = timeline.scene_at(2000.0);
-    assert_eq!(scene.of(1).unwrap().cursor, Some(at(1.0, 2.0)));
+    assert_eq!(scene.of(1.into()).unwrap().cursor, Some(at(1.0, 2.0)));
     assert_eq!(scene.callouts.len(), 1);
     assert_eq!(scene.callouts[0].until, 5100.0);
     assert!(timeline.moving(4000.0));

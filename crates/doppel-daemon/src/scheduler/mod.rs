@@ -36,21 +36,7 @@ use session::{SessionAction, SessionEnd, SessionError, SessionEvent, SessionStat
 
 pub(crate) use waiting::{AgentConnections, Begun, Call, Turn, Waiting};
 
-/// An open session.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) struct SessionId(u64);
-
-impl SessionId {
-    pub(crate) const fn get(self) -> u64 {
-        self.0
-    }
-}
-
-impl std::fmt::Display for SessionId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "session {}", self.0)
-    }
-}
+pub(crate) use doppel_machine::activity::SessionId;
 
 /// One client connection: what holds a machine's control, and what orders
 /// its calls.
@@ -63,11 +49,7 @@ pub(crate) struct ConnectionId(u64);
 pub(crate) struct CallId(u64);
 
 /// A note a session is owed: a person had control of `machine` for `held`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct HandedBack {
-    pub(crate) machine: MachineName,
-    pub(crate) held: Duration,
-}
+pub(crate) use doppel_protocol::report::HandedBack;
 
 /// A session's call may act.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -229,7 +211,7 @@ impl Scheduler {
     /// Opens a session for `client`, in its own words.
     pub(crate) fn open(&mut self, client: String) -> SessionId {
         self.next_session += 1;
-        let id = SessionId(self.next_session);
+        let id = SessionId::from(self.next_session);
         self.sessions.insert(
             id,
             Session {
@@ -349,7 +331,7 @@ impl Scheduler {
     ) -> Result<Vec<Action>, PauseError> {
         let session = self
             .sessions
-            .get_mut(&SessionId(id))
+            .get_mut(&SessionId::from(id))
             .ok_or(PauseError::NoSuchSession(id))?;
         let (next, changes) = session.state.on(event)?;
         session.state = next;
@@ -359,7 +341,7 @@ impl Scheduler {
                 // Its calls ask the state when they ask to act.
                 SessionAction::Hold => {}
                 SessionAction::Release => self.clear_waiting(&mut actions),
-                SessionAction::Finish => actions.push(Action::Finish(SessionId(id))),
+                SessionAction::Finish => actions.push(Action::Finish(SessionId::from(id))),
             }
         }
         Ok(actions)

@@ -170,7 +170,7 @@ impl Recordings {
                         );
                     let rows =
                         group.recordings.into_iter().map(|summary| {
-                            let id = summary.id.clone();
+                            let id = summary.id;
                             let share = summary.traced_ms as f32 / longest;
                             div()
                                 .id(ElementId::Name(format!("recording-{}", summary.id).into()))
@@ -247,7 +247,7 @@ impl Recordings {
                                     },
                                 ))
                                 .on_click(cx.listener(move |_, _, _, cx| {
-                                    cx.emit(RecordingsEvent::Open(id.clone()))
+                                    cx.emit(RecordingsEvent::Open(id))
                                 }))
                         });
                     div()

@@ -6,6 +6,7 @@
 //! anything.
 
 use doppel_desktop::geometry::{Point, Rect, Size};
+use doppel_machine::activity::SessionId;
 
 mod colours;
 mod lit_region;
@@ -268,7 +269,7 @@ fn landed(moments: &[Moment], colours: &SessionColours, at: f64, shapes: &mut Ve
 /// How long ago `session`'s latest call that landed and worked showed its
 /// check, while it shows: from halfway through its dent, for [`DONE_MS`].
 /// None once that agent has started another call.
-fn worked(moments: &[Moment], session: u64, at: f64) -> Option<f64> {
+fn worked(moments: &[Moment], session: SessionId, at: f64) -> Option<f64> {
     let latest = moments.iter().rfind(|moment| {
         !moment.person && moment.call.key.session == session && moment.start_ms <= at
     })?;
@@ -454,7 +455,7 @@ fn between(from: Spot, to: Spot, f: f64) -> Spot {
 /// Where a session's pointer is at `at`: gliding from where it was to
 /// where its latest call with a place acted. A console puts words beside it.
 #[must_use]
-pub fn pointer_at(moments: &[Moment], session: u64, at: f64) -> Option<Spot> {
+pub fn pointer_at(moments: &[Moment], session: SessionId, at: f64) -> Option<Spot> {
     let mut placed = moments
         .iter()
         .filter(|m| !m.person && m.call.key.session == session && m.start_ms <= at)
@@ -472,7 +473,7 @@ pub fn pointer_at(moments: &[Moment], session: u64, at: f64) -> Option<Spot> {
 /// burn in: why it makes its call, and who it is when several act.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Caption {
-    pub session: u64,
+    pub session: SessionId,
     /// Its client's name, when several agents act and it has one.
     pub client: Option<String>,
     /// Why it makes its call under way, when it said.
@@ -759,7 +760,7 @@ impl Picture {
 /// so its pointer arrives as the call lands rather than after the screen
 /// has already changed.
 fn ahead(moments: &[Moment]) -> Vec<Moment> {
-    let mut ended: Vec<(u64, f64)> = Vec::new();
+    let mut ended: Vec<(SessionId, f64)> = Vec::new();
     moments
         .iter()
         .map(|moment| {
@@ -859,7 +860,7 @@ mod tests {
             end_ms: Some(end_ms),
             call: Call {
                 key: CallKey {
-                    session: 1,
+                    session: 1.into(),
                     request,
                 },
                 machine: "dev".parse().unwrap(),
@@ -930,7 +931,7 @@ mod tests {
         assert!(Caption::at(&[quiet], 1000.0).is_empty(), "nothing to say");
         let mut other = click(1, 0.0, 300.0, 300.0);
         other.end_ms = Some(2000.0);
-        other.call.key.session = 2;
+        other.call.key.session = 2.into();
         other.call.client = "codex".into();
         let both = Caption::at(&[said, other], 1000.0);
         assert_eq!(
@@ -1246,14 +1247,14 @@ mod tests {
     fn agents_take_colours_in_the_order_they_first_act_not_by_number() {
         let by = |session: u64, start: f64, person: bool| {
             let mut call = moment(1, start, start + 10.0, Gesture::Run, Target::Nowhere);
-            call.call.key.session = session;
+            call.call.key.session = session.into();
             call.person = person;
             call
         };
         let [first, second, third, fourth] = SessionColours::palette();
         let alone = SessionColours::of(&[by(7, 0.0, false)]);
         assert_eq!(
-            alone.hue(7),
+            alone.hue(7.into()),
             first,
             "a lone agent wears the first, whatever its number"
         );
@@ -1263,9 +1264,9 @@ mod tests {
             by(4, 20.0, false),
             by(9, 30.0, false),
         ]);
-        assert_eq!(two.hue(9), first, "a person's turns take no colour");
-        assert_eq!(two.hue(4), second);
-        assert_eq!(two.hue(12), third, "one yet to act is next");
+        assert_eq!(two.hue(9.into()), first, "a person's turns take no colour");
+        assert_eq!(two.hue(4.into()), second);
+        assert_eq!(two.hue(12.into()), third, "one yet to act is next");
         assert_ne!(third, fourth);
     }
 }

@@ -32,5 +32,19 @@ Inside the larger crates:
 - console: `app` → {`screen`, `route`, `input`, `answers`} → `ui`;
   `macos`/`web` (the `platform`) and `screen` meet at the frame feed
 - scene: `film`, `panel`, `attention`, `recordings` → `timeline`
-- host: provisioning procedures → `machines` → {`vmm`, `agent`, `store`}
-  → {`capabilities`, `files`}
+- host: provisioning procedures → `guest_step` → `machines` → {`vmm`,
+  `agent`, `store`} → {`capabilities`, `files`}
+
+## Named concepts
+
+One home each; extend it rather than adding a parallel one.
+
+- The guest's account: `doppel_desktop::guest_user`; its steps: `guest_step`.
+- An agent answering yet: `AgentReach`; waiting until ready: `Machines::poll`.
+- A checkpoint's files: `CheckpointPresence`; how one ended: `CheckpointResult`.
+- Ids: `activity::SessionId`, `recording::{RecordingId, VideoFile}` (machine).
+- A request as it arrives, its machine named: daemon `requests::arrival`.
+- A start, then the desktop: `doppel_client::BringUp`.
+- A person's look or read and its answer: `timeline::Asked`, by `Ticket`.
+- Whether a failed request may have happened: `Failure`, on each error.
+- What a picked action leads to, a question or an order: `app::ask::Next`.

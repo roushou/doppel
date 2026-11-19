@@ -28,6 +28,10 @@
 //! `E` is the shell's error. The procedure never inspects it, only carries it
 //! to the report.
 
+mod result;
+
+pub use result::{CheckpointResult, GuestAfter};
+
 use crate::bundle::{CheckpointFiles, CheckpointLabel, FileOp, ImageFiles, MachineBundle};
 use doppel_desktop::exec::Termination;
 use doppel_desktop::outcome::{Outcome, Unconfirmed};
@@ -74,8 +78,11 @@ pub enum GuestSync<E> {
 /// Why the guest wasn't synced.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SyncSkipped<E> {
-    /// `sync` ran in the guest but didn't exit cleanly.
-    Ended(Termination),
+    /// `sync` ran in the guest but didn't exit cleanly; its stderr, trimmed.
+    Ended {
+        termination: Termination,
+        stderr: String,
+    },
     /// It couldn't be run: no agent (the login window), or the request failed.
     NotRun(E),
 }
@@ -85,9 +92,13 @@ impl<E> GuestSync<E> {
     pub fn map_error<F>(self, f: impl Fn(E) -> F) -> GuestSync<F> {
         match self {
             Self::Synced => GuestSync::Synced,
-            Self::Skipped(SyncSkipped::Ended(termination)) => {
-                GuestSync::Skipped(SyncSkipped::Ended(termination))
-            }
+            Self::Skipped(SyncSkipped::Ended {
+                termination,
+                stderr,
+            }) => GuestSync::Skipped(SyncSkipped::Ended {
+                termination,
+                stderr,
+            }),
             Self::Skipped(SyncSkipped::NotRun(error)) => {
                 GuestSync::Skipped(SyncSkipped::NotRun(f(error)))
             }
@@ -118,7 +129,17 @@ impl<E: std::fmt::Display> GuestSync<E> {
 impl<E: std::fmt::Display> std::fmt::Display for SyncSkipped<E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Ended(termination) => write!(f, "sync {termination}"),
+            Self::Ended {
+                termination,
+                stderr,
+            } => {
+                write!(f, "sync {termination}")?;
+                if stderr.is_empty() {
+                    Ok(())
+                } else {
+                    write!(f, ": {stderr}")
+                }
+            }
             Self::NotRun(error) => error.fmt(f),
         }
     }
@@ -872,8 +893,18 @@ mod tests {
         );
         assert!(guest_sync.caveat().contains("no agent at the login window"));
         assert_eq!(GuestSync::<String>::Synced.caveat(), "");
-        let ended = GuestSync::<String>::Skipped(SyncSkipped::Ended(Termination::Exited(1)));
-        assert!(ended.caveat().contains("sync exited with status 1"));
+        let ended = |stderr: &str| {
+            GuestSync::<String>::Skipped(SyncSkipped::Ended {
+                termination: Termination::Exited(1),
+                stderr: stderr.to_owned(),
+            })
+        };
+        assert!(ended("").caveat().contains("(sync exited with status 1)"));
+        assert!(
+            ended("Input/output error")
+                .caveat()
+                .contains("(sync exited with status 1: Input/output error)")
+        );
     }
 
     #[test]

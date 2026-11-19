@@ -6,6 +6,7 @@
 use doppel_desktop::ax::refs::Ref;
 use doppel_desktop::ax::tree::AxSnapshot;
 use doppel_desktop::geometry::{Rect, Size};
+use doppel_machine::activity::SessionId;
 
 use crate::elements::{self, Kind, Named};
 use crate::timeline::{Moment, Seen, Target};
@@ -46,7 +47,7 @@ pub struct Lock {
 /// What one agent took in from its latest snapshot by an instant.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Attention {
-    pub session: u64,
+    pub session: SessionId,
     /// When the snapshot landed.
     pub since: f64,
     /// Every element taken in, in the order it was, lit or still to be.
@@ -254,7 +255,7 @@ mod tests {
             end_ms,
             call: Call {
                 key: CallKey {
-                    session: 1,
+                    session: 1.into(),
                     request,
                 },
                 machine: "dev".parse().unwrap(),

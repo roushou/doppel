@@ -66,9 +66,7 @@ pub enum Run {
     Unknown,
 }
 
-/// A session's id, as the daemon numbers them.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct SessionId(pub u64);
+pub use doppel_machine::activity::SessionId;
 
 /// One client driving machines: an agent through `doppel mcp`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -154,8 +152,6 @@ pub enum Verdict {
     Done {
         /// Anything worth saying about how it went.
         note: Option<String>,
-        /// A machine it made, to show.
-        made: Option<MachineName>,
     },
     Refused(String),
     /// It may or may not have happened: the person should look.
@@ -786,7 +782,7 @@ mod tests {
     #[test]
     fn a_session_reads_as_working_only_while_it_runs_calls() {
         let mut session = Session {
-            id: SessionId(1),
+            id: SessionId::from(1),
             client: String::new(),
             machines: Vec::new(),
             running: vec!["click".into()],

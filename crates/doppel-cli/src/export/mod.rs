@@ -30,7 +30,7 @@ fn chosen<'a>(recording: &'a Recording, named: Option<&str>) -> Result<&'a Video
         recording
             .videos
             .iter()
-            .map(|video| video.file.as_str())
+            .map(|video| video.file.to_string())
             .collect::<Vec<_>>()
             .join(", ")
     };
@@ -38,7 +38,7 @@ fn chosen<'a>(recording: &'a Recording, named: Option<&str>) -> Result<&'a Video
         Some(name) => recording
             .videos
             .iter()
-            .find(|video| video.file.as_str() == name)
+            .find(|video| video.file.to_string() == name)
             .with_context(|| format!("{name} isn't one of its videos ({})", listed())),
         None => recording
             .videos
@@ -59,7 +59,7 @@ fn run_of<'a>(recording: &'a Recording, video: &Video) -> Result<Vec<(&'a Video,
             let Some(start) = other.start_ms else {
                 bail!(
                     "{} didn't keep when it started, so its calls can't be lined up with it",
-                    other.file.as_str()
+                    other.file
                 );
             };
             #[expect(clippy::cast_precision_loss, reason = "milliseconds of a recording")]
@@ -84,7 +84,7 @@ pub(crate) fn reel_of(
     let Some(display) = video.points else {
         bail!(
             "{} didn't keep its display's size, so its calls can't be placed on it",
-            video.file.as_str()
+            video.file
         );
     };
     let mut timeline = Timeline::new();
@@ -157,13 +157,14 @@ pub(crate) fn export(
 
 #[cfg(test)]
 mod tests {
-    use doppel_scene::recordings::{RecordingId, VideoName};
+    use doppel_machine::activity::SessionId;
+    use doppel_scene::recordings::RecordingId;
 
     use super::*;
 
     fn video(file: &str, machine: &str, start_ms: Option<u64>) -> Video {
         Video {
-            file: VideoName::new(file.into()),
+            file: file.parse().unwrap(),
             machine: machine.parse().unwrap(),
             start_ms,
             points: Size::new(1280.0, 800.0).ok(),
@@ -172,7 +173,7 @@ mod tests {
 
     fn recording(videos: Vec<Video>) -> Recording {
         Recording {
-            id: RecordingId::new("r".into()),
+            id: RecordingId::new(0, SessionId::from(1)),
             videos,
             trace: Vec::new(),
         }
@@ -186,11 +187,17 @@ mod tests {
             video("live-001.mp4", "live", Some(339)),
         ]);
         let run = run_of(&recording, &recording.videos[0]).unwrap();
-        let files: Vec<(&str, f64)> = run
+        let files: Vec<(String, f64)> = run
             .iter()
-            .map(|(video, start)| (video.file.as_str(), *start))
+            .map(|(video, start)| (video.file.to_string(), *start))
             .collect();
-        assert_eq!(files, [("live-001.mp4", 339.0), ("live-002.mp4", 54_020.0)]);
+        assert_eq!(
+            files,
+            [
+                ("live-001.mp4".to_owned(), 339.0),
+                ("live-002.mp4".to_owned(), 54_020.0)
+            ]
+        );
     }
 
     #[test]

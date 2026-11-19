@@ -114,6 +114,9 @@ fn machines(client: &Client<SystemClock>) -> Result<Vec<Machine>, ClientError> {
             RecordedLineage::Known(lineage) => match lineage.role {
                 LineageRole::Golden { template, agent } => {
                     let template_found = match client.report(&name, within(CALL_TIMEOUT)) {
+                        Ok(report) if report.incomplete.contains(&template) => {
+                            Checkpoint::Incomplete
+                        }
                         Ok(report) if report.checkpoints.contains(&template) => Checkpoint::Present,
                         Ok(_) => Checkpoint::Missing,
                         Err(error) => Checkpoint::Unknown(error.to_string()),

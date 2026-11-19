@@ -623,6 +623,13 @@ fn a_role_is_recorded_beside_the_origin_and_an_unreadable_one_is_never_a_default
         claim.mark_golden(&"missing".parse().unwrap(), TemplateAgent::Unrecorded),
         Err(MachineError::NoSuchCheckpoint { .. })
     ));
+    // A folder without its memory is named for what it is, not as missing.
+    let partial = dev.checkpoint(&"partial".parse().unwrap());
+    scratch.write(&partial.image.disk, "cp-disk");
+    assert!(matches!(
+        claim.mark_golden(&"partial".parse().unwrap(), TemplateAgent::Unrecorded),
+        Err(MachineError::PartialCheckpoint { .. })
+    ));
     assert!(!dev.lineage().exists(), "a refused mark writes nothing");
     let build: doppel_desktop::agent::AgentBuild = "20261118T164320Z-7da947b".parse().unwrap();
     let golden = claim

@@ -699,6 +699,9 @@ message MachineReport {
     Done not_running = 4;
   }
   repeated string checkpoints = 5;
+  // Among `checkpoints`, those missing their memory or disk: listed, but
+  // nothing can be restored, forked or started from them.
+  repeated string incomplete_checkpoints = 6;
 }
 
 message TakeScreenshot {

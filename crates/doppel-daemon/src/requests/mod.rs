@@ -1,6 +1,7 @@
 //! One request against the machines. Every request has an outcome the
 //! client sees: a failure is an outcome too, never an error of the daemon.
 
+pub(crate) mod arrival;
 mod display;
 pub(crate) mod forks;
 pub(crate) mod handle;
@@ -9,7 +10,6 @@ pub(crate) mod operations;
 use std::os::unix::ffi::OsStrExt;
 use std::sync::Arc;
 
-use doppel_desktop::agent::AgentReport;
 use doppel_desktop::ax::refs::SnapshotRefs;
 use doppel_desktop::ax::tree::{SnapshotScope, SnapshotSpec};
 use doppel_desktop::input::Via;
@@ -19,11 +19,7 @@ use doppel_desktop::screen::ScreenshotSize;
 use doppel_host::capabilities::WallClock;
 use doppel_host::files::Filesystem;
 use doppel_host::login::AwaitDesktopError;
-use doppel_host::machines::{
-    CheckpointReport, Listing, MachineError, Resumed, StopOutcome, StopReport, StopRequest,
-};
-use doppel_host::vmm::StopMode;
-use doppel_host::vmm::launcher::Window;
+use doppel_host::machines::{CheckpointReport, Listing, MachineError, StopReport, StopRequest};
 use doppel_machine::bundle::CheckpointLabel;
 use doppel_machine::checkpoint::{Aftermath, Checkpoint, GuestSync};
 use doppel_machine::machine::MachineName;
@@ -40,19 +36,20 @@ use doppel_protocol::with_operation;
 use doppel_gateway::{ChangeError, Token, TokenDigest, TokenId, TokenLabel, Ttl};
 
 use crate::activity;
+use crate::call_events::Traced;
 use crate::call_events::{Answered, CallEvent, SessionCall};
-use crate::call_events::{Guest, Traced};
 use crate::recording::library::{Library, LibraryError, RecordingId, TraceLine};
 use crate::recording::{self, Recordings};
+use crate::requests::arrival::Arrival;
 use crate::requests::forks::PlanError;
-use crate::requests::handle::{Handle, Traits, Turn};
+use crate::requests::handle::Handle;
 use crate::requests::operations::{ForkStart, ForksError, TemporaryMachineError};
 use crate::scheduler::Call;
 use crate::scheduler::session::SessionState;
 use crate::scheduler::{Cancelled, Cleared, HandedBack, HeldUp};
 use crate::web::tokens::TokenFileError;
 use crate::web::{WebPort, WebSetting, WebStatus};
-use crate::{Acted, CallError, Daemon, Link};
+use crate::{CallError, Daemon, Link};
 
 /// Why a request didn't succeed.
 #[derive(Debug)]
@@ -183,6 +180,7 @@ where
     pub(crate) fn answer(
         &self,
         request: daemon::DaemonRequest,
+        arrival: Arrival,
         call: &Call,
         link: &Link,
     ) -> (Outcome, Option<HandedBack>) {
@@ -197,10 +195,12 @@ where
                 .map_or_else(Refusal::outcome, daemon::NameElements::answer);
             return (outcome, None);
         }
-        let traits = request.operation.as_ref().map(Traits::of);
-        let machine = traits
-            .and_then(|traits| traits.machine)
-            .and_then(|raw| raw.parse::<MachineName>().ok());
+        let Arrival {
+            machine,
+            looked_for,
+            guest,
+            ..
+        } = arrival;
         call.join(session, machine.clone(), request.caption.clone());
         let session_call = Arc::new(SessionCall {
             session,
@@ -217,10 +217,8 @@ where
                     })
                 }),
             machine,
-            looked_for: traits
-                .and_then(|traits| traits.looked_for)
-                .map(str::to_owned),
-            guest: traits.map_or(Guest::Kept, |traits| traits.guest),
+            looked_for,
+            guest,
         });
         // A paused session, or a machine a person has, holds the call here.
         let arrived = self.machines.clock().now();
@@ -445,13 +443,8 @@ where
         call: &Call,
     ) -> Result<daemon::MachineStarted, Refusal> {
         let name = Refusal::name("name", &request.name)?;
-        let window = match daemon::Window::try_from(request.window) {
-            Ok(daemon::Window::Hidden) => Window::Hidden,
-            Ok(daemon::Window::Shown) => Window::Shown,
-            Ok(daemon::Window::Unspecified) | Err(_) => {
-                return Err(Refusal::argument("window", &request.window));
-            }
-        };
+        let window = ParseError::window("window", request.window)
+            .map_err(|_| Refusal::argument("window", &request.window))?;
         let (state, next) = self.start(&name, window, call)?;
         Ok(daemon::MachineStarted {
             state: Some(state.into()),
@@ -475,13 +468,8 @@ where
         call: &Call,
     ) -> Result<daemon::MachineStopped, Refusal> {
         let name = Refusal::name("name", &request.name)?;
-        let mode = match vmm::StopMode::try_from(request.mode) {
-            Ok(vmm::StopMode::Graceful) => StopMode::Graceful,
-            Ok(vmm::StopMode::Force) => StopMode::Force,
-            Ok(vmm::StopMode::Unspecified) | Err(_) => {
-                return Err(Refusal::argument("mode", &request.mode));
-            }
-        };
+        let mode = ParseError::stop_mode("mode", request.mode)
+            .map_err(|_| Refusal::argument("mode", &request.mode))?;
         let report = self.stop(&name, mode, call)?;
         Ok(Self::stopped(report))
     }
@@ -502,10 +490,7 @@ where
         call: &Call,
     ) -> Result<daemon::MachineResumed, Refusal> {
         let name = Refusal::name("name", &request.name)?;
-        let outcome = match self.resume(&name, call)? {
-            Resumed::Resumed => daemon::ResumeOutcome::Resumed,
-            Resumed::AlreadyRunning => daemon::ResumeOutcome::AlreadyRunning,
-        };
+        let outcome = daemon::ResumeOutcome::from(self.resume(&name, call)?);
         Ok(daemon::MachineResumed {
             outcome: outcome as i32,
         })
@@ -797,10 +782,7 @@ where
             }
             StopRequest::PowerButton { session } => Request::PowerButton(session.to_string()),
         };
-        let outcome = match report.outcome {
-            StopOutcome::Stopped => daemon::StopOutcome::Stopped,
-            StopOutcome::ShutdownPending => daemon::StopOutcome::ShutdownPending,
-        };
+        let outcome = daemon::StopOutcome::from(report.outcome);
         daemon::MachineStopped {
             request: Some(request),
             outcome: outcome as i32,
@@ -866,19 +848,6 @@ where
     C: WallClock + Clone + Send + Sync,
     F: Filesystem + Sync,
 {
-    /// Where a request read by a connection stands among the connection's
-    /// requests: those that take a turn on the machine they name enter its
-    /// line in the order they arrived (see [`crate::scheduler`]): the machine
-    /// whose line it takes its place in.
-    pub(crate) fn reserves(operation: Option<&Operation>) -> Option<MachineName> {
-        let traits = operation.map(Traits::of)?;
-        let machine = match traits.turn {
-            Turn::Waits => traits.machine?.parse::<MachineName>().ok()?,
-            Turn::Skips => return None,
-        };
-        Some(machine)
-    }
-
     pub(super) fn open_session(
         &self,
         request: daemon::OpenSession,
@@ -952,7 +921,7 @@ where
                     id: recording.id.to_string(),
                     started_unix_seconds: i64::try_from(recording.id.started_unix_seconds())
                         .unwrap_or(i64::MAX),
-                    session: recording.id.session(),
+                    session: recording.id.session().get(),
                     machines: recording
                         .machines()
                         .iter()
@@ -1171,18 +1140,9 @@ where
         request: &daemon::GetMachineReport,
         call: &Call,
     ) -> Result<daemon::MachineReport, Refusal> {
-        use daemon::machine_report::Agent;
         let name = Refusal::name("name", &request.name)?;
         let report = self.status(&name, call)?;
-        Ok(daemon::MachineReport {
-            status: Some(report.status.into()),
-            agent: Some(match &report.agent {
-                AgentReport::Connected(status) => Agent::Connected(status.into()),
-                AgentReport::Unreachable(why) => Agent::Unreachable(why.clone()),
-                AgentReport::NotRunning => Agent::NotRunning(daemon::Done {}),
-            }),
-            checkpoints: report.checkpoints.iter().map(ToString::to_string).collect(),
-        })
+        Ok(daemon::MachineReport::from(&report))
     }
 
     pub(super) fn screenshot_request(
@@ -1290,10 +1250,7 @@ where
             .action
             .ok_or(ParseError::Missing("action"))?
             .try_into()?;
-        let outcome = match self.act(&name, &act, call)? {
-            Acted::Done => daemon::ActOutcome::Done,
-            Acted::StaleReference => daemon::ActOutcome::StaleReference,
-        };
+        let outcome = daemon::ActOutcome::from(self.act(&name, &act, call)?);
         Ok(daemon::ActResult {
             outcome: outcome as i32,
         })

@@ -24,6 +24,7 @@ use doppel_desktop::deadline::Deadline;
 use doppel_desktop::exec::{ExecOutput, ExecRequest};
 use doppel_desktop::files::{ReadRequest, WriteRequest};
 use doppel_desktop::input::Input;
+use doppel_desktop::outcome::{Certainty, Failure};
 use doppel_desktop::screen::Screenshot;
 use doppel_desktop::screen_text::{ScreenText, TextQuery};
 use doppel_desktop::wait::{Condition, TextCondition, WaitOutcome, WaitSpec};
@@ -44,6 +45,7 @@ use doppel_protocol::transport::Cancel;
 use doppel_protocol::transport::ChannelError;
 
 mod activity;
+mod bring_up;
 mod connection;
 mod display;
 
@@ -51,6 +53,7 @@ use connection::Connection;
 pub use connection::Notes;
 
 pub use activity::ActivityStream;
+pub use bring_up::BringUp;
 pub use display::{Announced, Display, DisplayLayout, EncodedDisplay, EncodedSize};
 pub use doppel_machine::activity::{
     Activity, Callout, CalloutLasts, CalloutShape, Ended, Ending, Gesture, OnScreen, Phase, Target,
@@ -63,8 +66,9 @@ pub use doppel_machine::recording::{
 pub use doppel_scene::encoded::{EncodedFrame, FrameKind};
 
 pub use doppel_protocol::report::{
-    Acted, CheckpointReport, CheckpointResult, Cleanup, HandedBack, MachineFailure, Resumed,
-    SessionInfo, SessionStatus, StopMode, StopOutcome, StopReport, StopRequest, Window,
+    Acted, CheckpointReport, CheckpointResult, Cleanup, GuestAfter, HandedBack, MachineFailure,
+    Resumed, SessionId, SessionInfo, SessionStatus, StopMode, StopOutcome, StopReport, StopRequest,
+    Window,
 };
 
 /// An issued token the daemon knows, never the token itself.
@@ -167,7 +171,7 @@ pub enum Record {
 /// A session the daemon opened.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpenedSession {
-    pub id: u64,
+    pub id: SessionId,
     /// Where it is recorded, when it is.
     pub recording: Option<PathBuf>,
 }
@@ -220,6 +224,29 @@ pub enum ClientError {
     Remote(#[from] RemoteError),
     #[error(transparent)]
     Machine(#[from] MachineFailure),
+}
+
+/// Refused when nothing reached the daemon or it refused before acting;
+/// maybe done once the request went out and no answer can be trusted.
+impl Failure for ClientError {
+    fn certainty(&self) -> Certainty {
+        match self {
+            Self::Machine(failure) => failure.certainty(),
+            Self::NoDaemon(_)
+            | Self::Connect(_)
+            | Self::VersionMismatch { .. }
+            | Self::Encode(_)
+            | Self::Remote(_) => Certainty::NotDone,
+            Self::Io(_)
+            | Self::Closed
+            | Self::Lost(_)
+            | Self::Timeout
+            | Self::Stream(_)
+            | Self::Protocol(_)
+            | Self::WrongAnswer(_)
+            | Self::Parse(_) => Certainty::MaybeDone,
+        }
+    }
 }
 
 /// Each way a channel fails is one of the client's.
@@ -390,14 +417,10 @@ impl<C: Clock> Client<C> {
         window: Window,
         call: impl Into<Call<'a>>,
     ) -> Result<(RunState, NextStart), ClientError> {
-        let window = match window {
-            Window::Hidden => daemon::Window::Hidden,
-            Window::Shown => daemon::Window::Shown,
-        };
         let started = self.call(
             daemon::StartMachine {
                 name: name.to_string(),
-                window: window as i32,
+                window: daemon::Window::from(window) as i32,
             },
             call,
         )?;
@@ -437,14 +460,10 @@ impl<C: Clock> Client<C> {
         mode: StopMode,
         call: impl Into<Call<'a>>,
     ) -> Result<StopReport, ClientError> {
-        let mode = match mode {
-            StopMode::Graceful => vmm::StopMode::Graceful,
-            StopMode::Force => vmm::StopMode::Force,
-        };
         let stopped = self.call(
             daemon::StopMachine {
                 name: name.to_string(),
-                mode: mode as i32,
+                mode: vmm::StopMode::from(mode) as i32,
             },
             call,
         )?;
@@ -479,15 +498,10 @@ impl<C: Clock> Client<C> {
             },
             call,
         )?;
-        match daemon::ResumeOutcome::try_from(resumed.outcome) {
-            Ok(daemon::ResumeOutcome::Resumed) => Ok(Resumed::Resumed),
-            Ok(daemon::ResumeOutcome::AlreadyRunning) => Ok(Resumed::AlreadyRunning),
-            Ok(daemon::ResumeOutcome::Unspecified) | Err(_) => Err(ParseError::UnknownEnum {
-                field: "machine_resumed.outcome",
-                value: resumed.outcome,
-            }
-            .into()),
-        }
+        Ok(ParseError::resumed(
+            "machine_resumed.outcome",
+            resumed.outcome,
+        )?)
     }
 
     /// # Errors
@@ -696,7 +710,7 @@ impl<C: Clock> Client<C> {
             call,
         )?;
         Ok(OpenedSession {
-            id: opened.session,
+            id: SessionId::from(opened.session),
             recording: opened
                 .recording
                 .map(|raw| PathBuf::from(OsString::from_vec(raw.to_vec()))),
@@ -707,20 +721,30 @@ impl<C: Clock> Client<C> {
     /// See [`ClientError`].
     pub fn pause_session<'a>(
         &self,
-        session: u64,
+        session: SessionId,
         call: impl Into<Call<'a>>,
     ) -> Result<(), ClientError> {
-        self.done(daemon::PauseSession { session }, call)
+        self.done(
+            daemon::PauseSession {
+                session: session.get(),
+            },
+            call,
+        )
     }
 
     /// # Errors
     /// See [`ClientError`].
     pub fn resume_session<'a>(
         &self,
-        session: u64,
+        session: SessionId,
         call: impl Into<Call<'a>>,
     ) -> Result<(), ClientError> {
-        self.done(daemon::ResumeSession { session }, call)
+        self.done(
+            daemon::ResumeSession {
+                session: session.get(),
+            },
+            call,
+        )
     }
 
     /// Takes control of `name` for a person on this connection: sessions'
@@ -939,15 +963,7 @@ impl<C: Clock> Client<C> {
             },
             call,
         )?;
-        match daemon::ActOutcome::try_from(result.outcome) {
-            Ok(daemon::ActOutcome::Done) => Ok(Acted::Done),
-            Ok(daemon::ActOutcome::StaleReference) => Ok(Acted::StaleReference),
-            Ok(daemon::ActOutcome::Unspecified) | Err(_) => Err(ParseError::UnknownEnum {
-                field: "act_result.outcome",
-                value: result.outcome,
-            }
-            .into()),
-        }
+        Ok(ParseError::acted("act_result.outcome", result.outcome)?)
     }
 
     /// Waits on accessibility snapshots until the condition holds.
@@ -1235,5 +1251,33 @@ impl<C: Clock> Client<C> {
         call: impl Into<Call<'a>>,
     ) -> Result<R::Answer, ClientError> {
         self.connection.call(request, call.into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_request_may_have_been_done_only_once_it_went_out() {
+        let refused = io::Error::from(io::ErrorKind::ConnectionRefused);
+        assert_eq!(
+            ClientError::NoDaemon(refused).certainty(),
+            Certainty::NotDone
+        );
+        assert_eq!(
+            ClientError::VersionMismatch { ours: 2, theirs: 1 }.certainty(),
+            Certainty::NotDone
+        );
+        assert_eq!(ClientError::Closed.certainty(), Certainty::MaybeDone);
+        assert_eq!(
+            ClientError::WrongAnswer("Start").certainty(),
+            Certainty::MaybeDone
+        );
+        let failure = MachineFailure::new("busy".into(), Certainty::NotDone);
+        assert_eq!(
+            ClientError::Machine(failure).certainty(),
+            Certainty::NotDone
+        );
     }
 }

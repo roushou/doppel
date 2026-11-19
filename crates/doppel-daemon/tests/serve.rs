@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use doppel_client::{Client, ClientError, Listing, StopMode};
+use doppel_client::{Client, ClientError, Listing, SessionId, StopMode};
 use doppel_daemon::{Daemon, DaemonError, EntropyMacs};
 use doppel_desktop::deadline::Deadline;
 use doppel_desktop::outcome::{Certainty, Failure};
@@ -302,7 +302,10 @@ fn a_session_is_listed_with_its_machines_until_its_connection_closes() {
     let records = opened.recording.unwrap();
     assert!(records.is_dir(), "the daemon made the recording directory");
     let folder = records.file_name().unwrap().to_string_lossy().into_owned();
-    assert!(folder.ends_with(&format!("Z-s{}", opened.id)), "{folder}");
+    assert!(
+        folder.ends_with(&format!("Z-s{}", opened.id.get())),
+        "{folder}"
+    );
     assert_eq!(
         records.parent().unwrap(),
         std::fs::canonicalize(scratch.0.join("data/recordings")).unwrap()
@@ -389,7 +392,7 @@ fn a_session_is_listed_with_its_machines_until_its_connection_closes() {
         assert_eq!(list.recordings.len(), 1, "{list:?}");
         let summary = &list.recordings[0];
         assert_eq!(summary.id, folder);
-        assert_eq!(summary.session, opened.id);
+        assert_eq!(summary.session, opened.id.get());
         // Its three calls, and the second session it was refused.
         assert_eq!((summary.videos, summary.calls), (0, 4));
         assert!(summary.machines.is_empty(), "no machine ran: no video");
@@ -808,7 +811,8 @@ fn a_connection_s_requests_on_one_machine_run_in_the_order_sent() {
     };
     for round in 1..=30_u64 {
         let forked = format!("dev-clean-{}", 2 * round - 1);
-        cli.pause_session(opened.session, soon()).unwrap();
+        cli.pause_session(SessionId::from(opened.session), soon())
+            .unwrap();
         connection.send(request(
             2 * round,
             daemon::daemon_request::Operation::ForkMachine(daemon::ForkMachine {
@@ -826,7 +830,8 @@ fn a_connection_s_requests_on_one_machine_run_in_the_order_sent() {
             }),
         ));
         std::thread::sleep(Duration::from_millis(30));
-        cli.resume_session(opened.session, soon()).unwrap();
+        cli.resume_session(SessionId::from(opened.session), soon())
+            .unwrap();
         let mut answers = std::collections::BTreeMap::new();
         while answers.len() < 2 {
             if let daemon::daemon_frame::Kind::Response(response) = connection.receive() {

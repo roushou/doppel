@@ -19,8 +19,6 @@ struct Shared {
     frame: Option<Frame>,
     /// Pictures replaced since the window last released them.
     stale: Vec<Frame>,
-    /// The video played to its end.
-    ended: bool,
     failed: Option<String>,
 }
 
@@ -70,11 +68,8 @@ impl Player {
             )
         };
         let on_ended = {
-            let (shared, mut wake) = (Rc::clone(&shared), wake.clone());
-            Closure::<dyn FnMut()>::new(move || {
-                shared.borrow_mut().ended = true;
-                woken(&mut wake);
-            })
+            let mut wake = wake.clone();
+            Closure::<dyn FnMut()>::new(move || woken(&mut wake))
         };
         let on_error = {
             let (shared, mut wake) = (Rc::clone(&shared), wake);
@@ -98,7 +93,6 @@ impl Player {
     }
 
     pub(crate) fn play(&self) {
-        self.shared.borrow_mut().ended = false;
         self.video.play();
     }
 
@@ -126,11 +120,6 @@ impl Player {
 
     pub(crate) fn frame(&self) -> Option<Frame> {
         self.shared.borrow().frame.clone()
-    }
-
-    /// Whether it played to its end since last asked.
-    pub(crate) fn take_ended(&self) -> bool {
-        std::mem::take(&mut self.shared.borrow_mut().ended)
     }
 
     pub(crate) fn failed(&self) -> Option<String> {

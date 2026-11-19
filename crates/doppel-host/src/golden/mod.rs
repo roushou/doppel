@@ -2,7 +2,9 @@
 
 pub mod plan;
 
-use crate::golden::plan::{GoldenAction, GoldenError, GoldenPlan, GoldenStepName, GuestUserName};
+use crate::golden::plan::{GoldenError, GoldenPlan, GoldenStepName};
+use crate::guest_step::StepError;
+use doppel_desktop::guest_user::GuestUserName;
 use doppel_machine::machine::MachineName;
 
 use crate::agent::AgentError;
@@ -41,7 +43,7 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
     pub(crate) fn golden_prepare(
         &self,
         name: &MachineName,
-        mut progress: impl FnMut(GoldenStepName),
+        progress: impl FnMut(GoldenStepName),
     ) -> Result<(), GoldenPrepareError> {
         let password = PasswordFile
             .read(&self.store().bundle(name))?
@@ -49,27 +51,23 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
         let agent = |step: &'static str| move |source| GoldenPrepareError::Agent { step, source };
         let output = self
             .agent(name, self.deadline())?
-            .exec(&GuestUserName::probe()?, &Cancel::never())
+            .exec(
+                &GuestUserName::probe().map_err(GoldenError::from)?,
+                &Cancel::never(),
+            )
             .map_err(agent("reading the guest user"))?;
-        let plan = GoldenPlan::new(&GuestUserName::parse(&output)?, &password)?;
-        for step in &plan.steps {
-            progress(step.name);
-            let mut client = self.agent(name, self.deadline())?;
-            match &step.action {
-                GoldenAction::Write(request) => {
-                    client
-                        .write_file(request, self.deadline())
-                        .map_err(agent("writing"))?;
+        let user = GuestUserName::parse(&output).map_err(GoldenError::from)?;
+        let plan = GoldenPlan::new(&user, &password)?;
+        self.run_steps(name, &plan.steps, progress)
+            .map_err(|error| match error {
+                StepError::Machine(error) => GoldenPrepareError::Machine(error),
+                StepError::Agent { doing, source } => GoldenPrepareError::Agent {
+                    step: doing,
+                    source,
+                },
+                StepError::Failed { step, failed } => {
+                    GoldenPrepareError::Plan(GoldenError::StepFailed { step, failed })
                 }
-                GoldenAction::Run(request) => {
-                    step.check(
-                        &client
-                            .exec(request, &Cancel::never())
-                            .map_err(agent("running"))?,
-                    )?;
-                }
-            }
-        }
-        Ok(())
+            })
     }
 }

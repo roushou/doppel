@@ -21,7 +21,7 @@ use super::{
     FACTS, FACTS_NARROW, HEAD, HEADER, NARROW, RAIL, RIM, Segment, ToastTone, dot, end_cell, id,
     ink, segment,
 };
-use crate::app::ask::{Choice, Question};
+use crate::app::ask::{Choice, Next, Question};
 use crate::elements::Named;
 use crate::model::{
     Action, Bay, Group, Hold, Machine, MachineState, Order, Provenance, Run, Session,
@@ -369,11 +369,9 @@ impl MachinesPage {
             let _ = page.update(cx, |page, cx| {
                 page.panels.of(&name).finish();
                 match verdict {
-                    Verdict::Done { note, made } => {
+                    Verdict::Done { note } => {
                         let said = note.unwrap_or_else(|| order.done());
                         page.toast(ToastTone::Done, format!("{name}: {said}"), cx);
-                        // A machine made running takes an empty bay by itself.
-                        let _ = made;
                     }
                     Verdict::Refused(why) => {
                         page.toast(ToastTone::Refused, format!("{name}: {why}"), cx);
@@ -444,7 +442,7 @@ impl MachinesPage {
     /// Takes a person's own look at `name`'s elements: the agents driving
     /// it lose nothing (no turn, and the guest keeps none of it).
     fn look(&mut self, name: &MachineName, now: f64, cx: &mut Context<Self>) {
-        self.panels.of(name).looking(now);
+        let ticket = self.panels.of(name).looking(now);
         cx.notify();
         let observed = self.daemon.observe(name);
         let name = name.clone();
@@ -452,11 +450,8 @@ impl MachinesPage {
             let observed = observed.await;
             let _ = page.update(cx, |page, cx| {
                 // Only the latest look's answer counts.
-                let outcome = match observed {
-                    Ok(snapshot) => timeline::Looked::Seen(Arc::new(snapshot)),
-                    Err(error) => timeline::Looked::Failed(error.to_string()),
-                };
-                if page.panels.of(&name).looked(now, outcome) {
+                let outcome = observed.map(Arc::new).map_err(|error| error.to_string());
+                if page.panels.of(&name).looked(ticket, outcome) {
                     cx.notify();
                 }
             });
@@ -468,7 +463,7 @@ impl MachinesPage {
     /// display, so the agents driving it lose nothing.
     fn read_now(&mut self, name: &MachineName, cx: &mut Context<Self>) {
         let now = self.now();
-        self.panels.of(name).reading(now);
+        let ticket = self.panels.of(name).reading(now);
         cx.notify();
         let read = self.daemon.observe_text(name);
         let name = name.clone();
@@ -477,7 +472,7 @@ impl MachinesPage {
             let _ = page.update(cx, |page, cx| {
                 // Only the latest read's answer counts.
                 let read = read.map(Arc::new).map_err(|error| error.to_string());
-                if page.panels.of(&name).read(now, read) {
+                if page.panels.of(&name).read(ticket, read) {
                     cx.notify();
                 }
             });
@@ -665,28 +660,8 @@ impl MachinesPage {
             return;
         };
         match Question::before(action, &machine) {
-            Some(question) => cx.emit(MachinesEvent::Ask(question)),
-            None => {
-                let order = match action {
-                    Action::Start => Order::Start,
-                    Action::Stop => Order::Stop,
-                    Action::Pause => Order::Pause,
-                    Action::Resume => Order::Resume,
-                    // Asked about first; a golden image no longer golden
-                    // by now is started as asked.
-                    Action::StartGolden => Order::Start,
-                    // Asked about first.
-                    Action::FromTemplate
-                    | Action::ForceStop
-                    | Action::Checkpoint
-                    | Action::RollBack
-                    | Action::Restore
-                    | Action::Fork
-                    | Action::NewCopy
-                    | Action::Delete => return,
-                };
-                self.run(name.clone(), order, cx);
-            }
+            Next::Ask(question) => cx.emit(MachinesEvent::Ask(question)),
+            Next::Run(order) => self.run(name.clone(), order, cx),
         }
     }
 
@@ -1028,7 +1003,7 @@ impl MachinesPage {
                     )
                     .child(
                         div()
-                            .id(ElementId::NamedInteger("hold".into(), session.id.0))
+                            .id(ElementId::NamedInteger("hold".into(), session.id.get()))
                             .flex_none()
                             .size(px(22.))
                             .flex()
@@ -1117,7 +1092,7 @@ impl MachinesPage {
         // The call each agent is on, as the activity feed shows it, and since when.
         let on_call = |session: &Session| {
             scene
-                .of(session.id.0)
+                .of(session.id)
                 .and_then(|agent| agent.current.as_ref())
                 .map(|(call, since)| (call.describe(), *since))
         };
@@ -1443,9 +1418,10 @@ impl MachinesPage {
                     let text_look = self.panels.get(&name).and_then(|panel| panel.text_look());
                     let shown = calls.reading(text_look, now);
                     let looking = match text_look.map(|look| &look.outcome) {
-                        Some(timeline::TextLooked::Loading) => Looking::Busy,
-                        Some(timeline::TextLooked::Read(_) | timeline::TextLooked::Failed(_))
-                        | None => Looking::Ready,
+                        Some(timeline::Answer::Loading) => Looking::Busy,
+                        Some(timeline::Answer::Got(_) | timeline::Answer::Failed(_)) | None => {
+                            Looking::Ready
+                        }
                     };
                     let drawn = match &shown {
                         timeline::Reading::Agent(read) => reading::Drawn::Read {
@@ -1456,17 +1432,17 @@ impl MachinesPage {
                             )),
                             acted_since: read.acted_since,
                         },
-                        timeline::Reading::Person { look, acted_since } => match &look.outcome {
-                            timeline::TextLooked::Loading => reading::Drawn::Loading,
-                            timeline::TextLooked::Read(read) => reading::Drawn::Read {
+                        timeline::Reading::Person { asked, acted_since } => match &asked.outcome {
+                            timeline::Answer::Loading => reading::Drawn::Loading,
+                            timeline::Answer::Got(read) => reading::Drawn::Read {
                                 read,
                                 whose: SharedString::from(format!(
                                     "you · {}",
-                                    ago(now - look.at_ms)
+                                    ago(now - asked.at_ms)
                                 )),
                                 acted_since: *acted_since,
                             },
-                            timeline::TextLooked::Failed(why) => reading::Drawn::Failed(why),
+                            timeline::Answer::Failed(why) => reading::Drawn::Failed(why),
                         },
                         timeline::Reading::Nothing => reading::Drawn::Nothing,
                     };
@@ -1521,7 +1497,7 @@ impl MachinesPage {
                         driver
                             .working(live.as_ref().map(|(call, _)| call.as_str()))
                             .map(|call| {
-                                (since, driver.id.0, driver.who().to_owned(), call.to_owned())
+                                (since, driver.id, driver.who().to_owned(), call.to_owned())
                             })
                     })
                     .max_by(|a, b| a.0.total_cmp(&b.0))
@@ -1616,7 +1592,7 @@ impl MachinesPage {
                 let live = on_call(driver);
                 self.card(
                     driver,
-                    Hue::of(colours.hue(driver.id.0)),
+                    Hue::of(colours.hue(driver.id)),
                     live.as_ref().map(|(call, _)| call.as_str()),
                     theme,
                     cx,
@@ -2287,8 +2263,8 @@ pub(super) struct ElementsShown {
 impl ElementsShown {
     pub(super) fn of(calls: &timeline::Timeline, look: Option<&timeline::Look>, now: f64) -> Self {
         let looking = match look.map(|look| &look.outcome) {
-            Some(timeline::Looked::Loading) => Looking::Busy,
-            Some(timeline::Looked::Seen(_) | timeline::Looked::Failed(_)) | None => Looking::Ready,
+            Some(timeline::Answer::Loading) => Looking::Busy,
+            Some(timeline::Answer::Got(_) | timeline::Answer::Failed(_)) | None => Looking::Ready,
         };
         match calls.showing(look, now) {
             timeline::Showing::Agent(seen) => {
@@ -2307,14 +2283,14 @@ impl ElementsShown {
                     looking,
                 }
             }
-            timeline::Showing::Person { look, acted_since } => Self {
-                snapshot: match &look.outcome {
-                    timeline::Looked::Loading => Err(Empty::Loading),
-                    timeline::Looked::Seen(snapshot) => Ok(snapshot.clone()),
-                    timeline::Looked::Failed(why) => Err(Empty::Failed(why.clone())),
+            timeline::Showing::Person { asked, acted_since } => Self {
+                snapshot: match &asked.outcome {
+                    timeline::Answer::Loading => Err(Empty::Loading),
+                    timeline::Answer::Got(snapshot) => Ok(snapshot.clone()),
+                    timeline::Answer::Failed(why) => Err(Empty::Failed(why.clone())),
                 },
                 named: Named::default(),
-                age: format!("you · {}", ago(now - look.at_ms)).into(),
+                age: format!("you · {}", ago(now - asked.at_ms)).into(),
                 stale: acted_since,
                 looking,
             },

@@ -10,11 +10,13 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use doppel_desktop::ax::tree::AxSnapshot;
+
 use doppel_machine::machine::MachineName;
 
 use crate::model::Action;
 use crate::report::Report;
-use crate::timeline::{ActivityEvent, Look, Looked, TextLook, TextLooked, TextRead, Timeline};
+use crate::timeline::{ActivityEvent, Look, TextLook, TextRead, Ticket, Timeline};
 
 /// A machine's screen, as the console has it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,6 +65,8 @@ pub struct Panel<S, H> {
     overlay: Overlay,
     look: Option<Look>,
     text_look: Option<TextLook>,
+    /// The ticket of the latest ask, look or read.
+    asks: Ticket,
     /// What agents did on it since the console began watching.
     timeline: Timeline,
     /// When the person took control, for the timer on its frame.
@@ -82,6 +86,7 @@ impl<S, H: Default> Default for Panel<S, H> {
             overlay: Overlay::default(),
             look: None,
             text_look: None,
+            asks: Ticket::default(),
             timeline: Timeline::new(),
             took: None,
             report: None,
@@ -141,24 +146,20 @@ impl<S, H> Panel<S, H> {
         self.look.as_ref()
     }
 
-    /// A look asked at `at`, its answer to come.
-    pub fn looking(&mut self, at: f64) {
-        self.look = Some(Look {
-            at_ms: at,
-            outcome: Looked::Loading,
-        });
+    /// A look asked at `at`, its answer to come: the ticket its answer
+    /// is taken with.
+    pub fn looking(&mut self, at: f64) -> Ticket {
+        let ticket = self.next_ticket();
+        self.look = Some(Look::new(ticket, at));
+        ticket
     }
 
-    /// The answer to the look asked at `at`. Only the latest look's answer
+    /// The answer to the look with `ticket`. Only the latest look's answer
     /// counts: `false` for an earlier one's, which changes nothing.
-    pub fn looked(&mut self, at: f64, outcome: Looked) -> bool {
-        match &mut self.look {
-            Some(look) if look.at_ms.total_cmp(&at).is_eq() => {
-                look.outcome = outcome;
-                true
-            }
-            Some(_) | None => false,
-        }
+    pub fn looked(&mut self, ticket: Ticket, outcome: Result<Arc<AxSnapshot>, String>) -> bool {
+        self.look
+            .as_mut()
+            .is_some_and(|look| look.answer(ticket, outcome))
     }
 
     /// The person's latest read of the screen's text.
@@ -166,27 +167,25 @@ impl<S, H> Panel<S, H> {
         self.text_look.as_ref()
     }
 
-    /// A read asked at `at`, its answer to come.
-    pub fn reading(&mut self, at: f64) {
-        self.text_look = Some(TextLook {
-            at_ms: at,
-            outcome: TextLooked::Loading,
-        });
+    /// A read asked at `at`, its answer to come: the ticket its answer is
+    /// taken with.
+    pub fn reading(&mut self, at: f64) -> Ticket {
+        let ticket = self.next_ticket();
+        self.text_look = Some(TextLook::new(ticket, at));
+        ticket
     }
 
-    /// The answer to the read asked at `at`. Only the latest read's answer
+    /// The answer to the read with `ticket`. Only the latest read's answer
     /// counts: `false` for an earlier one's.
-    pub fn read(&mut self, at: f64, outcome: Result<Arc<TextRead>, String>) -> bool {
-        match &mut self.text_look {
-            Some(look) if look.at_ms.total_cmp(&at).is_eq() => {
-                look.outcome = match outcome {
-                    Ok(read) => TextLooked::Read(read),
-                    Err(why) => TextLooked::Failed(why),
-                };
-                true
-            }
-            Some(_) | None => false,
-        }
+    pub fn read(&mut self, ticket: Ticket, outcome: Result<Arc<TextRead>, String>) -> bool {
+        self.text_look
+            .as_mut()
+            .is_some_and(|look| look.answer(ticket, outcome))
+    }
+
+    fn next_ticket(&mut self) -> Ticket {
+        self.asks = self.asks.next();
+        self.asks
     }
 
     pub const fn timeline(&self) -> &Timeline {
@@ -379,7 +378,7 @@ mod tests {
     use crate::report::{Guest, Report};
     use doppel_machine::activity as told;
 
-    use crate::timeline::{ActivityEvent, Looked, TextLooked, TextRead};
+    use crate::timeline::{ActivityEvent, Answer, TextRead, Ticket};
 
     type Kept = Panels<&'static str, ()>;
 
@@ -409,32 +408,33 @@ mod tests {
     fn only_the_latest_looks_answer_lands() {
         let mut panels = Kept::default();
         let panel = panels.of(&name("a"));
-        assert!(!panel.looked(1., Looked::Failed("early".into())));
-        panel.looking(1.);
-        panel.looking(2.);
-        assert!(!panel.looked(1., Looked::Failed("stale".into())));
+        assert!(!panel.looked(Ticket::default(), Err("early".into())));
+        // Two asks in the same millisecond: only the second's answer lands.
+        let first = panel.looking(1.);
+        let second = panel.looking(1.);
+        assert!(!panel.looked(first, Err("stale".into())));
         assert!(matches!(
             panel.look().map(|look| &look.outcome),
-            Some(Looked::Loading)
+            Some(Answer::Loading)
         ));
-        assert!(panel.looked(2., Looked::Failed("no".into())));
+        assert!(panel.looked(second, Err("no".into())));
         assert!(matches!(
             panel.look().map(|look| &look.outcome),
-            Some(Looked::Failed(_))
+            Some(Answer::Failed(_))
         ));
 
-        panel.reading(3.);
-        panel.reading(4.);
-        assert!(!panel.read(3., Err("stale".into())));
+        let first = panel.reading(3.);
+        let second = panel.reading(4.);
+        assert!(!panel.read(first, Err("stale".into())));
         let read = Arc::new(TextRead {
             lines: Vec::new(),
             query: None,
             found: Vec::new(),
         });
-        assert!(panel.read(4., Ok(read)));
+        assert!(panel.read(second, Ok(read)));
         assert!(matches!(
             panel.text_look().map(|look| &look.outcome),
-            Some(TextLooked::Read(_))
+            Some(Answer::Got(_))
         ));
     }
 
@@ -521,7 +521,7 @@ mod tests {
 
     fn call_on(machine: &str) -> ActivityEvent {
         ActivityEvent::of(told::Activity {
-            session: 1,
+            session: 1.into(),
             request: 1,
             machine: name(machine),
             client: "agent".into(),

@@ -1,14 +1,16 @@
 //! What the daemon answers, in its clients' terms: parsed once from the
 //! wire, so callers never see a protobuf message.
 
-use doppel_machine::screen_probe::HostScreen;
 use std::fmt;
 use std::time::Duration;
 
 use crate::pb::daemon::v1 as daemon;
 use doppel_desktop::outcome::{Certainty, Failure};
-use doppel_machine::checkpoint::{GuestAfterFailure, GuestSync, Step};
+pub use doppel_machine::activity::SessionId;
+
 use doppel_machine::machine::MachineName;
+pub use doppel_machine::stop::{StopMode, StopOutcome};
+pub use doppel_machine::vm::{Resumed, Window};
 
 /// Why a machine operation failed on the daemon's side: its description,
 /// whether the operation may still have taken effect, and its causes.
@@ -91,43 +93,9 @@ impl Failure for MachineFailure {
     }
 }
 
-/// Whether the VMM shows the VM in a native window.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Window {
-    Hidden,
-    Shown,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StopMode {
-    /// Ask the guest to shut down.
-    Graceful,
-    /// Power off: unsaved guest work is lost.
-    Force,
-}
-
-/// How the guest was asked to stop.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum StopRequest {
-    Forced,
-    /// The logged-in session was asked to shut down.
-    Session,
-    /// The same, after typing the stored password on a locked screen.
-    SessionAfterUnlock {
-        unlocked_after: Duration,
-    },
-    /// The power button, because the session couldn't be asked: `why`.
-    PowerButton {
-        why: String,
-    },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StopOutcome {
-    Stopped,
-    /// Asked to shut down, and still running.
-    ShutdownPending,
-}
+/// How the guest was asked to stop; when through the power button, why
+/// the session couldn't be asked, as the daemon said.
+pub type StopRequest = doppel_machine::stop::StopRequest<String>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StopReport {
@@ -135,46 +103,11 @@ pub struct StopReport {
     pub outcome: StopOutcome,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Resumed {
-    Resumed,
-    /// It was running already: nothing to do.
-    AlreadyRunning,
-}
+/// How a checkpoint ended, its errors as the daemon sent them.
+pub type CheckpointResult = doppel_machine::checkpoint::CheckpointResult<MachineFailure>;
 
-/// How a checkpoint ended.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CheckpointResult {
-    Completed {
-        memory_bytes: u64,
-        /// Why the guest wasn't synced first, if it wasn't.
-        sync_skipped: Option<String>,
-        /// The checkpoint is valid, but the guest may be left paused.
-        left_paused: Option<MachineFailure>,
-        /// Set when the guest was resumed: whether screenshots show it as it is.
-        screen: Option<HostScreen>,
-    },
-    Failed {
-        at: Step,
-        error: MachineFailure,
-        guest: GuestAfterFailure,
-    },
-    /// Neither success nor failure can be claimed.
-    Unknown { at: Step, error: MachineFailure },
-    /// The procedure ended before a terminal state (a bug).
-    InProgress { awaiting: Step },
-}
-
-impl CheckpointResult {
-    /// What a report of a completed checkpoint should add about the sync:
-    /// nothing when the guest was synced.
-    #[must_use]
-    pub fn sync_caveat(sync_skipped: Option<&str>) -> String {
-        sync_skipped.map_or_else(String::new, |why| {
-            GuestSync::<MachineFailure>::skipped_caveat(&why)
-        })
-    }
-}
+/// How a completed checkpoint left the guest.
+pub type GuestAfter = doppel_machine::checkpoint::GuestAfter<MachineFailure>;
 
 /// One cleanup step after a failed checkpoint.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -203,7 +136,7 @@ pub enum Acted {
 /// A session open on the daemon.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionInfo {
-    pub id: u64,
+    pub id: SessionId,
     pub client: String,
     /// The machines its requests named, in first-use order.
     pub machines: Vec<MachineName>,

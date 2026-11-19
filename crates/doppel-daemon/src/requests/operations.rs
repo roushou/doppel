@@ -29,7 +29,7 @@ use doppel_host::machines::{
 use doppel_host::store::{Listed, StoreError};
 use doppel_host::vmm::launcher::Window;
 use doppel_host::vmm::{StopMode, VmmError};
-use doppel_machine::bundle::CheckpointLabel;
+use doppel_machine::bundle::{CheckpointLabel, CheckpointPresence};
 use doppel_machine::checkpoint::AfterCheckpoint;
 use doppel_machine::lineage::{RecordedLineage, Role};
 use doppel_machine::login::{Desktop, LoginPolicy};
@@ -45,13 +45,7 @@ use crate::requests::forks::{ForkPlan, MacError, PlanError};
 use crate::scheduler::Cancelled;
 use crate::scheduler::{Begun, Call, Turn};
 
-/// How an action on an element ended.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Acted {
-    Done,
-    /// The element is gone or changed since its snapshot; nothing was done.
-    StaleReference,
-}
+pub use doppel_protocol::report::Acted;
 
 /// Why an operation failed. Each says whether it may still have taken
 /// effect.
@@ -172,17 +166,25 @@ where
             }
             Status::Live(_) | Status::Stopped(_) => AgentReport::NotRunning,
         };
-        let checkpoints = self
-            .machines
-            .machine(machine)
+        let found = self.machines.machine(machine);
+        let checkpoints: Vec<CheckpointLabel> = found
             .checkpoints()?
             .into_iter()
             .filter_map(Result::ok)
             .collect();
+        let mut incomplete = Vec::new();
+        for label in &checkpoints {
+            match found.checkpoint_presence(label)? {
+                CheckpointPresence::Partial => incomplete.push(label.clone()),
+                // Gone since it was listed: deleted meanwhile.
+                CheckpointPresence::Complete | CheckpointPresence::Absent => {}
+            }
+        }
         Ok(MachineReport {
             status,
             agent,
             checkpoints,
+            incomplete,
         })
     }
 

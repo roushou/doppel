@@ -275,7 +275,7 @@ mod tests {
             end_ms: Some(end_ms),
             call: Call {
                 key: CallKey {
-                    session: 1,
+                    session: 1.into(),
                     request: 1,
                 },
                 machine: "dev".parse().unwrap(),

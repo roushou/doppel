@@ -5,15 +5,14 @@ pub mod plan;
 
 use std::time::{Duration, Instant};
 
-use crate::agent_install::plan::{
-    AgentBuild, GuestAccount, InstallError, InstallPlan, StepAction, StepName,
-};
+use crate::agent_install::plan::{AgentBuild, GuestAccount, InstallError, InstallPlan, StepName};
+use crate::guest_step::StepError;
 use doppel_machine::machine::MachineName;
 
 use crate::agent::AgentError;
 use crate::capabilities::Clock;
 use crate::files::Filesystem;
-use crate::machines::{MachineError, Machines};
+use crate::machines::{AgentReach, MachineError, Machines, Poll, TimedOut};
 use doppel_protocol::transport::Cancel;
 
 /// How long the new build has to answer after the restart.
@@ -62,7 +61,7 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
         machine: &MachineName,
         archive: Vec<u8>,
         build: AgentBuild,
-        mut progress: impl FnMut(StepName),
+        progress: impl FnMut(StepName),
     ) -> Result<Installed, AgentInstallError> {
         let agent = |step: &'static str| {
             move |source: AgentError| AgentInstallError::Agent { step, source }
@@ -74,24 +73,17 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
             .map_err(agent("reading the guest account"))?;
         let plan = InstallPlan::new(archive, build, &GuestAccount::parse(&output)?)?;
 
-        for step in &plan.steps {
-            progress(step.name);
-            let mut client = self.agent(machine, self.deadline())?;
-            match &step.action {
-                StepAction::Write(request) => {
-                    client
-                        .write_file(request, self.deadline())
-                        .map_err(agent("writing"))?;
+        self.run_steps(machine, &plan.steps, progress)
+            .map_err(|error| match error {
+                StepError::Machine(error) => AgentInstallError::Machine(error),
+                StepError::Agent { doing, source } => AgentInstallError::Agent {
+                    step: doing,
+                    source,
+                },
+                StepError::Failed { step, failed } => {
+                    AgentInstallError::Plan(InstallError::StepFailed { step, failed })
                 }
-                StepAction::Run(request) => {
-                    step.check(
-                        &client
-                            .exec(request, &Cancel::never())
-                            .map_err(agent("running"))?,
-                    )?;
-                }
-            }
-        }
+            })?;
         self.await_build(machine, plan.build)
     }
 
@@ -102,29 +94,28 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
     ) -> Result<Installed, AgentInstallError> {
         let clock = self.clock();
         let started: Instant = clock.now();
-        loop {
-            let last = match self.agent(machine, self.deadline()) {
-                Ok(client) => match client.peer_build() {
-                    Some(answered) if *answered == build => {
-                        return Ok(Installed {
-                            build,
-                            restart: clock.now().saturating_duration_since(started),
-                        });
-                    }
-                    Some(other) => format!("build {other} answered"),
-                    None => "an agent without a build id answered".to_owned(),
+        // Only an agent not up yet is waited for: a stopped machine or a
+        // wrong answer ends the wait at once.
+        let answered = self.poll(RESTART_TIMEOUT, POLL, || {
+            Ok::<_, MachineError>(match self.reach_agent(machine, self.deadline())? {
+                AgentReach::Answers(client) => match client.peer_build() {
+                    Some(answered) if *answered == build => Poll::Ready(()),
+                    Some(other) => Poll::NotYet(format!("build {other} answered")),
+                    None => Poll::NotYet("an agent without a build id answered".to_owned()),
                 },
-                Err(error) => error.to_string(),
-            };
-            let waited = clock.now().saturating_duration_since(started);
-            if waited >= RESTART_TIMEOUT {
-                return Err(AgentInstallError::NotBack {
-                    build,
-                    waited,
-                    last,
-                });
-            }
-            std::thread::sleep(POLL);
+                AgentReach::NotYet(why) => Poll::NotYet(why),
+            })
+        })?;
+        match answered {
+            Ok(()) => Ok(Installed {
+                restart: clock.now().saturating_duration_since(started),
+                build,
+            }),
+            Err(TimedOut { waited, last }) => Err(AgentInstallError::NotBack {
+                build,
+                waited,
+                last,
+            }),
         }
     }
 }

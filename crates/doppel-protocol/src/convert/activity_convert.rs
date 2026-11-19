@@ -1,3 +1,4 @@
+use doppel_machine::activity::SessionId;
 use std::time::Duration;
 
 use doppel_desktop::ax::tree::AxSnapshot;
@@ -33,7 +34,7 @@ impl TryFrom<daemon::Activity> for Activity {
             daemon::activity::Phase::Named(refs) => Phase::Named(refs.try_into()?),
         };
         Ok(Self {
-            session: activity.session,
+            session: SessionId::from(activity.session),
             request: activity.request,
             machine: activity
                 .machine
@@ -206,7 +207,7 @@ impl TryFrom<daemon::RecordingSummary> for RecordingSummary {
                 .parse()
                 .map_err(|error| ParseError::invalid("id", error))?,
             started_unix_seconds: summary.started_unix_seconds,
-            session: summary.session,
+            session: SessionId::from(summary.session),
             machines: summary
                 .machines
                 .iter()

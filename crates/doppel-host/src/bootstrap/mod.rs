@@ -13,22 +13,22 @@ use std::io::{self, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Output, Stdio};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use crate::agent_install::plan::{self as agent_install, AgentBuild};
 use crate::bootstrap::plan::{
     AskpassPrompt, BootstrapError as PlanError, RemoteStep, SshTarget, StagingDir, Stdin, StepName,
 };
 use crate::dhcp_leases::{self, DhcpLeases};
-use crate::golden::plan::GuestUserName;
 use doppel_desktop::guest_path::GuestPath;
+use doppel_desktop::guest_user::GuestUserName;
 use doppel_machine::machine::{MacAddress, MachineName, NetworkSpec};
 
 use crate::agent_install::{AgentInstallError, Installed};
 use crate::capabilities::Clock;
 use crate::files::Filesystem;
 use crate::login::{PasswordFile, PasswordFileError};
-use crate::machines::{MachineError, Machines};
+use crate::machines::{AgentReach, MachineError, Machines, Poll, TimedOut};
 use crate::store::StoreError;
 
 /// From the start to giving up on a DHCP lease for the machine's MAC.
@@ -262,33 +262,24 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
     /// Why no agent answers, or `None` when one does. Errors only when
     /// the machine isn't running or the agent answers wrongly.
     fn agent_absent(&self, machine: &MachineName) -> Result<Option<String>, MachineError> {
-        match self.agent(machine, self.deadline()) {
-            Ok(_) => Ok(None),
-            Err(error @ MachineError::AgentUnreachable { .. }) => Ok(Some(error.to_string())),
-            Err(MachineError::AgentHandshake { source, .. }) if source.is_transient() => {
-                Ok(Some(source.to_string()))
-            }
-            Err(error) => Err(error),
-        }
+        Ok(match self.reach_agent(machine, self.deadline())? {
+            AgentReach::Answers(_) => None,
+            AgentReach::NotYet(why) => Some(why),
+        })
     }
 
     fn await_agent(&self, machine: &MachineName) -> Result<(), BootstrapError> {
-        let started = self.clock().now();
-        loop {
-            let Some(last) = self.agent_absent(machine)? else {
-                return Ok(());
-            };
-            let waited = self.since(started);
-            if waited >= AGENT_TIMEOUT {
-                return Err(BootstrapError::NoAgent { waited, last });
-            }
-            std::thread::sleep(POLL);
-        }
+        self.poll(AGENT_TIMEOUT, POLL, || {
+            Ok::<_, MachineError>(match self.agent_absent(machine)? {
+                None => Poll::Ready(()),
+                Some(why) => Poll::NotYet(why),
+            })
+        })?
+        .map_err(|TimedOut { waited, last }| BootstrapError::NoAgent { waited, last })
     }
 
     fn await_address(&self, mac: MacAddress) -> Result<Ipv4Addr, BootstrapError> {
-        let started = self.clock().now();
-        loop {
+        self.poll(ADDRESS_TIMEOUT, POLL, || {
             let text = match std::fs::read_to_string(dhcp_leases::PATH) {
                 Ok(text) => text,
                 Err(error) if error.kind() == io::ErrorKind::NotFound => String::new(),
@@ -299,44 +290,36 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
                     });
                 }
             };
-            if let Some(address) = DhcpLeases::parse(&text).address_of(mac) {
-                return Ok(address);
-            }
-            let waited = self.since(started);
-            if waited >= ADDRESS_TIMEOUT {
-                return Err(BootstrapError::NoAddress {
-                    mac,
-                    path: dhcp_leases::PATH,
-                    waited,
-                });
-            }
-            std::thread::sleep(POLL);
-        }
+            Ok(match DhcpLeases::parse(&text).address_of(mac) {
+                Some(address) => Poll::Ready(address),
+                None => Poll::NotYet(()),
+            })
+        })?
+        .map_err(|TimedOut { waited, .. }| BootstrapError::NoAddress {
+            mac,
+            path: dhcp_leases::PATH,
+            waited,
+        })
     }
 
     /// Waits for a TCP connection to succeed, so a guest still booting
     /// isn't mistaken for a failed login.
     fn await_port(&self, address: Ipv4Addr) -> Result<(), BootstrapError> {
-        let started = self.clock().now();
         let socket = SocketAddr::from((address, SshTarget::PORT));
-        loop {
-            if TcpStream::connect_timeout(&socket, Duration::from_secs(2)).is_ok() {
-                return Ok(());
-            }
-            let waited = self.since(started);
-            if waited >= SSH_TIMEOUT {
-                return Err(BootstrapError::NoSsh {
-                    address,
-                    port: SshTarget::PORT,
-                    waited,
-                });
-            }
-            std::thread::sleep(POLL);
-        }
-    }
-
-    fn since(&self, started: Instant) -> Duration {
-        self.clock().now().saturating_duration_since(started)
+        self.poll(SSH_TIMEOUT, POLL, || {
+            Ok::<_, BootstrapError>(
+                if TcpStream::connect_timeout(&socket, Duration::from_secs(2)).is_ok() {
+                    Poll::Ready(())
+                } else {
+                    Poll::NotYet(())
+                },
+            )
+        })?
+        .map_err(|TimedOut { waited, .. }| BootstrapError::NoSsh {
+            address,
+            port: SshTarget::PORT,
+            waited,
+        })
     }
 }
 

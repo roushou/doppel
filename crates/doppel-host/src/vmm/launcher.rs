@@ -9,9 +9,9 @@ use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
-use crate::golden::plan::GuestUserName;
 use crate::provision::FullName;
 use crate::restore_image::plan::{LatestImage, RestoreImageError};
+use doppel_desktop::guest_user::GuestUserName;
 use doppel_machine::bundle::{ImageFiles, SocketPath};
 use doppel_protocol::convert::RemoteError;
 use doppel_protocol::frame::{FrameDecoder, MaxFrameLen, Received, StreamError};

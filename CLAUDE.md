@@ -19,17 +19,33 @@ consoles for the people watching.
     own file holding all of them.
   - Never add a top-level module or crate without saying so explicitly,
     with a one-line justification.
-  - No `utils.rs`, `helpers.rs` or `common.rs`. Shared code belongs to the
-    component that owns the concept.
+  - No `utils.rs`, `helpers.rs`, `common.rs`, `types.rs` or `models.rs`.
+    Shared code belongs to the component that owns the concept, and every
+    named concept has a home under its own name (file, module or crate).
   - Respect dependency direction: lower components never import from
     higher ones.
   - If a file passes ~800 lines or a module mixes components, flag it
     instead of appending to it.
 - **Types:**
   - Model fixed sets of states as enums, not strings, ints, or bool
-    clusters.
+    clusters. A lifecycle is an enum with its transitions in one place,
+    not bools, `Option`s or strings.
   - Group parameters that travel together into a struct.
   - No traits with a single implementor unless needed for tests.
   - Prefer exhaustive `match` over `_ =>` on project enums.
+- **Concepts:** see the named ones in [ARCHITECTURE.md](ARCHITECTURE.md).
+  - Before adding a field, flag, branch, function or type, check whether
+    an existing struct, enum or trait already models the concept. Prefer
+    extending, reshaping or renaming it over adding a parallel one.
+  - When about to add the third instance of a similar check, branch,
+    field, handler or lifecycle condition, stop and say so, and propose
+    consolidating it into a named type first.
+  - Multi-stage processing uses a distinct type per stage; downstream code
+    never re-validates.
+  - Shared mutable state across tasks goes through an actor with a command
+    enum, not `Arc<Mutex>` scattered across callers.
+  - Keep business rules free of I/O where practical; I/O lives at the
+    edges.
+  - Delete abstractions that are bypassed or no longer pull their weight.
 - **Docs describe Doppel as it is.** No dated logs, milestone results or
   "we used to" in docs or comments; git keeps the history.

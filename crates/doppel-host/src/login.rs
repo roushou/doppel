@@ -21,7 +21,7 @@ use doppel_machine::machine::MachineName;
 
 use crate::capabilities::Clock;
 use crate::files::Filesystem;
-use crate::machines::{MachineError, Machines};
+use crate::machines::{AgentReach, MachineError, Machines};
 use doppel_protocol::transport::{Cancel, Slept};
 
 #[derive(Debug, thiserror::Error)]
@@ -285,19 +285,13 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
     /// except the machine not running or an agent that answers wrongly.
     fn observe_session(&self, name: &MachineName) -> Result<Observation, MachineError> {
         let by = self.deadline();
-        match self.agent(name, by) {
-            Ok(mut agent) => Ok(match agent.status(by) {
+        Ok(match self.reach_agent(name, by)? {
+            AgentReach::Answers(mut agent) => match agent.status(by) {
                 Ok(status) => Observation::Session(status.session),
                 Err(error) => Observation::AgentUnreachable(error.to_string()),
-            }),
-            Err(error @ MachineError::AgentUnreachable { .. }) => {
-                Ok(Observation::AgentUnreachable(error.to_string()))
-            }
-            Err(MachineError::AgentHandshake { source, .. }) if source.is_transient() => {
-                Ok(Observation::AgentUnreachable(source.to_string()))
-            }
-            Err(error) => Err(error),
-        }
+            },
+            AgentReach::NotYet(why) => Observation::AgentUnreachable(why),
+        })
     }
 
     /// `caffeinate -u` declares user activity for a second, which lights the display.

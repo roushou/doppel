@@ -23,7 +23,7 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
 use crate::agent_install::plan::LABEL;
-use crate::golden::plan::GuestUserName;
+use doppel_desktop::guest_user::GuestUserName;
 
 /// The system TCC database, from the Data volume's root.
 pub const TCC_DB: &str = "Library/Application Support/com.apple.TCC/TCC.db";
