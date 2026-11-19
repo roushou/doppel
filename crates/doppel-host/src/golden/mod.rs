@@ -4,7 +4,7 @@ pub mod plan;
 
 use crate::golden::plan::{GoldenError, GoldenPlan, GoldenStepName};
 use crate::guest_step::StepError;
-use crate::guest_user::GuestUserName;
+use doppel_desktop::guest_user::GuestUserName;
 use doppel_machine::machine::MachineName;
 
 use crate::agent::AgentError;

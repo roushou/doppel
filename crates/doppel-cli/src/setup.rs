@@ -13,7 +13,7 @@ use std::fmt;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use doppel_host::guest_user::GuestUserName;
+use doppel_desktop::guest_user::GuestUserName;
 use doppel_machine::bundle::CheckpointLabel;
 use doppel_machine::machine::MachineName;
 
@@ -128,7 +128,7 @@ impl Record {
                 |error: doppel_machine::machine::SpecError| RecordError(error.to_string()),
             )?,
             user: field("user")?.parse().map_err(
-                |error: doppel_host::guest_user::GuestUserError| RecordError(error.to_string()),
+                |error: doppel_desktop::guest_user::GuestUserError| RecordError(error.to_string()),
             )?,
             phase: field("phase")?.parse()?,
         })

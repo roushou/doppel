@@ -20,8 +20,8 @@ use crate::bootstrap::plan::{
     AskpassPrompt, BootstrapError as PlanError, RemoteStep, SshTarget, StagingDir, Stdin, StepName,
 };
 use crate::dhcp_leases::{self, DhcpLeases};
-use crate::guest_user::GuestUserName;
 use doppel_desktop::guest_path::GuestPath;
+use doppel_desktop::guest_user::GuestUserName;
 use doppel_machine::machine::{MacAddress, MachineName, NetworkSpec};
 
 use crate::agent_install::{AgentInstallError, Installed};

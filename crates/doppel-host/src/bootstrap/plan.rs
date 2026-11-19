@@ -16,8 +16,8 @@ use std::fmt;
 use std::net::Ipv4Addr;
 use std::path::Path;
 
-use crate::guest_user::GuestUserName;
 use doppel_desktop::guest_path::GuestPath;
+use doppel_desktop::guest_user::GuestUserName;
 
 const STAGING_PREFIX: &str = "/tmp/doppel-bootstrap.";
 const ARCHIVE: &str = "doppel-agent.zip";

@@ -4,10 +4,10 @@ use std::path::PathBuf;
 
 use anyhow::{Context as _, Result};
 use clap::Subcommand;
+use doppel_desktop::guest_user::GuestUserName;
 use doppel_host::agent_grant::plan::{AgentGrant, CodeRequirement};
 use doppel_host::bootstrap::AgentArchive;
 use doppel_host::capabilities::{SystemClock, WallClock as _};
-use doppel_host::guest_user::GuestUserName;
 use doppel_host::machines::CLAIM_TIMEOUT;
 use doppel_machine::machine::MachineName;
 

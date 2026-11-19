@@ -33,13 +33,13 @@ Inside the larger crates:
   `macos`/`web` (the `platform`) and `screen` meet at the frame feed
 - scene: `film`, `panel`, `attention`, `recordings` → `timeline`
 - host: provisioning procedures → `guest_step` → `machines` → {`vmm`,
-  `agent`, `store`} → {`capabilities`, `files`, `guest_user`}
+  `agent`, `store`} → {`capabilities`, `files`}
 
 ## Named concepts
 
 One home each; extend it rather than adding a parallel one.
 
-- Guest steps: `doppel_host::guest_step`; the guest's account: `guest_user`.
+- The guest's account: `doppel_desktop::guest_user`; its steps: `guest_step`.
 - An agent answering yet: `AgentReach`; waiting until ready: `Machines::poll`.
 - A checkpoint's files: `CheckpointPresence`; how one ended: `CheckpointResult`.
 - Ids: `activity::SessionId`, `recording::{RecordingId, VideoFile}` (machine).

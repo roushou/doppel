@@ -25,8 +25,8 @@ use doppel_desktop::guest_path::{GuestPath, GuestPathError};
 use doppel_machine::login::LoginPassword;
 
 use crate::guest_step::plan::{GuestAction, GuestStep, RunFailed};
-use crate::guest_user::GuestUserError;
-pub use crate::guest_user::GuestUserName;
+use doppel_desktop::guest_user::GuestUserError;
+pub use doppel_desktop::guest_user::GuestUserName;
 
 /// The obfuscated password file macOS auto-login reads (`/etc/kcpassword`):
 /// the password XORed with a fixed key, padded with NULs to a multiple of 12.

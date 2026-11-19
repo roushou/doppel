@@ -6,7 +6,7 @@
 use std::fmt;
 use std::str::FromStr;
 
-use crate::guest_user::GuestUserName;
+use doppel_desktop::guest_user::GuestUserName;
 use doppel_machine::login::LoginPassword;
 
 /// A person's full name for a macOS account: one line of printable text,

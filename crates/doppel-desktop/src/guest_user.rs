@@ -4,8 +4,8 @@
 use std::str::FromStr;
 use std::time::Duration;
 
-use doppel_desktop::exec::{ExecError, ExecOutput, ExecRequest, Termination};
-use doppel_desktop::guest_path::GuestPathError;
+use crate::exec::{ExecError, ExecOutput, ExecRequest, Termination};
+use crate::guest_path::GuestPathError;
 
 /// A macOS account short name: 1–64 ASCII letters, digits, `_`, `.` or `-`,
 /// not starting with `-`.
@@ -77,7 +77,7 @@ impl GuestUserName {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use doppel_desktop::exec::Completeness;
+    use crate::exec::Completeness;
 
     #[test]
     fn user_names_parse_from_the_probe() {

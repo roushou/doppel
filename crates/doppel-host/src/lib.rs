@@ -12,7 +12,6 @@ mod dhcp_leases;
 pub mod files;
 pub mod golden;
 pub mod guest_step;
-pub mod guest_user;
 pub mod login;
 pub mod machines;
 pub mod provision;

@@ -15,9 +15,9 @@ use doppel_client::{
     TokenEntry,
 };
 use doppel_desktop::guest_path::GuestPath;
+use doppel_desktop::guest_user::GuestUserName;
 use doppel_desktop::outcome::Unconfirmed;
 use doppel_host::agent_install::Installed;
-use doppel_host::guest_user::GuestUserName;
 use doppel_host::vmm::RecordingSummary;
 use doppel_machine::bundle::CheckpointLabel;
 use doppel_machine::lineage::Lineage;

@@ -13,6 +13,7 @@ pub mod exec;
 pub mod files;
 pub mod geometry;
 pub mod guest_path;
+pub mod guest_user;
 pub mod input;
 pub mod mark;
 pub mod outcome;
