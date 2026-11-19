@@ -112,14 +112,14 @@ impl From<&Shape> for vmm::Shape {
                 }),
             ),
             Shape::Veil {
-                holes,
+                lit,
                 colour,
                 opacity,
             } => (
                 *colour,
                 *opacity,
                 Kind::Veil(vmm::VeilShape {
-                    holes: holes.iter().map(|hole| (*hole).into()).collect(),
+                    holes: lit.rects().map(|rect| (*rect).into()).collect(),
                 }),
             ),
             Shape::Brackets {

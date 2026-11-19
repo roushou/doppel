@@ -192,11 +192,11 @@ fn paint(shape: &Shape, place: Place, origin: Point<Pixels>, window: &mut Window
             window,
         ),
         Shape::Veil {
-            holes,
+            lit,
             colour: rgb,
             opacity,
         } => {
-            // Even-odd: the whole picture, less each hole.
+            // Even-odd: the whole picture, less each lit rectangle (no two overlap).
             let picture = place.picture;
             let mut path = PathBuilder::fill();
             let mut rect = |bounds: Bounds<Pixels>| {
@@ -210,8 +210,8 @@ fn paint(shape: &Shape, place: Place, origin: Point<Pixels>, window: &mut Window
                 origin + point(px(picture.left), px(picture.top)),
                 size(px(picture.width), px(picture.height)),
             ));
-            for hole in holes {
-                rect(place.bounds(*hole, origin));
+            for piece in lit.rects() {
+                rect(place.bounds(*piece, origin));
             }
             if let Ok(path) = path.build() {
                 window.paint_path(path, colour(*rgb, *opacity));

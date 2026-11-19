@@ -7,7 +7,10 @@
 
 use doppel_desktop::geometry::{Point, Rect, Size};
 
+mod lit_region;
 pub mod pacing;
+
+pub use self::lit_region::LitRegion;
 
 use self::pacing::Pace;
 use crate::attention::{Attention, Glance, LET_GO_MS, LOCK_MS, aimed};
@@ -115,10 +118,10 @@ pub enum Shape {
         colour: Rgb,
         opacity: f64,
     },
-    /// The screen dimmed by `colour`, but for `holes`: what the agent
-    /// takes in, lit through it.
+    /// The screen dimmed by `colour`, but for `lit`: what the agent takes
+    /// in, lit through it.
     Veil {
-        holes: Vec<Rect>,
+        lit: LitRegion,
         colour: Rgb,
         opacity: f64,
     },
@@ -307,7 +310,7 @@ fn rewound(moments: &[Moment], display: Size, at: f64, shapes: &mut Vec<Shape>) 
         };
         let (fill, _) = hue(moment.call.key.session);
         shapes.push(Shape::Veil {
-            holes: Vec::new(),
+            lit: LitRegion::none(),
             colour: VEIL,
             opacity: 0.55 * shown,
         });
@@ -380,12 +383,12 @@ fn taken_in(attention: &Attention, at: f64, shapes: &mut Vec<Shape>) {
         None => rest,
     } * landing;
     if veiled > 0.0 {
-        let holes = match lock {
-            Some((lock, _)) => vec![grown(lock.frame, LOCK_TO)],
-            None => lit.iter().map(|glance| grown(glance.frame, 3.0)).collect(),
+        let region = match lock {
+            Some((lock, _)) => LitRegion::union_of([grown(lock.frame, LOCK_TO)]),
+            None => LitRegion::union_of(lit.iter().map(|glance| grown(glance.frame, 3.0))),
         };
         shapes.push(Shape::Veil {
-            holes,
+            lit: region,
             colour: VEIL,
             opacity: VEIL_DARK * veiled,
         });
