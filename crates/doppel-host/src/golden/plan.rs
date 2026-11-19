@@ -7,7 +7,9 @@
 //!   no system, display or disk sleep (`pmset`), and auto-login for the user
 //!   (`/etc/kcpassword` plus `autoLoginUser`, what `sysadminctl -autologin`
 //!   writes; `sysadminctl` would take the password as an argument);
-//! - a check that the settings took.
+//! - a wait until every setting is in its file on disk, then a flush: a
+//!   fork cold-boots from the checkpoint's disk, and the daemons behind
+//!   `pmset` and `defaults` write their files some seconds after the change.
 //!
 //! The password never appears in an argument: it reaches `sudo` on stdin and
 //! auto-login through a file. The screen lock itself is left alone (turning it
@@ -202,16 +204,35 @@ trap 'rm -f "$kc"' EXIT
 /usr/bin/install -m 600 -o root -g wheel "$kc" /etc/kcpassword
 /usr/bin/defaults write /Library/Preferences/com.apple.loginwindow autoLoginUser -string "$user""#;
 
-/// As the user. `$1` user. Fails, naming the setting, unless all took.
+/// As the user. `$1` user. Waits until every setting is in its file on disk,
+/// then flushes the disk; fails, naming the setting, if one never gets there.
+///
+/// A fork cold-boots from the checkpoint's disk, so only what reached the
+/// disk counts. `pmset` and `defaults` take effect at once but their daemons
+/// (powerd, cfprefsd) write the files some seconds later, and the checkpoint
+/// that follows powers the machine off.
 const VERIFY: &str = r#"set -eu
+user=$1
 fail() { echo "$1" >&2; exit 1; }
-[ "$(/usr/bin/defaults read /Library/Preferences/com.apple.loginwindow autoLoginUser)" = "$1" ] || fail "autoLoginUser is not $1"
-[ -f /etc/kcpassword ] || fail "/etc/kcpassword is missing"
-settings=$(/usr/bin/pmset -g custom)
-for key in sleep displaysleep disksleep; do
-  echo "$settings" | grep -Eq "^ *$key +0$" || fail "pmset $key is not 0"
+value() { [ -f "$1" ] && /usr/libexec/PlistBuddy -c "Print '$2'" "$1" 2>/dev/null || true; }
+uuid=$(/usr/sbin/ioreg -rd1 -c IOPlatformExpertDevice | /usr/bin/awk -F'"' '/IOPlatformUUID/ {print $4}')
+power=/Library/Preferences/com.apple.PowerManagement.plist
+saver="$HOME/Library/Preferences/ByHost/com.apple.screensaver.$uuid.plist"
+unsaved() {
+  [ "$(value /Library/Preferences/com.apple.loginwindow.plist :autoLoginUser)" = "$user" ] || { echo "autoLoginUser is not $user on disk"; return; }
+  [ -f /etc/kcpassword ] || { echo "/etc/kcpassword is missing"; return; }
+  for timer in "System Sleep Timer" "Display Sleep Timer" "Disk Sleep Timer"; do
+    [ "$(value "$power" ":AC Power:$timer")" = 0 ] || { echo "pmset's $timer is not 0 on disk"; return; }
+  done
+  [ "$(value "$saver" :idleTime)" = 0 ] || { echo "screensaver idleTime is not 0 on disk"; return; }
+}
+waited=0
+while missing=$(unsaved); [ -n "$missing" ]; do
+  [ "$waited" -lt 45 ] || fail "$missing"
+  waited=$((waited + 1))
+  sleep 1
 done
-[ "$(/usr/bin/defaults -currentHost read com.apple.screensaver idleTime)" = 0 ] || fail "screensaver idleTime is not 0""#;
+/bin/sync"#;
 
 impl GoldenPlan {
     /// # Errors
@@ -406,5 +427,16 @@ mod tests {
             error.to_string(),
             "checking the settings failed: exited with status 1: pmset sleep is not 0"
         );
+    }
+
+    #[test]
+    fn scripts_parse_as_sh() {
+        for (name, body) in [("ADMIN", ADMIN), ("VERIFY", VERIFY)] {
+            let status = std::process::Command::new("/bin/sh")
+                .args(["-n", "-c", body])
+                .status()
+                .unwrap();
+            assert!(status.success(), "{name} does not parse");
+        }
     }
 }
