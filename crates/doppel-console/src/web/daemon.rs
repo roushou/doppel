@@ -98,7 +98,8 @@ impl From<Refusal> for DaemonError {
     fn from(refusal: Refusal) -> Self {
         match refusal {
             Refusal::Lost(why) => Self::Unreachable(why),
-            Refusal::Refused(why) => Self::Refused(why),
+            // A listing it can't read is refused, as the desktop's is.
+            Refusal::Refused(why) | Refusal::Unreadable(why) => Self::Refused(why),
             Refusal::Machine(failure) => Self::Refused(failure.to_string()),
         }
     }
@@ -106,7 +107,7 @@ impl From<Refusal> for DaemonError {
 
 /// An answer this build can't read.
 fn unreadable(error: impl std::fmt::Display) -> Refusal {
-    Refusal::Refused(format!("an answer this console can't read: {error}"))
+    Refusal::Unreadable(format!("an answer this console can't read: {error}"))
 }
 
 fn machine(entry: daemon::MachineEntry) -> Result<Machine, ParseError> {
@@ -129,7 +130,7 @@ fn failed(refusal: &Refusal) -> Verdict {
     match refusal {
         Refusal::Machine(failure) => answers::failed(failure),
         Refusal::Refused(why) => Verdict::Refused(why.clone()),
-        Refusal::Lost(why) => Verdict::Unknown(why.clone()),
+        Refusal::Lost(why) | Refusal::Unreadable(why) => Verdict::Unknown(why.clone()),
     }
 }
 
@@ -138,7 +139,7 @@ async fn order(reach: &Reach, name: &MachineName, order: Order) -> Result<Verdic
     let connection = reach.connection().await.map_err(|refusal| match refusal {
         // Not sent: nothing was done.
         Refusal::Lost(why) => Refusal::Refused(why),
-        other @ (Refusal::Refused(_) | Refusal::Machine(_)) => other,
+        other @ (Refusal::Refused(_) | Refusal::Unreadable(_) | Refusal::Machine(_)) => other,
     })?;
     let name_s = name.to_string();
     Ok(match order {

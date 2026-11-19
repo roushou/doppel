@@ -12,7 +12,7 @@ use doppel_machine::machine::MachineName;
 use crate::agent::AgentError;
 use crate::capabilities::Clock;
 use crate::files::Filesystem;
-use crate::machines::{MachineError, Machines};
+use crate::machines::{AgentReach, MachineError, Machines, Poll, TimedOut};
 use doppel_protocol::transport::Cancel;
 
 /// How long the new build has to answer after the restart.
@@ -94,29 +94,28 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
     ) -> Result<Installed, AgentInstallError> {
         let clock = self.clock();
         let started: Instant = clock.now();
-        loop {
-            let last = match self.agent(machine, self.deadline()) {
-                Ok(client) => match client.peer_build() {
-                    Some(answered) if *answered == build => {
-                        return Ok(Installed {
-                            build,
-                            restart: clock.now().saturating_duration_since(started),
-                        });
-                    }
-                    Some(other) => format!("build {other} answered"),
-                    None => "an agent without a build id answered".to_owned(),
+        // Only an agent not up yet is waited for: a stopped machine or a
+        // wrong answer ends the wait at once.
+        let answered = self.poll(RESTART_TIMEOUT, POLL, || {
+            Ok::<_, MachineError>(match self.reach_agent(machine, self.deadline())? {
+                AgentReach::Answers(client) => match client.peer_build() {
+                    Some(answered) if *answered == build => Poll::Ready(()),
+                    Some(other) => Poll::NotYet(format!("build {other} answered")),
+                    None => Poll::NotYet("an agent without a build id answered".to_owned()),
                 },
-                Err(error) => error.to_string(),
-            };
-            let waited = clock.now().saturating_duration_since(started);
-            if waited >= RESTART_TIMEOUT {
-                return Err(AgentInstallError::NotBack {
-                    build,
-                    waited,
-                    last,
-                });
-            }
-            std::thread::sleep(POLL);
+                AgentReach::NotYet(why) => Poll::NotYet(why),
+            })
+        })?;
+        match answered {
+            Ok(()) => Ok(Installed {
+                restart: clock.now().saturating_duration_since(started),
+                build,
+            }),
+            Err(TimedOut { waited, last }) => Err(AgentInstallError::NotBack {
+                build,
+                waited,
+                last,
+            }),
         }
     }
 }

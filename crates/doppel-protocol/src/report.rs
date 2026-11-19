@@ -93,21 +93,9 @@ impl Failure for MachineFailure {
     }
 }
 
-/// How the guest was asked to stop.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum StopRequest {
-    Forced,
-    /// The logged-in session was asked to shut down.
-    Session,
-    /// The same, after typing the stored password on a locked screen.
-    SessionAfterUnlock {
-        unlocked_after: Duration,
-    },
-    /// The power button, because the session couldn't be asked: `why`.
-    PowerButton {
-        why: String,
-    },
-}
+/// How the guest was asked to stop; when through the power button, why
+/// the session couldn't be asked, as the daemon said.
+pub type StopRequest = doppel_machine::stop::StopRequest<String>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StopReport {

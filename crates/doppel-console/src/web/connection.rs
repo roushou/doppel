@@ -33,6 +33,10 @@ pub(crate) enum Refusal {
     /// The daemon answered, and refused.
     #[error("{0}")]
     Refused(String),
+    /// The daemon answered with something this console can't read: what
+    /// it did is unknown.
+    #[error("{0}")]
+    Unreadable(String),
     /// A machine operation failed on the daemon's side.
     #[error("{0}")]
     Machine(MachineFailure),
@@ -220,7 +224,7 @@ impl Connection {
                 Err(Refusal::Machine(MachineFailure::from_wire(failure)))
             }
             Some(outcome) => R::answered(outcome)
-                .ok_or_else(|| Refusal::Refused(format!("an unexpected answer to {}", R::NAME))),
+                .ok_or_else(|| Refusal::Unreadable(format!("an unexpected answer to {}", R::NAME))),
         }
     }
 }

@@ -53,11 +53,13 @@ use doppel_protocol::transport::Cancel;
 
 mod agent_connection;
 mod machine;
+mod poll;
 mod running;
 
 pub(crate) use agent_connection::AgentReach;
 pub use agent_connection::{AgentConnection, AgentConnectionError, Paused};
 pub use machine::Machine;
+pub(crate) use poll::{Poll, TimedOut};
 pub use running::RunningMachine;
 
 /// The budget of one ordinary request: see [`Machines::deadline`].
@@ -131,6 +133,13 @@ pub enum MachineError {
     },
     #[error("machine '{machine}' has no checkpoint '{label}'")]
     NoSuchCheckpoint {
+        machine: MachineName,
+        label: CheckpointLabel,
+    },
+    #[error(
+        "machine '{machine}'s checkpoint '{label}' is incomplete: its memory or disk is missing. Delete it with `doppel forget-checkpoint {machine} {label}`"
+    )]
+    PartialCheckpoint {
         machine: MachineName,
         label: CheckpointLabel,
     },
@@ -247,6 +256,7 @@ impl Failure for MachineError {
             | Self::NotRunning(_)
             | Self::IdentityInUse { .. }
             | Self::NoSuchCheckpoint { .. }
+            | Self::PartialCheckpoint { .. }
             | Self::CheckpointExists { .. }
             | Self::CheckpointKept { .. }
             | Self::LineageUnreadable { .. }
@@ -1422,10 +1432,15 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
     /// valid for resuming.
     fn sync_guest(&self, name: &MachineName, by: Deadline) -> GuestSync<MachineError> {
         match self.run_in_guest(name, "/bin/sync", Vec::new(), SYNC_TIMEOUT, by) {
-            // Its stderr isn't kept: a skipped sync says only how it ended.
             Ok(output) => match RunFailed::judge(&output) {
                 Ok(()) => GuestSync::Synced,
-                Err(failed) => GuestSync::Skipped(SyncSkipped::Ended(failed.termination)),
+                Err(RunFailed {
+                    termination,
+                    stderr,
+                }) => GuestSync::Skipped(SyncSkipped::Ended {
+                    termination,
+                    stderr,
+                }),
             },
             Err(error) => GuestSync::Skipped(SyncSkipped::NotRun(error)),
         }
@@ -1438,17 +1453,11 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
     ) -> Result<doppel_machine::bundle::CheckpointFiles, MachineError> {
         let checkpoint = bundle.checkpoint(label);
         let present = self.files.present(checkpoint.probes())?;
-        let usable = match checkpoint.presence(&present) {
-            CheckpointPresence::Complete => true,
-            CheckpointPresence::Absent | CheckpointPresence::Partial => false,
-        };
-        if usable {
-            Ok(checkpoint)
-        } else {
-            Err(MachineError::NoSuchCheckpoint {
-                machine: bundle.name().clone(),
-                label: label.clone(),
-            })
+        let (machine, label) = (bundle.name().clone(), label.clone());
+        match checkpoint.presence(&present) {
+            CheckpointPresence::Complete => Ok(checkpoint),
+            CheckpointPresence::Partial => Err(MachineError::PartialCheckpoint { machine, label }),
+            CheckpointPresence::Absent => Err(MachineError::NoSuchCheckpoint { machine, label }),
         }
     }
 

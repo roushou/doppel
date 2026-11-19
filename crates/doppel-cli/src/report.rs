@@ -586,7 +586,7 @@ fn stopped(f: &mut fmt::Formatter<'_>, name: &MachineName, report: &StopReport) 
             "shut down from the logged-in session, after unlocking its screen with the stored password in {} ms",
             unlocked_after.as_millis()
         ),
-        StopRequest::PowerButton { why } => {
+        StopRequest::PowerButton { session: why } => {
             format!("power button pressed (the session couldn't be asked: {why})")
         }
     };

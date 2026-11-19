@@ -50,7 +50,7 @@ impl<A> AgentReach<A> {
     ///
     /// # Errors
     /// The machine isn't running, or its agent answers wrongly.
-    fn of(attempt: Result<A, MachineError>) -> Result<Self, MachineError> {
+    pub(crate) fn of(attempt: Result<A, MachineError>) -> Result<Self, MachineError> {
         match attempt {
             Ok(agent) => Ok(Self::Answers(agent)),
             Err(error @ MachineError::AgentUnreachable { .. }) => {

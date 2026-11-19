@@ -11,7 +11,7 @@ use doppel_machine::screen_probe::{
 use crate::agent::Probes;
 use crate::capabilities::Clock;
 use crate::files::Filesystem;
-use crate::machines::{MachineError, Machines};
+use crate::machines::{AgentReach, MachineError, Machines};
 use doppel_protocol::transport::{Cancel, Slept};
 
 impl<C: Clock, F: Filesystem> Machines<C, F> {
@@ -22,12 +22,12 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
         cancel: &Cancel,
     ) -> Result<HostScreen, MachineError> {
         let mut running = self.machine(name).running(self.deadline())?;
-        let mut agent = match running.agent(self.deadline()) {
-            Ok(agent) => agent,
-            Err(error) => {
-                return Ok(HostScreen::Unconfirmed(WhyUnconfirmed::Failed(
-                    error.to_string(),
-                )));
+        // An agent not up yet leaves the screen unconfirmed; one that
+        // answers wrongly is an error, as everywhere else.
+        let mut agent = match AgentReach::of(running.agent(self.deadline()))? {
+            AgentReach::Answers(agent) => agent,
+            AgentReach::NotYet(why) => {
+                return Ok(HostScreen::Unconfirmed(WhyUnconfirmed::Failed(why)));
             }
         };
         match agent.probes() {

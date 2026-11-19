@@ -21,7 +21,7 @@ impl TryFrom<daemon::MachineStopped> for StopReport {
             Some(Request::SessionAfterUnlockMicros(micros)) => StopRequest::SessionAfterUnlock {
                 unlocked_after: Duration::from_micros(micros),
             },
-            Some(Request::PowerButton(why)) => StopRequest::PowerButton { why },
+            Some(Request::PowerButton(session)) => StopRequest::PowerButton { session },
         };
         let outcome = ParseError::stop_outcome("machine_stopped.outcome", stopped.outcome)?;
         Ok(Self { request, outcome })

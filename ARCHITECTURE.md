@@ -41,7 +41,8 @@ One home each; extend it rather than adding a parallel one.
 
 - A guest step (a write, or a run that must exit 0) and its runner:
   `doppel_host::guest_step`; the guest's account name: `guest_user`.
-- Whether an agent answers yet: `AgentReach` in `machines/agent_connection`.
+- Whether an agent answers yet: `AgentReach` in `machines/agent_connection`;
+  waiting for something to be ready: `Machines::poll` in `machines/poll`.
 - Whether a checkpoint is there: `doppel_machine::bundle::CheckpointPresence`.
 - Whether a failed request may have happened: `Failure` on each error,
   `ClientError`'s included.
