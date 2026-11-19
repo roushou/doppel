@@ -72,6 +72,13 @@ impl Place {
         length as f32 * self.scale
     }
 
+    /// A mark's `length` in window points, never under `floor`: a screen
+    /// shown at a fraction of its size would shrink a bracket's line or a
+    /// tag's letters past seeing, where a film at full size doesn't.
+    fn at_least(self, length: f64, floor: f32) -> f32 {
+        self.length(length).max(floor)
+    }
+
     /// A display rectangle in the window, the box at `origin`.
     fn bounds(self, rect: Rect, origin: Point<Pixels>) -> Bounds<Pixels> {
         let (x, y) = self.picture.place(rect.left(), rect.top());
@@ -89,6 +96,12 @@ impl Place {
         origin + point(px(x), px(y))
     }
 }
+
+/// The least a bracket's line, its arms and a tag's letters may shrink to,
+/// in window points, however small the screen shows.
+const MIN_LINE: f32 = 2.;
+const MIN_ARM: f32 = 6.;
+const MIN_TEXT: f32 = 10.;
 
 /// `shapes` over a screen whose picture is at `picture`, bottom first.
 /// Badges and tags are elements over the rest, which one canvas paints.
@@ -226,10 +239,10 @@ fn paint(shape: &Shape, place: Place, origin: Point<Pixels>, window: &mut Window
         } => {
             let bounds = place.bounds(*rect, origin);
             let arm = px(place
-                .length(*arm)
+                .at_least(*arm, MIN_ARM)
                 .min(f32::from(bounds.size.width) / 2.)
                 .min(f32::from(bounds.size.height) / 2.));
-            let mut path = PathBuilder::stroke(px(place.length(*width)));
+            let mut path = PathBuilder::stroke(px(place.at_least(*width, MIN_LINE)));
             for (corner, dx, dy) in [
                 (bounds.origin, arm, arm),
                 (bounds.top_right(), -arm, arm),
@@ -359,11 +372,11 @@ fn element(shape: &Shape, place: Place) -> Option<Div> {
             let (x, y) = place.spot(*at);
             let tag = div()
                 .absolute()
-                .px(px(place.length(6.)))
-                .py(px(place.length(3.)))
+                .px(px(place.at_least(6., MIN_TEXT * 0.5)))
+                .py(px(place.at_least(3., MIN_TEXT * 0.2)))
                 .bg(colour(*plate, 1.0))
                 .text_color(colour(*ink, 1.0))
-                .text_size(px(place.length(11.)))
+                .text_size(px(place.at_least(11., MIN_TEXT)))
                 .font_weight(FontWeight::MEDIUM)
                 .font_family(MONO)
                 .whitespace_nowrap()
@@ -391,5 +404,34 @@ fn element(shape: &Shape, place: Place) -> Option<Div> {
         | Shape::Pointer { .. }
         | Shape::Veil { .. }
         | Shape::Brackets { .. } => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn shown_at(width: f32) -> Place {
+        Place::of(Picture {
+            left: 0.,
+            top: 0.,
+            width,
+            height: width * 0.625,
+            points: doppel_desktop::geometry::Size::new(1280.0, 800.0).unwrap(),
+        })
+    }
+
+    #[test]
+    fn marks_keep_a_least_size_on_a_small_screen_and_scale_on_a_large_one() {
+        let half = shown_at(640.);
+        assert_eq!(
+            half.at_least(1.5, MIN_LINE),
+            MIN_LINE,
+            "a hairline at half size"
+        );
+        assert_eq!(half.at_least(11., MIN_TEXT), MIN_TEXT);
+        let double = shown_at(2560.);
+        assert_eq!(double.at_least(1.5, MIN_LINE), 3.);
+        assert_eq!(double.at_least(11., MIN_TEXT), 22.);
     }
 }

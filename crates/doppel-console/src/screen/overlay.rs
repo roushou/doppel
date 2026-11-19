@@ -61,6 +61,7 @@ fn chip(fill: Hsla, ink: Hsla) -> Div {
 /// does what it does (named by its client when several act).
 pub(crate) fn layer(moments: &[Moment], picture: Picture, now: f64) -> impl IntoElement {
     let drawn = film::Picture::at(moments, picture.points, now);
+    let colours = film::SessionColours::of(moments);
     let mut layer = crate::screen::shapes::layer(drawn.shapes, picture);
     for caption in film::Caption::at(moments, now) {
         let words = match (caption.why, caption.client) {
@@ -70,7 +71,7 @@ pub(crate) fn layer(moments: &[Moment], picture: Picture, now: f64) -> impl Into
             (None, None) => continue,
         };
         let tip = caption.tip;
-        let hue = Hue::of(caption.session);
+        let hue = Hue::of(colours.hue(caption.session));
         let (x, y) = picture.place(tip.x + CAPTION_FROM.0, tip.y + CAPTION_FROM.1);
         let caption = chip(hue.fill, hue.ink).child(words);
         layer = layer.child(match caption_side(x, picture.left + picture.width) {
@@ -131,6 +132,7 @@ pub(crate) fn strip(
         .filter(|moment| moment.start_ms <= to && moment.end_ms.unwrap_or(now) >= from)
         .collect();
     let lanes = crate::timeline::lanes(shown.iter().copied());
+    let colours = film::SessionColours::of(moments);
     // Room for two lanes whoever acts, so the screen above never moves; a
     // third agent's and on scroll into view.
     let mut rows = div()
@@ -142,7 +144,7 @@ pub(crate) fn strip(
         .when(lanes.len() <= 1, |rows| rows.justify_center());
     if lanes.len() > 1 {
         for (index, lane) in lanes.iter().enumerate() {
-            let hue = Hue::of(lane.session);
+            let hue = Hue::of(colours.hue(lane.session));
             let name = if lane.client.is_empty() {
                 format!("session {}", lane.session)
             } else {
@@ -179,6 +181,7 @@ pub(crate) fn strip(
                     .child(div().flex_1().child(lane_bar(
                         (id.clone(), index),
                         &lane.moments,
+                        &colours,
                         span,
                         theme,
                     ))),
@@ -186,7 +189,7 @@ pub(crate) fn strip(
         }
     } else {
         rows = rows.child(
-            lane_bar((id.clone(), 0), &shown, span, theme)
+            lane_bar((id.clone(), 0), &shown, &colours, span, theme)
                 .border_b_1()
                 .border_color(theme.line),
         );
@@ -219,6 +222,7 @@ const DOT_EVERY: f32 = 6.;
 fn lane_bar(
     (id, lane): (gpui::ElementId, usize),
     moments: &[&Moment],
+    colours: &film::SessionColours,
     span: Span,
     theme: &Theme,
 ) -> Div {
@@ -247,7 +251,7 @@ fn lane_bar(
                         Some(_) => theme.danger,
                         None => family_colour(
                             moment.call.gesture.family(),
-                            Hue::of(moment.call.key.session).fill,
+                            Hue::of(colours.hue(moment.call.key.session)).fill,
                             theme,
                         ),
                     };

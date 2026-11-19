@@ -8,6 +8,7 @@
 //! in control or attention. Nothing is rounded and nothing casts a shadow.
 
 use crate::ThemeChoice;
+use doppel_scene::film::SessionHue;
 use gpui::{BoxShadow, Global, Hsla, WindowAppearance, point, px, rgba};
 
 /// Every colour the window uses, by role.
@@ -200,22 +201,12 @@ pub(crate) struct Hue {
     pub(crate) ink: Hsla,
 }
 
-/// The sessions' colours, as RGB: fill and ink. The first is the agent's
-/// colour of one session alone. None is the signal orange: that means a
-/// person in control, or attention. The web console has the same.
-const HUES: [(u32, u32); 4] = [
-    (0x0022_e5ff, 0x000b_5d6b), // cyan
-    (0x003d_8bff, 0x001f_4f9e), // blue
-    (0x00b1_8cff, 0x005b_3aa8), // violet
-    (0x00c3_d94e, 0x0056_6314), // lime
-];
-
 impl Hue {
-    /// Session `session`'s colours: sessions count from 1, and a recording's
-    /// one session (0) takes the first.
-    pub(crate) fn of(session: u64) -> Self {
-        let index = usize::try_from(session.saturating_sub(1) % HUES.len() as u64).unwrap_or(0);
-        let (fill, ink) = HUES.get(index).copied().unwrap_or(HUES[0]);
+    /// An agent's colours as the film gives them: the palette and who wears
+    /// what are `doppel_scene::film::SessionColours`'s, so the screen, the
+    /// rail and the timeline agree, in the browser too.
+    pub(crate) fn of(hue: SessionHue) -> Self {
+        let (fill, ink) = (hue.fill.hex(), hue.ink.hex());
         Self {
             fill: c(fill << 8 | 0xff),
             soft: c(fill << 8 | 0x38),
@@ -244,7 +235,7 @@ pub(crate) const FONTS: [&[u8]; 8] = [
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use doppel_scene::film::SessionColours;
 
     /// WCAG relative luminance of an RGB colour.
     fn luminance(rgb: u32) -> f64 {
@@ -266,15 +257,13 @@ mod tests {
 
     #[test]
     fn captions_read_on_every_sessions_ink_and_pointers_stand_out() {
-        for (fill, ink) in HUES {
+        for hue in SessionColours::palette() {
+            let (fill, ink) = (hue.fill.hex(), hue.ink.hex());
             // White caption text on the ink, as text needs.
             assert!(contrast(ink, 0xff_ffff) >= 4.5, "{ink:06x}");
             // The pointer, outlined in white, against a dark screen; its
             // white outline carries it on a light one.
             assert!(contrast(fill, 0x00_0000) >= 3.0, "{fill:06x}");
         }
-        assert_eq!(Hue::of(1), Hue::of(0));
-        assert_eq!(Hue::of(1), Hue::of(5));
-        assert_ne!(Hue::of(1), Hue::of(2));
     }
 }

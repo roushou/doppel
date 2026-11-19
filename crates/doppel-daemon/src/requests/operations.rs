@@ -464,7 +464,11 @@ where
     pub(crate) fn delete(&self, machine: &MachineName, call: &Call) -> Result<(), CallError> {
         let _turn = self.lifecycle_turn(machine, call)?;
         let claim = self.machines.claim(machine, self.claim_deadline())?;
-        Ok(claim.delete(self.machines.deadline())?)
+        claim.delete(self.machines.deadline())?;
+        // A machine made later under this name starts with nothing shown.
+        self.watchers.forget(machine);
+        self.elements.forget(machine);
+        Ok(())
     }
 
     /// Deletes one checkpoint for good, after the calls on its machine
