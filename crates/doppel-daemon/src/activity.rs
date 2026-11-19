@@ -533,6 +533,13 @@ impl Watchers {
         (id, receiver)
     }
 
+    /// Forgets `machine`'s recent calls: it was deleted, and a machine made
+    /// later under its name (a temporary one, whose names repeat) must not
+    /// show a new console the calls of the one before.
+    pub(crate) fn forget(&self, machine: &MachineName) {
+        self.watching().history.0.remove(machine.as_str());
+    }
+
     /// Stops watcher `id`: its receiver gets what was already sent, then
     /// ends.
     pub(crate) fn unwatch(&self, id: WatcherId) {
@@ -1171,5 +1178,34 @@ mod tests {
         let restarted = session_call(Some(dev()), Guest::MayRestart);
         elements.on_call(&ended_event(&restarted, None, None));
         assert!(elements.find(&dev(), 3, 0).is_none());
+    }
+
+    #[test]
+    fn a_deleted_machine_s_calls_are_not_told_to_a_new_console() {
+        use daemon::activity::Phase;
+        let watchers = Watchers::default();
+        let now = doppel_host::capabilities::SystemClock.now();
+        let started = |machine: &str| daemon::Activity {
+            session: 1,
+            request: 1,
+            machine: machine.into(),
+            client: "agent".into(),
+            caption: "call".into(),
+            phase: Some(Phase::Started(daemon::CallStarted {
+                why: String::new(),
+                mark: None,
+                gesture: Gesture::Look.into(),
+                target: None,
+            })),
+        };
+        watchers.publish(&started("dev"), now);
+        watchers.publish(&started("other"), now);
+        watchers.forget(&dev());
+        let (_, console) = watchers.watch(now);
+        let told: Vec<String> = console
+            .try_iter()
+            .map(|activity| activity.machine)
+            .collect();
+        assert_eq!(told, ["other"]);
     }
 }

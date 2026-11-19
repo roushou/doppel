@@ -68,6 +68,9 @@ pub struct Panel<S, H> {
     /// When the person took control, for the timer on its frame.
     took: Option<f64>,
     report: Option<Report>,
+    /// When it last heard of an agent's call: the latest mark it was
+    /// recorded at, or none if it never heard of one.
+    heard: Option<Heard>,
     handles: H,
 }
 
@@ -82,6 +85,7 @@ impl<S, H: Default> Default for Panel<S, H> {
             timeline: Timeline::new(),
             took: None,
             report: None,
+            heard: None,
             handles: H::default(),
         }
     }
@@ -213,17 +217,26 @@ impl<S, H> Panel<S, H> {
     }
 }
 
+/// How far the panels had heard of agents' calls, at some moment: later
+/// marks compare greater. Taken when a listing of machines is asked for, so
+/// the listing's answer can tell which panels it speaks for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Heard(u64);
+
 /// The console's panels, by machine. A machine has one once anything is
 /// kept about it.
 #[derive(Debug)]
 pub struct Panels<S, H> {
     panels: BTreeMap<MachineName, Panel<S, H>>,
+    /// Calls recorded so far, on any panel.
+    heard: u64,
 }
 
 impl<S, H> Default for Panels<S, H> {
     fn default() -> Self {
         Self {
             panels: BTreeMap::new(),
+            heard: 0,
         }
     }
 }
@@ -236,7 +249,11 @@ impl<S, H: Default> Panels<S, H> {
 
     /// Records what an agent did, on its machine's timeline.
     pub fn record(&mut self, event: ActivityEvent, now: f64) {
-        self.of(event.machine()).timeline.record(event, now);
+        self.heard += 1;
+        let heard = Heard(self.heard);
+        let panel = self.of(event.machine());
+        panel.timeline.record(event, now);
+        panel.heard = Some(heard);
     }
 
     /// Opens the screens of `wanted`, and closes the rest and those that
@@ -312,6 +329,28 @@ impl<S, H> Panels<S, H> {
         }
     }
 
+    /// How far the panels have heard, now: mark a listing asked for now
+    /// with it.
+    pub const fn heard(&self) -> Heard {
+        Heard(self.heard)
+    }
+
+    /// Forgets the machines a listing asked for at `asked` leaves out (a
+    /// temporary machine deleted when its session ended), so a new machine
+    /// given the same name starts with an empty timeline, not with the
+    /// calls, and the agents' colours, of the one before it.
+    ///
+    /// A panel that heard of a call after `asked` is kept: its machine may
+    /// be newer than the listing. One whose calls all came before was named
+    /// by a machine that existed then and is gone now, even if no listing
+    /// ever showed it (a console opened while it was being deleted hears of
+    /// its calls from the daemon's history).
+    pub fn keep_listed(&mut self, listed: &[MachineName], asked: Heard) {
+        self.panels.retain(|name, panel| {
+            listed.contains(name) || panel.heard.is_some_and(|heard| heard > asked)
+        });
+    }
+
     /// Drops the reports of machines no longer on `stage`.
     pub fn keep_reports_of(&mut self, stage: &[MachineName]) {
         for (name, panel) in &mut self.panels {
@@ -338,7 +377,9 @@ mod tests {
     use super::{Overlay, Panels, Screen};
     use crate::model::Action;
     use crate::report::{Guest, Report};
-    use crate::timeline::{Looked, TextLooked, TextRead};
+    use doppel_machine::activity as told;
+
+    use crate::timeline::{ActivityEvent, Looked, TextLooked, TextRead};
 
     type Kept = Panels<&'static str, ()>;
 
@@ -476,5 +517,57 @@ mod tests {
         assert_eq!(panel.overlay(), Overlay::Hidden);
         panel.toggle_overlay();
         assert_eq!(panel.overlay(), Overlay::Shown);
+    }
+
+    fn call_on(machine: &str) -> ActivityEvent {
+        ActivityEvent::of(told::Activity {
+            session: 1,
+            request: 1,
+            machine: name(machine),
+            client: "agent".into(),
+            caption: String::new(),
+            phase: told::Phase::Started(told::OnScreen {
+                why: None,
+                gesture: told::Gesture::Unknown(0),
+                target: None,
+                callout: None,
+            }),
+        })
+    }
+
+    #[test]
+    fn a_machine_a_listing_leaves_out_is_forgotten_and_its_name_starts_afresh() {
+        let mut panels = Kept::default();
+        panels.of(&name("a")).toggle_overlay();
+        panels.of(&name("b"));
+        panels.keep_listed(&[name("b")], panels.heard());
+        assert!(panels.get(&name("a")).is_none());
+        assert!(panels.get(&name("b")).is_some());
+        assert_eq!(panels.of(&name("a")).overlay, Overlay::default(), "afresh");
+    }
+
+    #[test]
+    fn calls_heard_of_a_machine_no_listing_showed_are_forgotten_once_one_leaves_it_out() {
+        let mut panels = Kept::default();
+        // Told from the daemon's history as the console opened, while the
+        // machine was being deleted: the first listing already leaves it out.
+        panels.record(call_on("gone"), 0.0);
+        let asked = panels.heard();
+        panels.keep_listed(&[], asked);
+        assert!(panels.get(&name("gone")).is_none());
+    }
+
+    #[test]
+    fn a_machine_heard_of_after_the_listing_was_asked_for_is_kept() {
+        let mut panels = Kept::default();
+        let asked = panels.heard();
+        panels.record(call_on("new"), 0.0);
+        panels.keep_listed(&[], asked);
+        assert_eq!(
+            panels
+                .get(&name("new"))
+                .map(|panel| panel.timeline().moments().len()),
+            Some(1)
+        );
     }
 }

@@ -27,6 +27,7 @@ mod replay;
 
 use crate::app::ask::{Ask, AskEvent, Question};
 use crate::model::{Machine, Session, Tone};
+use crate::panel::Heard;
 use crate::route::Entry;
 use crate::route::Route;
 use crate::ui::icons::Icon;
@@ -359,11 +360,13 @@ impl Root {
 
     /// Reads the machines and the sessions again.
     fn refresh(&mut self, cx: &mut Context<Self>) {
+        // Taken before asking: the answer speaks for what was heard by then.
+        let asked = self.machines.read(cx).heard();
         let machines = self.daemon.machines();
         let sessions = self.daemon.sessions();
         cx.spawn(async move |root, cx| {
             let (machines, sessions) = futures::join!(machines, sessions);
-            let _ = root.update(cx, |root, cx| root.listed(machines, sessions, cx));
+            let _ = root.update(cx, |root, cx| root.listed(machines, sessions, asked, cx));
         })
         .detach();
     }
@@ -372,6 +375,7 @@ impl Root {
         &mut self,
         machines: Result<Vec<Machine>, DaemonError>,
         sessions: Result<Vec<Session>, DaemonError>,
+        asked: Heard,
         cx: &mut Context<Self>,
     ) {
         let machines = match machines {
@@ -386,8 +390,9 @@ impl Root {
             Err(DaemonError::Refused(_)) => None,
         };
         let listed = machines.is_some();
-        self.machines
-            .update(cx, |page, cx| page.listed(machines, sessions.ok(), cx));
+        self.machines.update(cx, |page, cx| {
+            page.listed(machines, sessions.ok(), asked, cx)
+        });
         if listed {
             self.link = Link::Connected;
             if let Some(name) = self.waiting.take() {

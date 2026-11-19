@@ -7,9 +7,11 @@
 
 use doppel_desktop::geometry::{Point, Rect, Size};
 
+mod colours;
 mod lit_region;
 pub mod pacing;
 
+pub use self::colours::{SessionColours, SessionHue};
 pub use self::lit_region::LitRegion;
 
 use self::pacing::Pace;
@@ -30,25 +32,11 @@ impl Rgb {
     }
 }
 
-/// The sessions' colours, fill and ink, as the consoles have them. A
-/// recording's one session (0) takes the first.
-const HUES: [(Rgb, Rgb); 4] = [
-    (Rgb(0x22_e5ff), Rgb(0x0b_5d6b)),
-    (Rgb(0x3d_8bff), Rgb(0x1f_4f9e)),
-    (Rgb(0xb1_8cff), Rgb(0x5b_3aa8)),
-    (Rgb(0xc3_d94e), Rgb(0x56_6314)),
-];
-
 /// What an agent puts up for the people watching, whoever it is.
 pub const MARKED: Rgb = Rgb(0xff_5ca8);
 /// A failure.
 const FAILED: Rgb = Rgb(0xc9_3a3a);
 const WHITE: Rgb = Rgb(0xff_ffff);
-
-fn hue(session: u64) -> (Rgb, Rgb) {
-    let index = usize::try_from(session.saturating_sub(1) % HUES.len() as u64).unwrap_or(0);
-    HUES.get(index).copied().unwrap_or(HUES[0])
-}
 
 /// A place in display points; unlike a [`Point`], it may lie off the display.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -253,7 +241,7 @@ const fn lands(gesture: Gesture) -> bool {
 }
 
 /// What lands as each agent's call ends: a press dents in where it lands.
-fn landed(moments: &[Moment], at: f64, shapes: &mut Vec<Shape>) {
+fn landed(moments: &[Moment], colours: &SessionColours, at: f64, shapes: &mut Vec<Shape>) {
     for moment in moments {
         let Some(end) = moment.end_ms else {
             continue;
@@ -264,7 +252,7 @@ fn landed(moments: &[Moment], at: f64, shapes: &mut Vec<Shape>) {
         let Some(rect) = aimed(&moment.call.target) else {
             continue;
         };
-        let (fill, _) = hue(moment.call.key.session);
+        let fill = colours.hue(moment.call.key.session).fill;
         let f = ease((at - end) / DENT_MS);
         shapes.push(Shape::Ring {
             centre: Spot::from(rect.center()),
@@ -298,7 +286,13 @@ const REWIND_SIZE: f64 = 96.0;
 /// A rollback as a scene: while it runs, the screen dims under a large
 /// rewind glyph; once the machine is back, both fade as the screen shows
 /// what it returned to.
-fn rewound(moments: &[Moment], display: Size, at: f64, shapes: &mut Vec<Shape>) {
+fn rewound(
+    moments: &[Moment],
+    colours: &SessionColours,
+    display: Size,
+    at: f64,
+    shapes: &mut Vec<Shape>,
+) {
     for moment in moments {
         if moment.person || moment.call.gesture != Gesture::Rollback || at < moment.start_ms {
             continue;
@@ -308,7 +302,7 @@ fn rewound(moments: &[Moment], display: Size, at: f64, shapes: &mut Vec<Shape>) 
             Some(end) if at >= end => 1.0 - ease((at - end) / REWIND_MS),
             Some(_) | None => ((at - moment.start_ms) / VEIL_IN_MS).clamp(0.0, 1.0),
         };
-        let (fill, _) = hue(moment.call.key.session);
+        let fill = colours.hue(moment.call.key.session).fill;
         shapes.push(Shape::Veil {
             lit: LitRegion::none(),
             colour: VEIL,
@@ -357,8 +351,8 @@ fn grown(rect: Rect, by: f64) -> Rect {
 /// What `attention` draws at `at`: the screen veiled but for what was taken
 /// in, each lit in turn and bracketed with its ref; then, once the agent
 /// goes for one, the rest let go and brackets close in on that one.
-fn taken_in(attention: &Attention, at: f64, shapes: &mut Vec<Shape>) {
-    let (fill, ink) = hue(attention.session);
+fn taken_in(attention: &Attention, colours: &SessionColours, at: f64, shapes: &mut Vec<Shape>) {
+    let SessionHue { fill, ink } = colours.hue(attention.session);
     let landing = ((at - attention.since) / VEIL_IN_MS).clamp(0.0, 1.0);
     let lets_go = attention.lets_go();
     let rest = if at >= lets_go {
@@ -537,9 +531,10 @@ impl Picture {
     #[must_use]
     pub fn filmed(moments: &[Moment], display: Size, at: f64, film: impl Fn(f64) -> f64) -> Self {
         let scene = Scene::at(moments, at);
+        let colours = SessionColours::of(moments);
         let mut shapes = Vec::new();
         for attention in Attention::at(moments, display, at) {
-            taken_in(&attention, at, &mut shapes);
+            taken_in(&attention, &colours, at, &mut shapes);
         }
 
         for shown in &scene.callouts {
@@ -615,7 +610,7 @@ impl Picture {
         }
 
         for agent in &scene.agents {
-            let (fill, ink) = hue(agent.session);
+            let SessionHue { fill, ink } = colours.hue(agent.session);
             for mark in &agent.marks {
                 let opacity = mark.opacity(at);
                 match mark {
@@ -753,8 +748,8 @@ impl Picture {
                 });
             }
         }
-        landed(moments, at, &mut shapes);
-        rewound(moments, display, at, &mut shapes);
+        landed(moments, &colours, at, &mut shapes);
+        rewound(moments, &colours, display, at, &mut shapes);
         Self { shapes, at }
     }
 }
@@ -1245,5 +1240,32 @@ mod tests {
         // Never before the agent's previous call ended.
         let close = [click(1, 0.0, 100.0, 100.0), click(2, 100.0, 300.0, 100.0)];
         assert_eq!(ahead(&close)[1].start_ms, 50.0);
+    }
+
+    #[test]
+    fn agents_take_colours_in_the_order_they_first_act_not_by_number() {
+        let by = |session: u64, start: f64, person: bool| {
+            let mut call = moment(1, start, start + 10.0, Gesture::Run, Target::Nowhere);
+            call.call.key.session = session;
+            call.person = person;
+            call
+        };
+        let [first, second, third, fourth] = SessionColours::palette();
+        let alone = SessionColours::of(&[by(7, 0.0, false)]);
+        assert_eq!(
+            alone.hue(7),
+            first,
+            "a lone agent wears the first, whatever its number"
+        );
+        let two = SessionColours::of(&[
+            by(0, 0.0, true),
+            by(9, 10.0, false),
+            by(4, 20.0, false),
+            by(9, 30.0, false),
+        ]);
+        assert_eq!(two.hue(9), first, "a person's turns take no colour");
+        assert_eq!(two.hue(4), second);
+        assert_eq!(two.hue(12), third, "one yet to act is next");
+        assert_ne!(third, fourth);
     }
 }

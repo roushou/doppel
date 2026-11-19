@@ -189,7 +189,12 @@ impl Recordings {
                                     div()
                                         .flex_none()
                                         .size(px(10.))
-                                        .bg(Hue::of(summary.session).fill),
+                                        // A recording holds one session: the first colour.
+                                        .bg(Hue::of(
+                                            doppel_scene::film::SessionColours::default()
+                                                .hue(summary.session),
+                                        )
+                                        .fill),
                                 )
                                 .child(
                                     div()

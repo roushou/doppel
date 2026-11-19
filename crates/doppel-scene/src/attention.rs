@@ -34,7 +34,8 @@ pub struct Glance {
 }
 
 /// What the agent goes for after taking a snapshot in: where, from when
-/// (its call's start), and until when (its call's end).
+/// (its call's start, or the sweep's end if that is later), and until when
+/// (its call's end, never before it closes in).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Lock {
     pub frame: Rect,
@@ -50,18 +51,32 @@ pub struct Attention {
     pub since: f64,
     /// Every element taken in, in the order it was, lit or still to be.
     pub glances: Vec<Glance>,
-    /// When the agent moved on: its next call's start.
+    /// When the agent moved on: its next call's start. What it took in is
+    /// let go no sooner than [`Self::swept`].
     pub moved_on: Option<f64>,
     /// What that next call aimed at, if it aimed at a place.
     pub lock: Option<Lock>,
 }
 
 impl Attention {
-    /// When it lets go of what it took in: as the agent moves on, or once
-    /// it has held it [`HELD_MS`] with nothing next.
+    /// When the sweep has lit its last element: as the snapshot lands when
+    /// it took nothing in.
+    #[must_use]
+    pub fn swept(&self) -> f64 {
+        self.glances
+            .iter()
+            .map(|glance| glance.at)
+            .fold(self.since, f64::max)
+    }
+
+    /// When it lets go of what it took in: as the agent moves on, but never
+    /// before the sweep has lit everything (an agent quick to act would
+    /// otherwise cut it off at the top), or once it has held it [`HELD_MS`]
+    /// with nothing next.
     #[must_use]
     pub fn lets_go(&self) -> f64 {
-        self.moved_on.unwrap_or(self.since + HELD_MS)
+        self.moved_on
+            .map_or(self.since + HELD_MS, |moved_on| moved_on.max(self.swept()))
     }
 }
 
@@ -154,20 +169,22 @@ impl Attention {
                 .iter()
                 .skip(index + 1)
                 .find(|later| !later.person && later.call.key.session == session);
-            let lock = next.and_then(|next| {
-                aimed(&next.call.target).map(|frame| Lock {
-                    frame,
-                    since: next.start_ms,
-                    until: next.end_ms,
-                })
-            });
-            let attention = Self {
+            let mut attention = Self {
                 session,
                 since: end,
                 glances: glances(snapshot, &named, display, end),
                 moved_on: next.map(|next| next.start_ms),
-                lock,
+                lock: None,
             };
+            let swept = attention.swept();
+            attention.lock = next.and_then(|next| {
+                let since = next.start_ms.max(swept);
+                aimed(&next.call.target).map(|frame| Lock {
+                    frame,
+                    since,
+                    until: next.end_ms.map(|until| until.max(since)),
+                })
+            });
             match found.iter_mut().find(|known| known.session == session) {
                 Some(known) => *known = attention,
                 None => found.push(attention),
@@ -341,5 +358,38 @@ mod tests {
         let mut unnamed = look(1000.0, vec![1]);
         unnamed.refs = None;
         assert!(Attention::at(&[unnamed], display(), 1100.0).is_empty());
+    }
+
+    #[test]
+    fn an_agent_quick_to_act_still_sees_the_whole_sweep() {
+        let save = Rect::new(100.0, 600.0, 80.0, 30.0).unwrap();
+        // The next call starts 100 ms after the snapshot lands and ends at once.
+        let moments = [
+            look(1000.0, vec![1, 2]),
+            moment(
+                2,
+                1100.0,
+                Some(1130.0),
+                Target::Element {
+                    frame: save,
+                    label: "Save".into(),
+                },
+            ),
+        ];
+        let [quick] = Attention::at(&moments, display(), 1200.0)
+            .try_into()
+            .unwrap();
+        let swept = 1000.0 + SWEEP_MS;
+        assert_eq!(quick.swept(), swept);
+        assert_eq!(quick.lets_go(), swept, "not cut off at the top");
+        assert_eq!(
+            quick.lock,
+            Some(Lock {
+                frame: save,
+                since: swept,
+                until: Some(swept)
+            }),
+            "it closes in once the sweep is done"
+        );
     }
 }

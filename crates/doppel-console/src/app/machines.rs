@@ -27,7 +27,7 @@ use crate::model::{
     Action, Bay, Group, Hold, Machine, MachineState, Order, Provenance, Run, Session,
     SessionActivity, Verdict, forks_of,
 };
-use crate::panel::{Overlay, Panels};
+use crate::panel::{Heard, Overlay, Panels};
 use crate::report::{self, Guest, Login, Report};
 use crate::route::Route;
 use crate::screen::inspect::{self, Act, Empty, Inspect, Looking, Pointing};
@@ -262,9 +262,15 @@ impl MachinesPage {
         &mut self,
         machines: Option<Vec<Machine>>,
         sessions: Option<Vec<Session>>,
+        asked: Heard,
         cx: &mut Context<Self>,
     ) {
         if let Some(machines) = machines {
+            let listed: Vec<MachineName> = machines
+                .iter()
+                .map(|machine| machine.name.clone())
+                .collect();
+            self.panels.keep_listed(&listed, asked);
             self.machines = machines;
         }
         if let Some(sessions) = sessions {
@@ -276,6 +282,12 @@ impl MachinesPage {
             self.read_reports(cx);
         }
         cx.notify();
+    }
+
+    /// How far the panels have heard of agents' calls: a listing asked for
+    /// now is marked with it.
+    pub(super) const fn heard(&self) -> Heard {
+        self.panels.heard()
     }
 
     /// The daemon is gone: what the panels were waiting on won't come.
@@ -951,15 +963,25 @@ impl MachinesPage {
             .children(right)
     }
 
+    /// Who wears which colour on `name`: by when each agent first acted on
+    /// it, as the film draws them.
+    fn colours(&self, name: &MachineName) -> doppel_scene::film::SessionColours {
+        doppel_scene::film::SessionColours::of(
+            self.panels
+                .get(name)
+                .map_or(&[][..], |panel| panel.timeline().moments()),
+        )
+    }
+
     /// One agent's card in a panel's rail: who it is and what it's doing.
     fn card(
         &self,
         session: &Session,
+        hue: Hue,
         live: Option<&str>,
         theme: &Theme,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let hue = Hue::of(session.id.0);
         let paused = session.activity == SessionActivity::Paused;
         let held = session.clone();
         div()
@@ -1520,7 +1542,7 @@ impl MachinesPage {
                     self.panels.of(&name).released();
                     match &acting {
                         Some((session, who, call)) => {
-                            let hue = Hue::of(*session);
+                            let hue = Hue::of(self.colours(&name).hue(*session));
                             (
                                 Some(hue.fill),
                                 Some((
@@ -1587,12 +1609,14 @@ impl MachinesPage {
         // The rail: the agents driving it, and in the elements lens, the
         // elements tree under them.
         let drivers: Vec<Session> = self.drivers(&name).cloned().collect();
+        let colours = self.colours(&name);
         let cards: Vec<AnyElement> = drivers
             .iter()
             .map(|driver| {
                 let live = on_call(driver);
                 self.card(
                     driver,
+                    Hue::of(colours.hue(driver.id.0)),
                     live.as_ref().map(|(call, _)| call.as_str()),
                     theme,
                     cx,
