@@ -1530,6 +1530,7 @@ version = "0.2.1"
 dependencies = [
  "doppel-desktop",
  "doppel-machine",
+ "proptest",
  "thiserror 2.0.21",
 ]
 

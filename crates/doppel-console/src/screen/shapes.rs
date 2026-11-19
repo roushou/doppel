@@ -210,7 +210,7 @@ fn paint(shape: &Shape, place: Place, origin: Point<Pixels>, window: &mut Window
                 origin + point(px(picture.left), px(picture.top)),
                 size(px(picture.width), px(picture.height)),
             ));
-            for hole in holes {
+            for hole in holes.iter() {
                 rect(place.bounds(*hole, origin));
             }
             if let Ok(path) = path.build() {

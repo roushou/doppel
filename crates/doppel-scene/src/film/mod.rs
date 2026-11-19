@@ -7,7 +7,10 @@
 
 use doppel_desktop::geometry::{Point, Rect, Size};
 
+mod holes;
 pub mod pacing;
+
+pub use self::holes::Holes;
 
 use self::pacing::Pace;
 use crate::attention::{Attention, Glance, LET_GO_MS, LOCK_MS, aimed};
@@ -118,7 +121,7 @@ pub enum Shape {
     /// The screen dimmed by `colour`, but for `holes`: what the agent
     /// takes in, lit through it.
     Veil {
-        holes: Vec<Rect>,
+        holes: Holes,
         colour: Rgb,
         opacity: f64,
     },
@@ -307,7 +310,7 @@ fn rewound(moments: &[Moment], display: Size, at: f64, shapes: &mut Vec<Shape>) 
         };
         let (fill, _) = hue(moment.call.key.session);
         shapes.push(Shape::Veil {
-            holes: Vec::new(),
+            holes: Holes::none(),
             colour: VEIL,
             opacity: 0.55 * shown,
         });
@@ -381,8 +384,8 @@ fn taken_in(attention: &Attention, at: f64, shapes: &mut Vec<Shape>) {
     } * landing;
     if veiled > 0.0 {
         let holes = match lock {
-            Some((lock, _)) => vec![grown(lock.frame, LOCK_TO)],
-            None => lit.iter().map(|glance| grown(glance.frame, 3.0)).collect(),
+            Some((lock, _)) => Holes::merged([grown(lock.frame, LOCK_TO)]),
+            None => Holes::merged(lit.iter().map(|glance| grown(glance.frame, 3.0))),
         };
         shapes.push(Shape::Veil {
             holes,
