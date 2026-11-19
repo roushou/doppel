@@ -11,11 +11,34 @@ use doppel_desktop::ax::tree::AxSnapshot;
 use doppel_desktop::geometry::{Point, Rect};
 use doppel_desktop::screen_text::{ScreenText, TextQuery};
 
+/// A session's id, as doppeld numbers them: a later session's is greater.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SessionId(u64);
+
+impl From<u64> for SessionId {
+    fn from(raw: u64) -> Self {
+        Self(raw)
+    }
+}
+
+impl SessionId {
+    #[must_use]
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+}
+
+impl std::fmt::Display for SessionId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "session {}", self.0)
+    }
+}
+
 /// One call of a session, as it started or ended. A start and its end carry
 /// the same session and request.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Activity {
-    pub session: u64,
+    pub session: SessionId,
     pub request: u64,
     pub machine: MachineName,
     /// The session's client, in its own words.

@@ -1,13 +1,13 @@
 //! What the daemon answers, in its clients' terms: parsed once from the
 //! wire, so callers never see a protobuf message.
 
-use doppel_machine::screen_probe::HostScreen;
 use std::fmt;
 use std::time::Duration;
 
 use crate::pb::daemon::v1 as daemon;
 use doppel_desktop::outcome::{Certainty, Failure};
-use doppel_machine::checkpoint::{GuestAfterFailure, GuestSync, Step};
+pub use doppel_machine::activity::SessionId;
+
 use doppel_machine::machine::MachineName;
 pub use doppel_machine::stop::{StopMode, StopOutcome};
 pub use doppel_machine::vm::{Resumed, Window};
@@ -103,39 +103,11 @@ pub struct StopReport {
     pub outcome: StopOutcome,
 }
 
-/// How a checkpoint ended.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CheckpointResult {
-    Completed {
-        memory_bytes: u64,
-        /// Why the guest wasn't synced first, if it wasn't.
-        sync_skipped: Option<String>,
-        /// The checkpoint is valid, but the guest may be left paused.
-        left_paused: Option<MachineFailure>,
-        /// Set when the guest was resumed: whether screenshots show it as it is.
-        screen: Option<HostScreen>,
-    },
-    Failed {
-        at: Step,
-        error: MachineFailure,
-        guest: GuestAfterFailure,
-    },
-    /// Neither success nor failure can be claimed.
-    Unknown { at: Step, error: MachineFailure },
-    /// The procedure ended before a terminal state (a bug).
-    InProgress { awaiting: Step },
-}
+/// How a checkpoint ended, its errors as the daemon sent them.
+pub type CheckpointResult = doppel_machine::checkpoint::CheckpointResult<MachineFailure>;
 
-impl CheckpointResult {
-    /// What a report of a completed checkpoint should add about the sync:
-    /// nothing when the guest was synced.
-    #[must_use]
-    pub fn sync_caveat(sync_skipped: Option<&str>) -> String {
-        sync_skipped.map_or_else(String::new, |why| {
-            GuestSync::<MachineFailure>::skipped_caveat(&why)
-        })
-    }
-}
+/// How a completed checkpoint left the guest.
+pub type GuestAfter = doppel_machine::checkpoint::GuestAfter<MachineFailure>;
 
 /// One cleanup step after a failed checkpoint.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -164,7 +136,7 @@ pub enum Acted {
 /// A session open on the daemon.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionInfo {
-    pub id: u64,
+    pub id: SessionId,
     pub client: String,
     /// The machines its requests named, in first-use order.
     pub machines: Vec<MachineName>,

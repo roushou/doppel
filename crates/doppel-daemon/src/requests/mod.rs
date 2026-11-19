@@ -1,6 +1,7 @@
 //! One request against the machines. Every request has an outcome the
 //! client sees: a failure is an outcome too, never an error of the daemon.
 
+pub(crate) mod arrival;
 mod display;
 pub(crate) mod forks;
 pub(crate) mod handle;
@@ -35,12 +36,13 @@ use doppel_protocol::with_operation;
 use doppel_gateway::{ChangeError, Token, TokenDigest, TokenId, TokenLabel, Ttl};
 
 use crate::activity;
+use crate::call_events::Traced;
 use crate::call_events::{Answered, CallEvent, SessionCall};
-use crate::call_events::{Guest, Traced};
 use crate::recording::library::{Library, LibraryError, RecordingId, TraceLine};
 use crate::recording::{self, Recordings};
+use crate::requests::arrival::Arrival;
 use crate::requests::forks::PlanError;
-use crate::requests::handle::{Handle, Traits, Turn};
+use crate::requests::handle::Handle;
 use crate::requests::operations::{ForkStart, ForksError, TemporaryMachineError};
 use crate::scheduler::Call;
 use crate::scheduler::session::SessionState;
@@ -178,6 +180,7 @@ where
     pub(crate) fn answer(
         &self,
         request: daemon::DaemonRequest,
+        arrival: Arrival,
         call: &Call,
         link: &Link,
     ) -> (Outcome, Option<HandedBack>) {
@@ -192,10 +195,12 @@ where
                 .map_or_else(Refusal::outcome, daemon::NameElements::answer);
             return (outcome, None);
         }
-        let traits = request.operation.as_ref().map(Traits::of);
-        let machine = traits
-            .and_then(|traits| traits.machine)
-            .and_then(|raw| raw.parse::<MachineName>().ok());
+        let Arrival {
+            machine,
+            looked_for,
+            guest,
+            ..
+        } = arrival;
         call.join(session, machine.clone(), request.caption.clone());
         let session_call = Arc::new(SessionCall {
             session,
@@ -212,10 +217,8 @@ where
                     })
                 }),
             machine,
-            looked_for: traits
-                .and_then(|traits| traits.looked_for)
-                .map(str::to_owned),
-            guest: traits.map_or(Guest::Kept, |traits| traits.guest),
+            looked_for,
+            guest,
         });
         // A paused session, or a machine a person has, holds the call here.
         let arrived = self.machines.clock().now();
@@ -845,19 +848,6 @@ where
     C: WallClock + Clone + Send + Sync,
     F: Filesystem + Sync,
 {
-    /// Where a request read by a connection stands among the connection's
-    /// requests: those that take a turn on the machine they name enter its
-    /// line in the order they arrived (see [`crate::scheduler`]): the machine
-    /// whose line it takes its place in.
-    pub(crate) fn reserves(operation: Option<&Operation>) -> Option<MachineName> {
-        let traits = operation.map(Traits::of)?;
-        let machine = match traits.turn {
-            Turn::Waits => traits.machine?.parse::<MachineName>().ok()?,
-            Turn::Skips => return None,
-        };
-        Some(machine)
-    }
-
     pub(super) fn open_session(
         &self,
         request: daemon::OpenSession,
@@ -931,7 +921,7 @@ where
                     id: recording.id.to_string(),
                     started_unix_seconds: i64::try_from(recording.id.started_unix_seconds())
                         .unwrap_or(i64::MAX),
-                    session: recording.id.session(),
+                    session: recording.id.session().get(),
                     machines: recording
                         .machines()
                         .iter()

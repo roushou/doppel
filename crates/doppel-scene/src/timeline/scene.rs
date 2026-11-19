@@ -1,6 +1,7 @@
 //! The scene over a machine's screen at an instant: each agent's pointer,
 //! call under way and marks, the marks agents put up, and the strip's lanes.
 
+use doppel_machine::activity::SessionId;
 use std::sync::Arc;
 
 use doppel_desktop::geometry::{Point, Rect};
@@ -103,7 +104,7 @@ pub struct Scene {
 /// way, and the marks its calls left.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AgentScene {
-    pub session: u64,
+    pub session: SessionId,
     /// Its client, in its own words.
     pub client: String,
     /// Where its pointer is: the last place it acted.
@@ -119,7 +120,7 @@ pub struct AgentScene {
 
 impl Scene {
     /// The session's part of the scene, if it has acted.
-    pub fn of(&self, session: u64) -> Option<&AgentScene> {
+    pub fn of(&self, session: SessionId) -> Option<&AgentScene> {
         self.agents.iter().find(|agent| agent.session == session)
     }
 }
@@ -214,7 +215,7 @@ impl Scene {
 /// One row of a timeline strip: a session's calls, with who made them.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Lane<'a> {
-    pub session: u64,
+    pub session: SessionId,
     pub client: &'a str,
     pub moments: Vec<&'a Moment>,
 }

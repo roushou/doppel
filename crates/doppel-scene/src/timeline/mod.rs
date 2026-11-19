@@ -8,6 +8,7 @@
 //! them in folds what this build doesn't know into `Other` or `Done`,
 //! failures into one `Failed`, and times into milliseconds.
 
+use doppel_machine::activity::SessionId;
 use std::sync::Arc;
 
 use doppel_desktop::ax::refs::SnapshotRefs;
@@ -23,7 +24,7 @@ mod tests;
 
 pub(crate) use activity::on_screen;
 pub use scene::{AgentScene, CALLOUT_FADE_MS, Lane, Mark, Scene, Shown, lanes};
-pub use seen::{Look, Looked, ReadAt, Reading, SeenAt, Showing, TextLook, TextLooked};
+pub use seen::{Answer, Asked, Layer, Look, ReadAt, Reading, SeenAt, Showing, TextLook, Ticket};
 
 /// What a call read off the screen by text recognition: each line, and
 /// where what it looked for was found. In display points.
@@ -139,7 +140,7 @@ pub enum Target {
 /// A call: its session and its request there. A start and its end share it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CallKey {
-    pub session: u64,
+    pub session: SessionId,
     pub request: u64,
 }
 

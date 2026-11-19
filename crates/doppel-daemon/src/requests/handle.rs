@@ -44,8 +44,8 @@ pub(crate) trait Handle: Rpc {
     const TURN: Turn;
     const GUEST: Guest;
 
-    /// The machine it names, as sent.
-    fn machine(&self) -> Option<&str>;
+    /// The machine it names, as sent, and the field that names it.
+    fn machine(&self) -> Option<(&'static str, &str)>;
 
     /// What it looks for in the screen's text, if it reads it.
     fn looked_for(&self) -> Option<&str> {
@@ -72,7 +72,7 @@ pub(crate) struct Traits<'r> {
     pub(crate) askers: Askers,
     pub(crate) turn: Turn,
     pub(crate) guest: Guest,
-    pub(crate) machine: Option<&'r str>,
+    pub(crate) machine: Option<(&'static str, &'r str)>,
     pub(crate) looked_for: Option<&'r str>,
     pub(crate) opens: Option<Opens<'r>>,
 }
@@ -99,7 +99,7 @@ impl Handle for daemon::ListMachines {
     const TURN: Turn = Turn::Skips;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
+    fn machine(&self) -> Option<(&'static str, &str)> {
         None
     }
 
@@ -122,8 +122,8 @@ impl Handle for daemon::GetStatus {
     const TURN: Turn = Turn::Skips;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
-        Some(&self.name)
+    fn machine(&self) -> Option<(&'static str, &str)> {
+        Some(("name", &self.name))
     }
 
     fn run<C: WallClock + Clone + Send + Sync, F: Filesystem + Sync>(
@@ -141,8 +141,8 @@ impl Handle for daemon::StartMachine {
     const TURN: Turn = Turn::Waits;
     const GUEST: Guest = Guest::MayRestart;
 
-    fn machine(&self) -> Option<&str> {
-        Some(&self.name)
+    fn machine(&self) -> Option<(&'static str, &str)> {
+        Some(("name", &self.name))
     }
 
     fn run<C: WallClock + Clone + Send + Sync, F: Filesystem + Sync>(
@@ -160,8 +160,8 @@ impl Handle for daemon::AwaitDesktop {
     const TURN: Turn = Turn::Skips;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
-        Some(&self.name)
+    fn machine(&self) -> Option<(&'static str, &str)> {
+        Some(("name", &self.name))
     }
 
     fn run<C: WallClock + Clone + Send + Sync, F: Filesystem + Sync>(
@@ -179,8 +179,8 @@ impl Handle for daemon::StopMachine {
     const TURN: Turn = Turn::Waits;
     const GUEST: Guest = Guest::MayRestart;
 
-    fn machine(&self) -> Option<&str> {
-        Some(&self.name)
+    fn machine(&self) -> Option<(&'static str, &str)> {
+        Some(("name", &self.name))
     }
 
     fn run<C: WallClock + Clone + Send + Sync, F: Filesystem + Sync>(
@@ -198,8 +198,8 @@ impl Handle for daemon::PauseMachine {
     const TURN: Turn = Turn::Waits;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
-        Some(&self.name)
+    fn machine(&self) -> Option<(&'static str, &str)> {
+        Some(("name", &self.name))
     }
 
     fn run<C: WallClock + Clone + Send + Sync, F: Filesystem + Sync>(
@@ -217,8 +217,8 @@ impl Handle for daemon::ResumeMachine {
     const TURN: Turn = Turn::Waits;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
-        Some(&self.name)
+    fn machine(&self) -> Option<(&'static str, &str)> {
+        Some(("name", &self.name))
     }
 
     fn run<C: WallClock + Clone + Send + Sync, F: Filesystem + Sync>(
@@ -236,8 +236,8 @@ impl Handle for daemon::TakeCheckpoint {
     const TURN: Turn = Turn::Waits;
     const GUEST: Guest = Guest::MayRestart;
 
-    fn machine(&self) -> Option<&str> {
-        Some(&self.name)
+    fn machine(&self) -> Option<(&'static str, &str)> {
+        Some(("name", &self.name))
     }
 
     fn run<C: WallClock + Clone + Send + Sync, F: Filesystem + Sync>(
@@ -256,8 +256,8 @@ impl Handle for daemon::ForkMachine {
     // The fork is a new machine; its source keeps running.
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
-        Some(&self.source)
+    fn machine(&self) -> Option<(&'static str, &str)> {
+        Some(("source", &self.source))
     }
 
     fn run<C: WallClock + Clone + Send + Sync, F: Filesystem + Sync>(
@@ -275,8 +275,8 @@ impl Handle for daemon::RestoreMachine {
     const TURN: Turn = Turn::Waits;
     const GUEST: Guest = Guest::MayRestart;
 
-    fn machine(&self) -> Option<&str> {
-        Some(&self.name)
+    fn machine(&self) -> Option<(&'static str, &str)> {
+        Some(("name", &self.name))
     }
 
     fn run<C: WallClock + Clone + Send + Sync, F: Filesystem + Sync>(
@@ -294,7 +294,7 @@ impl Handle for daemon::GetDaemonInfo {
     const TURN: Turn = Turn::Skips;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
+    fn machine(&self) -> Option<(&'static str, &str)> {
         None
     }
 
@@ -323,7 +323,7 @@ impl Handle for daemon::OpenSession {
     const TURN: Turn = Turn::Skips;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
+    fn machine(&self) -> Option<(&'static str, &str)> {
         None
     }
 
@@ -342,7 +342,7 @@ impl Handle for daemon::ListSessions {
     const TURN: Turn = Turn::Skips;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
+    fn machine(&self) -> Option<(&'static str, &str)> {
         None
     }
 
@@ -361,8 +361,8 @@ impl Handle for daemon::GetMachineReport {
     const TURN: Turn = Turn::Waits;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
-        Some(&self.name)
+    fn machine(&self) -> Option<(&'static str, &str)> {
+        Some(("name", &self.name))
     }
 
     fn run<C: WallClock + Clone + Send + Sync, F: Filesystem + Sync>(
@@ -380,8 +380,8 @@ impl Handle for daemon::TakeScreenshot {
     const TURN: Turn = Turn::Waits;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
-        Some(&self.name)
+    fn machine(&self) -> Option<(&'static str, &str)> {
+        Some(("name", &self.name))
     }
 
     fn run<C: WallClock + Clone + Send + Sync, F: Filesystem + Sync>(
@@ -399,8 +399,8 @@ impl Handle for daemon::ReadScreenText {
     const TURN: Turn = Turn::Waits;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
-        Some(&self.name)
+    fn machine(&self) -> Option<(&'static str, &str)> {
+        Some(("name", &self.name))
     }
 
     fn looked_for(&self) -> Option<&str> {
@@ -422,8 +422,8 @@ impl Handle for daemon::SendInput {
     const TURN: Turn = Turn::Waits;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
-        Some(&self.name)
+    fn machine(&self) -> Option<(&'static str, &str)> {
+        Some(("name", &self.name))
     }
 
     fn run<C: WallClock + Clone + Send + Sync, F: Filesystem + Sync>(
@@ -441,8 +441,8 @@ impl Handle for daemon::TakeSnapshot {
     const TURN: Turn = Turn::Waits;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
-        Some(&self.name)
+    fn machine(&self) -> Option<(&'static str, &str)> {
+        Some(("name", &self.name))
     }
 
     fn run<C: WallClock + Clone + Send + Sync, F: Filesystem + Sync>(
@@ -460,8 +460,8 @@ impl Handle for daemon::ActOnElement {
     const TURN: Turn = Turn::Waits;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
-        Some(&self.name)
+    fn machine(&self) -> Option<(&'static str, &str)> {
+        Some(("name", &self.name))
     }
 
     fn run<C: WallClock + Clone + Send + Sync, F: Filesystem + Sync>(
@@ -479,8 +479,8 @@ impl Handle for daemon::WaitForElement {
     const TURN: Turn = Turn::Waits;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
-        Some(&self.name)
+    fn machine(&self) -> Option<(&'static str, &str)> {
+        Some(("name", &self.name))
     }
 
     fn run<C: WallClock + Clone + Send + Sync, F: Filesystem + Sync>(
@@ -498,8 +498,8 @@ impl Handle for daemon::WaitForText {
     const TURN: Turn = Turn::Waits;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
-        Some(&self.name)
+    fn machine(&self) -> Option<(&'static str, &str)> {
+        Some(("name", &self.name))
     }
 
     fn looked_for(&self) -> Option<&str> {
@@ -525,8 +525,8 @@ impl Handle for daemon::RunProgram {
     const TURN: Turn = Turn::Waits;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
-        Some(&self.name)
+    fn machine(&self) -> Option<(&'static str, &str)> {
+        Some(("name", &self.name))
     }
 
     fn run<C: WallClock + Clone + Send + Sync, F: Filesystem + Sync>(
@@ -544,8 +544,8 @@ impl Handle for daemon::ReadGuestFile {
     const TURN: Turn = Turn::Waits;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
-        Some(&self.name)
+    fn machine(&self) -> Option<(&'static str, &str)> {
+        Some(("name", &self.name))
     }
 
     fn run<C: WallClock + Clone + Send + Sync, F: Filesystem + Sync>(
@@ -563,8 +563,8 @@ impl Handle for daemon::WriteGuestFile {
     const TURN: Turn = Turn::Waits;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
-        Some(&self.name)
+    fn machine(&self) -> Option<(&'static str, &str)> {
+        Some(("name", &self.name))
     }
 
     fn run<C: WallClock + Clone + Send + Sync, F: Filesystem + Sync>(
@@ -582,8 +582,8 @@ impl Handle for daemon::RollBack {
     const TURN: Turn = Turn::Waits;
     const GUEST: Guest = Guest::MayRestart;
 
-    fn machine(&self) -> Option<&str> {
-        Some(&self.name)
+    fn machine(&self) -> Option<(&'static str, &str)> {
+        Some(("name", &self.name))
     }
 
     fn run<C: WallClock + Clone + Send + Sync, F: Filesystem + Sync>(
@@ -601,8 +601,8 @@ impl Handle for daemon::OpenDisplay {
     const TURN: Turn = Turn::Skips;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
-        Some(&self.name)
+    fn machine(&self) -> Option<(&'static str, &str)> {
+        Some(("name", &self.name))
     }
 
     fn opens(&self) -> Option<Opens<'_>> {
@@ -628,8 +628,8 @@ impl Handle for daemon::SendHostInput {
     const TURN: Turn = Turn::Skips;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
-        Some(&self.name)
+    fn machine(&self) -> Option<(&'static str, &str)> {
+        Some(("name", &self.name))
     }
 
     fn run<C: WallClock + Clone + Send + Sync, F: Filesystem + Sync>(
@@ -648,8 +648,8 @@ impl Handle for daemon::TakeControl {
     const TURN: Turn = Turn::Skips;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
-        Some(&self.name)
+    fn machine(&self) -> Option<(&'static str, &str)> {
+        Some(("name", &self.name))
     }
 
     fn run<C: WallClock + Clone + Send + Sync, F: Filesystem + Sync>(
@@ -668,8 +668,8 @@ impl Handle for daemon::HandBack {
     const TURN: Turn = Turn::Skips;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
-        Some(&self.name)
+    fn machine(&self) -> Option<(&'static str, &str)> {
+        Some(("name", &self.name))
     }
 
     fn run<C: WallClock + Clone + Send + Sync, F: Filesystem + Sync>(
@@ -687,7 +687,7 @@ impl Handle for daemon::PauseSession {
     const TURN: Turn = Turn::Skips;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
+    fn machine(&self) -> Option<(&'static str, &str)> {
         None
     }
 
@@ -710,7 +710,7 @@ impl Handle for daemon::ResumeSession {
     const TURN: Turn = Turn::Skips;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
+    fn machine(&self) -> Option<(&'static str, &str)> {
         None
     }
 
@@ -733,8 +733,8 @@ impl Handle for daemon::OpenEncodedDisplay {
     const TURN: Turn = Turn::Skips;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
-        Some(&self.name)
+    fn machine(&self) -> Option<(&'static str, &str)> {
+        Some(("name", &self.name))
     }
 
     fn opens(&self) -> Option<Opens<'_>> {
@@ -760,8 +760,8 @@ impl Handle for daemon::RunForks {
     // It starts the forks, not the machine it names.
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
-        Some(&self.name)
+    fn machine(&self) -> Option<(&'static str, &str)> {
+        Some(("name", &self.name))
     }
 
     fn run<C: WallClock + Clone + Send + Sync, F: Filesystem + Sync>(
@@ -781,8 +781,8 @@ impl Handle for daemon::MakeTemporaryMachine {
     // image itself isn't touched.
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
-        Some(&self.golden)
+    fn machine(&self) -> Option<(&'static str, &str)> {
+        Some(("golden", &self.golden))
     }
 
     fn run<C: WallClock + Clone + Send + Sync, F: Filesystem + Sync>(
@@ -800,7 +800,7 @@ impl Handle for daemon::IssueToken {
     const TURN: Turn = Turn::Skips;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
+    fn machine(&self) -> Option<(&'static str, &str)> {
         None
     }
 
@@ -819,7 +819,7 @@ impl Handle for daemon::ListTokens {
     const TURN: Turn = Turn::Skips;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
+    fn machine(&self) -> Option<(&'static str, &str)> {
         None
     }
 
@@ -838,7 +838,7 @@ impl Handle for daemon::RevokeToken {
     const TURN: Turn = Turn::Skips;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
+    fn machine(&self) -> Option<(&'static str, &str)> {
         None
     }
 
@@ -857,7 +857,7 @@ impl Handle for daemon::ConfigureWeb {
     const TURN: Turn = Turn::Skips;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
+    fn machine(&self) -> Option<(&'static str, &str)> {
         None
     }
 
@@ -876,7 +876,7 @@ impl Handle for daemon::GetWebStatus {
     const TURN: Turn = Turn::Skips;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
+    fn machine(&self) -> Option<(&'static str, &str)> {
         None
     }
 
@@ -895,7 +895,7 @@ impl Handle for daemon::ListRecordings {
     const TURN: Turn = Turn::Skips;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
+    fn machine(&self) -> Option<(&'static str, &str)> {
         None
     }
 
@@ -914,7 +914,7 @@ impl Handle for daemon::OpenRecording {
     const TURN: Turn = Turn::Skips;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
+    fn machine(&self) -> Option<(&'static str, &str)> {
         None
     }
 
@@ -934,8 +934,8 @@ impl Handle for daemon::DeleteMachine {
     // It ends the machine: no VMM follows.
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
-        Some(&self.name)
+    fn machine(&self) -> Option<(&'static str, &str)> {
+        Some(("name", &self.name))
     }
 
     fn run<C: WallClock + Clone + Send + Sync, F: Filesystem + Sync>(
@@ -954,8 +954,8 @@ impl Handle for daemon::DeleteCheckpoint {
     // Only files beside the image: the guest isn't touched.
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
-        Some(&self.name)
+    fn machine(&self) -> Option<(&'static str, &str)> {
+        Some(("name", &self.name))
     }
 
     fn run<C: WallClock + Clone + Send + Sync, F: Filesystem + Sync>(
@@ -973,7 +973,7 @@ impl Handle for daemon::WatchActivity {
     const TURN: Turn = Turn::Skips;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
+    fn machine(&self) -> Option<(&'static str, &str)> {
         None
     }
 
@@ -999,7 +999,7 @@ impl Handle for daemon::OpenSeenSnapshot {
     const TURN: Turn = Turn::Skips;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
+    fn machine(&self) -> Option<(&'static str, &str)> {
         None
     }
 
@@ -1019,7 +1019,7 @@ impl Handle for daemon::NameElements {
     const GUEST: Guest = Guest::Kept;
 
     // Not a call: it names a snapshot's elements for consoles.
-    fn machine(&self) -> Option<&str> {
+    fn machine(&self) -> Option<(&'static str, &str)> {
         None
     }
 
@@ -1043,7 +1043,7 @@ impl Handle for daemon::ObserveElements {
     const GUEST: Guest = Guest::Kept;
 
     // A console looking: not a call on the machine, so not the session's.
-    fn machine(&self) -> Option<&str> {
+    fn machine(&self) -> Option<(&'static str, &str)> {
         None
     }
 
@@ -1063,7 +1063,7 @@ impl Handle for daemon::ObserveText {
     const GUEST: Guest = Guest::Kept;
 
     // A console looking: not a call on the machine, so not the session's.
-    fn machine(&self) -> Option<&str> {
+    fn machine(&self) -> Option<(&'static str, &str)> {
         None
     }
 
@@ -1082,8 +1082,8 @@ impl Handle for daemon::MarkScreen {
     const TURN: Turn = Turn::Skips;
     const GUEST: Guest = Guest::Kept;
 
-    fn machine(&self) -> Option<&str> {
-        Some(&self.name)
+    fn machine(&self) -> Option<(&'static str, &str)> {
+        Some(("name", &self.name))
     }
 
     fn run<C: WallClock + Clone + Send + Sync, F: Filesystem + Sync>(
@@ -1131,7 +1131,7 @@ mod tests {
             |t| {
                 assert_eq!(
                     (t.turn, t.guest, t.machine),
-                    (Turn::Waits, Guest::MayRestart, Some("dev"))
+                    (Turn::Waits, Guest::MayRestart, Some(("name", "dev")))
                 );
                 assert!(t.opens.is_none());
             },
@@ -1141,7 +1141,7 @@ mod tests {
                 source: "dev".into(),
                 ..Default::default()
             },
-            |t| assert_eq!((t.turn, t.machine), (Turn::Waits, Some("dev"))),
+            |t| assert_eq!((t.turn, t.machine), (Turn::Waits, Some(("source", "dev")))),
         );
         traits_of(daemon::TakeControl { name: "dev".into() }, |t| {
             assert_eq!(t.turn, Turn::Skips);

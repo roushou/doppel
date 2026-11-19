@@ -2,6 +2,7 @@
 
 use super::Rgb;
 use crate::timeline::Moment;
+use doppel_machine::activity::SessionId;
 
 /// An agent's colours: `fill` for what it draws, `ink` for words on it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,7 +38,7 @@ const HUES: [SessionHue; 4] = [
 /// colouring by it would give a lone agent whichever colour its number
 /// lands on.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct SessionColours(Vec<u64>);
+pub struct SessionColours(Vec<SessionId>);
 
 impl SessionColours {
     /// From `moments`, in start order; a person's turns take no colour.
@@ -56,7 +57,7 @@ impl SessionColours {
     /// `session`'s colours: by when it first acted, or as the next to act
     /// if it hasn't yet.
     #[must_use]
-    pub fn hue(&self, session: u64) -> SessionHue {
+    pub fn hue(&self, session: SessionId) -> SessionHue {
         let slot = self
             .0
             .iter()

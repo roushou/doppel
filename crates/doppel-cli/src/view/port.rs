@@ -13,7 +13,7 @@ use doppel_client::{ActivityStream, Client, ClientError, Listing, StopMode, Wind
 use doppel_console::{
     Activity, ActivityEvent, Answer, AxSnapshot, CheckpointLabel, Daemon, DaemonError, Hold, Later,
     LocalTime, Machine, MachineReport, Order, Recording, RecordingId, RecordingSummary, Screen,
-    Session, SessionId, SourceError, TextRead, Verdict, VideoName, answers,
+    Session, SessionId, SourceError, TextRead, Verdict, VideoFile, answers,
 };
 use doppel_desktop::outcome::{Certainty, Failure};
 use doppel_host::capabilities::{Clock, SystemClock, WallClock};
@@ -260,8 +260,8 @@ impl Blocking {
 
     fn hold(&self, session: SessionId, hold: Hold) -> Result<(), DaemonError> {
         self.call(|client| match hold {
-            Hold::Pause => client.pause_session(session.0, within(CALL)),
-            Hold::Resume => client.resume_session(session.0, within(CALL)),
+            Hold::Pause => client.pause_session(session, within(CALL)),
+            Hold::Resume => client.resume_session(session, within(CALL)),
         })
     }
 
@@ -297,25 +297,12 @@ impl Blocking {
     }
 
     fn open_recording(&self, id: &RecordingId) -> Result<Recording, DaemonError> {
-        // The console's name, parsed again on the way in.
-        let id: doppel_client::RecordingId =
-            id.as_str()
-                .parse()
-                .map_err(|error: doppel_client::NotARecording| {
-                    DaemonError::Refused(error.to_string())
-                })?;
-        let opened = self.call(|client| client.open_recording(&id, within(CALL)))?;
+        let opened = self.call(|client| client.open_recording(id, within(CALL)))?;
         Ok(Recording::of(opened))
     }
 
     fn seen_snapshot(&self, id: &RecordingId, line: u32) -> Result<AxSnapshot, DaemonError> {
-        let id: doppel_client::RecordingId =
-            id.as_str()
-                .parse()
-                .map_err(|error: doppel_client::NotARecording| {
-                    DaemonError::Refused(error.to_string())
-                })?;
-        self.call(|client| client.seen_snapshot(&id, line, within(CALL)))
+        self.call(|client| client.seen_snapshot(id, line, within(CALL)))
     }
 
     fn observe_text(&self, name: &MachineName) -> Result<TextRead, DaemonError> {
@@ -331,7 +318,7 @@ impl Blocking {
         self.call(|client| client.observe(name, within(CALL)))
     }
 
-    fn video(&self, id: &RecordingId, file: &VideoName) -> Result<PathBuf, DaemonError> {
+    fn video(&self, id: &RecordingId, file: &VideoFile) -> Result<PathBuf, DaemonError> {
         self.videos.path(
             || self.call(|client| client.data_root(within(CALL))),
             id,
@@ -392,12 +379,12 @@ impl Daemon for DaemonPort {
     }
 
     fn open_recording(&self, id: &RecordingId) -> Answer<Recording> {
-        let id = id.clone();
+        let id = *id;
         self.later(move |port| port.open_recording(&id))
     }
 
     fn seen_snapshot(&self, id: &RecordingId, line: u32) -> Answer<AxSnapshot> {
-        let id = id.clone();
+        let id = *id;
         self.later(move |port| port.seen_snapshot(&id, line))
     }
 
@@ -411,8 +398,8 @@ impl Daemon for DaemonPort {
         self.later(move |port| port.observe_text(&name))
     }
 
-    fn video(&self, id: &RecordingId, file: &VideoName) -> Answer<PathBuf> {
-        let (id, file) = (id.clone(), file.clone());
+    fn video(&self, id: &RecordingId, file: &VideoFile) -> Answer<PathBuf> {
+        let (id, file) = (*id, file.clone());
         self.later(move |port| port.video(&id, &file))
     }
 }

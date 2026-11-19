@@ -61,7 +61,7 @@ pub use model::{
 };
 pub use recordings::{
     Actor, Recording, RecordingId, RecordingSummary, TraceCall, TraceLine, TraceOutcome, Video,
-    VideoName,
+    VideoFile,
 };
 pub use timeline::{
     ActivityEvent, Call, CallKey, Callout, CalloutLasts, CalloutOn, CalloutShape, Ending, Gesture,
@@ -212,7 +212,7 @@ pub trait Daemon: 'static {
     /// # Errors
     /// [`DaemonError::Refused`]: its file isn't here (the daemon is on
     /// another Mac), with why.
-    fn video(&self, id: &RecordingId, file: &VideoName) -> Answer<VideoAt>;
+    fn video(&self, id: &RecordingId, file: &VideoFile) -> Answer<VideoAt>;
 }
 
 /// Which theme the window shows: the system's appearance, or light or

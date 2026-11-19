@@ -13,7 +13,7 @@ use doppel_machine::machine::MachineName;
 use crate::context::Context;
 use crate::daemon_at::{LIFECYCLE, within};
 use crate::fork_run;
-use crate::report::{GuestAfter, Report};
+use crate::report::Report;
 
 /// Snapshot memory and disk of a running machine at one instant.
 #[derive(Debug, Args)]
@@ -52,29 +52,15 @@ impl CheckpointCmd {
         match report.result {
             CheckpointResult::Completed {
                 memory_bytes,
-                left_paused: None,
                 sync_skipped,
-                screen,
+                guest,
             } => Ok(Report::Checkpointed {
                 name,
                 label,
                 memory_bytes,
                 paused_for: report.paused_for,
-                guest: GuestAfter::AsAsked {
-                    sync_skipped,
-                    screen,
-                },
-            }),
-            CheckpointResult::Completed {
-                memory_bytes,
-                left_paused: Some(why),
-                ..
-            } => Ok(Report::Checkpointed {
-                name,
-                label,
-                memory_bytes,
-                paused_for: report.paused_for,
-                guest: GuestAfter::LeftPaused(why),
+                sync_skipped,
+                guest,
             }),
             CheckpointResult::Failed { at, error, guest } => {
                 let guest = match guest {
@@ -86,9 +72,9 @@ impl CheckpointCmd {
             CheckpointResult::Unknown { at, error } => bail!(
                 "checkpoint outcome UNKNOWN: the VMM stopped answering while {at:?} ({error}). Check `doppel status {name}`"
             ),
-            CheckpointResult::InProgress { .. } => {
-                bail!("checkpoint procedure ended without a terminal state")
-            }
+            CheckpointResult::InProgress { awaiting } => bail!(
+                "checkpoint outcome UNKNOWN: the procedure ended while {awaiting:?}, before it finished. Check `doppel status {name}`"
+            ),
         }
     }
 }

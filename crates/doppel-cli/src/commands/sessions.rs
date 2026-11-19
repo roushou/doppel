@@ -30,11 +30,11 @@ impl SessionsCmd {
         Ok(match self.action {
             None => Report::Sessions(client.sessions(by)?),
             Some(SessionsCommand::Pause { id }) => {
-                client.pause_session(id, by)?;
+                client.pause_session(id.into(), by)?;
                 Report::SessionPaused(id)
             }
             Some(SessionsCommand::Resume { id }) => {
-                client.resume_session(id, by)?;
+                client.resume_session(id.into(), by)?;
                 Report::SessionResumed(id)
             }
         })

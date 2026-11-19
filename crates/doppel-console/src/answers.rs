@@ -3,18 +3,17 @@
 //! the browser's both map through here, so the two windows read the daemon
 //! the same way.
 
-use doppel_desktop::outcome::Failure;
+use doppel_desktop::outcome::{Failure, Unconfirmed};
 use doppel_machine::bundle::CheckpointLabel;
 use doppel_machine::lineage::RecordedLineage;
 use doppel_machine::machine::MachineName;
 use doppel_machine::vm::{MachineReport, RunState, Status};
 use doppel_protocol::report::{
-    CheckpointResult, MachineFailure, SessionInfo, SessionStatus, StopOutcome,
+    CheckpointResult, GuestAfter, MachineFailure, SessionInfo, SessionStatus, StopOutcome,
 };
 
 use crate::{
-    LocalTime, Machine, MachineState, RecordingId, RecordingSummary, Run, Session, SessionActivity,
-    SessionId, Verdict,
+    LocalTime, Machine, MachineState, RecordingSummary, Run, Session, SessionActivity, Verdict,
 };
 
 /// A machine the daemon lists, with its status or why it can't be read.
@@ -53,7 +52,7 @@ const fn run(state: RunState) -> Run {
 #[must_use]
 pub fn session(info: SessionInfo) -> Session {
     Session {
-        id: SessionId(info.id),
+        id: info.id,
         client: info.client,
         machines: info.machines,
         running: info.running,
@@ -73,7 +72,7 @@ pub fn summary(
     started: LocalTime,
 ) -> RecordingSummary {
     RecordingSummary {
-        id: RecordingId::new(summary.id.to_string()),
+        id: summary.id,
         started,
         session: summary.session,
         machines: summary.machines,
@@ -120,13 +119,20 @@ pub fn stopped(outcome: StopOutcome) -> Verdict {
 pub fn checkpoint(result: CheckpointResult) -> Verdict {
     match result {
         CheckpointResult::Completed {
-            left_paused: Some(failure),
+            guest: GuestAfter::LeftPaused(Unconfirmed::Failed(failure)),
+            ..
+        } => Verdict::Done {
+            note: Some(format!("saved, but it was left paused: {failure}")),
+        },
+        CheckpointResult::Completed {
+            guest: GuestAfter::LeftPaused(Unconfirmed::Unknown(failure)),
             ..
         } => Verdict::Done {
             note: Some(format!("saved, but it may be left paused: {failure}")),
         },
         CheckpointResult::Completed {
-            left_paused: None, ..
+            guest: GuestAfter::AsAsked { .. },
+            ..
         } => done(),
         CheckpointResult::Failed { error, .. } => Verdict::Refused(error.to_string()),
         CheckpointResult::Unknown { error, .. } => Verdict::Unknown(error.to_string()),
@@ -185,6 +191,30 @@ mod tests {
         assert_eq!(failed(&refused), Verdict::Refused("busy".into()));
         let maybe = MachineFailure::new("lost".into(), Certainty::MaybeDone);
         assert_eq!(failed(&maybe), Verdict::Unknown("lost".into()));
+    }
+
+    #[test]
+    fn a_checkpoint_left_paused_says_how_sure_that_is() {
+        let left = |why| {
+            checkpoint(CheckpointResult::Completed {
+                memory_bytes: 1,
+                sync_skipped: None,
+                guest: GuestAfter::LeftPaused(why),
+            })
+        };
+        let failure = |certainty| MachineFailure::new("resume failed".into(), certainty);
+        assert_eq!(
+            left(Unconfirmed::Failed(failure(Certainty::NotDone))),
+            Verdict::Done {
+                note: Some("saved, but it was left paused: resume failed".into()),
+            }
+        );
+        assert_eq!(
+            left(Unconfirmed::Unknown(failure(Certainty::MaybeDone))),
+            Verdict::Done {
+                note: Some("saved, but it may be left paused: resume failed".into()),
+            }
+        );
     }
 
     #[test]

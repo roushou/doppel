@@ -41,21 +41,15 @@ impl Route {
             Self::Machines => "/".to_owned(),
             Self::Machine(name) => format!("/machines/{name}"),
             Self::Recordings => "/replay".to_owned(),
-            Self::Replay(id) => format!("/replay/{}", id.as_str()),
+            Self::Replay(id) => format!("/replay/{id}"),
         }
     }
 }
 
-/// A recording's id as a path names it: one component of letters, digits,
-/// `-`, `_` and `.`, not starting with a dot, which is what the daemon
-/// names them.
+/// A recording's id as a path names it: only what the daemon names a
+/// recording, so a path never reaches a request it can't name.
 fn recording(raw: &str) -> Option<RecordingId> {
-    let fits = !raw.is_empty()
-        && !raw.starts_with('.')
-        && raw
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'));
-    fits.then(|| RecordingId::new(raw.to_owned()))
+    raw.parse().ok()
 }
 
 // How a place is shown in the address bar (`platform::address`).
@@ -80,7 +74,7 @@ mod tests {
             Route::Machines,
             Route::Machine(live),
             Route::Recordings,
-            Route::Replay(RecordingId::new("2026-11-17T01-55-02Z-s1".into())),
+            Route::Replay("2026-11-17T01-55-02Z-s1".parse().unwrap()),
         ] {
             assert_eq!(
                 Route::parse(&route.path()),

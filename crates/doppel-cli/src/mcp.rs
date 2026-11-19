@@ -7,8 +7,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use doppel_client::{
-    Acted, Call, CheckpointResult, Client, ClientError, Notes, Record, StopMode, StopOutcome,
-    Window,
+    Acted, BringUp, Call, Client, ClientError, Notes, Record, StopMode, StopOutcome, Window,
 };
 use doppel_desktop::ax::refs::{Ref, RefTarget, SnapshotRefs};
 use doppel_desktop::deadline::Deadline;
@@ -20,8 +19,8 @@ use doppel_protocol::transport::Cancel;
 
 use doppel_host::machines::CALL_TIMEOUT;
 use doppel_mcp::{
-    Cancellation, CheckpointEnd, ClientName, Notice, Ran, Runner, Server, StatusReport, ToolAction,
-    ToolCall, ToolOutcome,
+    Cancellation, ClientName, Notice, Ran, Runner, Server, StatusReport, ToolAction, ToolCall,
+    ToolOutcome,
 };
 use rmcp::ServiceExt;
 use tokio::sync::watch;
@@ -127,15 +126,24 @@ impl TemporaryMachine {
 
     /// Starts `machine`, hidden, and waits for an agent-ready desktop.
     fn start(client: &Client<SystemClock>, machine: &MachineName) -> Startup {
-        if let Err(error) = client.start(machine, Window::Hidden, within(LIFECYCLE)) {
-            return Startup::Failed(format!("{machine} didn't start: {error}"));
-        }
-        match client.await_desktop(machine, within(LIFECYCLE)) {
-            Ok(outcome) if outcome.is_ready() => Startup::Ready,
-            Ok(outcome) => Startup::Failed(format!(
+        match client.bring_up(machine, Window::Hidden, within(LIFECYCLE)) {
+            BringUp::NotStarted(error) => {
+                Startup::Failed(format!("{machine} didn't start: {error}"))
+            }
+            BringUp::Started {
+                desktop: Ok(outcome),
+                ..
+            } if outcome.is_ready() => Startup::Ready,
+            BringUp::Started {
+                desktop: Ok(outcome),
+                ..
+            } => Startup::Failed(format!(
                 "{machine} started without an agent-ready desktop: {outcome}"
             )),
-            Err(error) => Startup::Failed(format!(
+            BringUp::Started {
+                desktop: Err(error),
+                ..
+            } => Startup::Failed(format!(
                 "{machine} started, but its desktop didn't come up: {error}"
             )),
         }
@@ -476,7 +484,9 @@ impl Calls<'_> {
                 ToolOutcome::Checkpointed {
                     machine,
                     label,
-                    result: Self::checkpoint_end(report.result),
+                    result: report
+                        .result
+                        .map_error(|error| ToolError::Daemon(ClientError::Machine(error))),
                     paused_for: report.paused_for,
                 }
             }
@@ -498,18 +508,14 @@ impl Calls<'_> {
                 }
             }
             // Hidden: the model drives it. Then the desktop.
-            ToolAction::Start => {
-                let (_, from) = client
-                    .start(&machine, Window::Hidden, at)
-                    .map_err(ToolError::from)?;
-                ToolOutcome::Started {
-                    desktop: client
-                        .await_desktop(&machine, at)
-                        .map_err(ToolError::from)?,
+            ToolAction::Start => match client.bring_up(&machine, Window::Hidden, at) {
+                BringUp::NotStarted(error) => return Err(ToolError::from(error).into()),
+                BringUp::Started { from, desktop } => ToolOutcome::Started {
+                    desktop: desktop.map_err(ToolError::from),
                     machine,
                     from,
-                }
-            }
+                },
+            },
             ToolAction::Mark { mark, on } => {
                 client.mark(&machine, &mark, at).map_err(ToolError::from)?;
                 ToolOutcome::Marked { mark, on }
@@ -528,35 +534,6 @@ impl Calls<'_> {
                 }
             }
         })
-    }
-
-    fn checkpoint_end(result: CheckpointResult) -> CheckpointEnd<ToolError> {
-        let failure = |failure: doppel_client::MachineFailure| {
-            ToolError::Daemon(ClientError::Machine(failure))
-        };
-        match result {
-            CheckpointResult::Completed {
-                memory_bytes,
-                sync_skipped,
-                left_paused,
-                screen,
-            } => CheckpointEnd::Completed {
-                memory_bytes,
-                sync_skipped,
-                left_paused: left_paused.map(|why| Unconfirmed::new(why.certainty(), failure(why))),
-                screen,
-            },
-            CheckpointResult::Failed { at, error, guest } => CheckpointEnd::Failed {
-                at,
-                error: failure(error),
-                guest,
-            },
-            CheckpointResult::Unknown { at, error } => CheckpointEnd::Unknown {
-                at,
-                error: failure(error),
-            },
-            CheckpointResult::InProgress { .. } => CheckpointEnd::InProgress,
-        }
     }
 }
 

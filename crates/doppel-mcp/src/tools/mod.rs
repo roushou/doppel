@@ -19,10 +19,9 @@ use doppel_desktop::screen::{Screenshot, ScreenshotSize};
 use doppel_desktop::screen_text::{ScreenText, TextQuery};
 use doppel_desktop::wait::{Condition, TextCondition, WaitOutcome, WaitSpec};
 use doppel_machine::bundle::CheckpointLabel;
-use doppel_machine::checkpoint::{GuestAfterFailure, GuestSync, Step};
+use doppel_machine::checkpoint::{CheckpointResult, GuestAfter, GuestAfterFailure};
 use doppel_machine::login::Desktop;
 use doppel_machine::machine::MachineName;
-use doppel_machine::screen_probe::HostScreen;
 use doppel_machine::vm::NextStart;
 use rmcp::model::{CallToolResult, ContentBlock};
 
@@ -245,29 +244,6 @@ enum WaitMoment {
     TimedOut,
 }
 
-/// How a checkpoint ended, as the model is told.
-#[derive(Debug, Clone, PartialEq)]
-pub enum CheckpointEnd<E> {
-    Completed {
-        memory_bytes: u64,
-        /// Why the guest wasn't synced first, if it wasn't.
-        sync_skipped: Option<String>,
-        /// The checkpoint is kept, but the guest may be left paused.
-        left_paused: Option<Unconfirmed<E>>,
-        /// Set when the guest was resumed: whether screenshots show it as it is.
-        screen: Option<HostScreen>,
-    },
-    Failed {
-        at: Step,
-        error: E,
-        guest: GuestAfterFailure,
-    },
-    /// Neither success nor failure can be claimed.
-    Unknown { at: Step, error: E },
-    /// The procedure ended before a terminal state (a bug).
-    InProgress,
-}
-
 /// What running a [`ToolCall`] produced. `E` is the runner's error, shown
 /// to the model as its message.
 #[derive(Debug, Clone, PartialEq)]
@@ -319,7 +295,7 @@ pub enum ToolOutcome<E> {
     Checkpointed {
         machine: MachineName,
         label: CheckpointLabel,
-        result: CheckpointEnd<E>,
+        result: CheckpointResult<E>,
         paused_for: Option<Duration>,
     },
     Forked {
@@ -327,10 +303,11 @@ pub enum ToolOutcome<E> {
         checkpoint: CheckpointLabel,
         into: MachineName,
     },
+    /// It runs. A failed desktop wait doesn't undo the start.
     Started {
         machine: MachineName,
         from: NextStart,
-        desktop: Desktop,
+        desktop: Result<Desktop, E>,
     },
     Stopped {
         machine: MachineName,
@@ -467,7 +444,12 @@ impl<E: std::fmt::Display> ToolOutcome<E> {
                     NextStart::ColdBoot => "booted",
                     NextStart::ResumeSavedState => "resumed its saved state",
                 };
-                Self::desktop(&format!("{machine} {how}"), &desktop)
+                match desktop {
+                    Ok(desktop) => Self::desktop(&format!("{machine} {how}"), &desktop),
+                    Err(error) => Self::error(&format!(
+                        "{machine} {how}, but waiting for its desktop failed: {error}. It is running: check status before acting."
+                    )),
+                }
             }
             Self::Stopped { machine } => Self::ok(&format!("{machine} is powered off")),
             Self::Marked { mark, on } => {
@@ -520,39 +502,38 @@ impl<E: std::fmt::Display> ToolOutcome<E> {
     fn render_checkpoint(
         machine: &MachineName,
         label: &CheckpointLabel,
-        result: &CheckpointEnd<E>,
+        result: &CheckpointResult<E>,
         paused_for: Option<Duration>,
     ) -> CallToolResult {
         let paused = paused_for.map_or_else(String::new, |d| {
             format!("; the guest was paused {:.1} s", d.as_secs_f64())
         });
         match result {
-            CheckpointEnd::Completed {
+            CheckpointResult::Completed {
                 memory_bytes,
                 sync_skipped,
-                left_paused,
-                screen,
+                guest,
             } => {
                 let size = format!("{} MiB of memory", memory_bytes >> 20);
-                let caveat = sync_skipped.as_ref().map_or_else(String::new, |why| {
-                    GuestSync::<std::convert::Infallible>::skipped_caveat(why)
-                });
-                let screen = screen
-                    .as_ref()
-                    .map_or_else(String::new, |screen| format!("; {screen}"));
-                match left_paused {
-                    None => Self::ok(&format!(
-                        "checkpoint {machine}/{label} saved ({size}){paused}{caveat}; the machine keeps running{screen}."
-                    )),
-                    Some(Unconfirmed::Failed(error)) => Self::error(&format!(
+                let caveat = CheckpointResult::<E>::sync_caveat(sync_skipped.as_deref());
+                match guest {
+                    GuestAfter::AsAsked { screen } => {
+                        let screen = screen
+                            .as_ref()
+                            .map_or_else(String::new, |screen| format!("; {screen}"));
+                        Self::ok(&format!(
+                            "checkpoint {machine}/{label} saved ({size}){paused}{caveat}; the machine keeps running{screen}."
+                        ))
+                    }
+                    GuestAfter::LeftPaused(Unconfirmed::Failed(error)) => Self::error(&format!(
                         "checkpoint {machine}/{label} saved ({size}), but the guest is still paused: {error}"
                     )),
-                    Some(Unconfirmed::Unknown(error)) => Self::error(&format!(
+                    GuestAfter::LeftPaused(Unconfirmed::Unknown(error)) => Self::error(&format!(
                         "checkpoint {machine}/{label} saved ({size}), but the guest may still be paused ({error}); check status"
                     )),
                 }
             }
-            CheckpointEnd::Failed { at, error, guest } => {
+            CheckpointResult::Failed { at, error, guest } => {
                 let guest = match guest {
                     GuestAfterFailure::Untouched => "the guest was never paused",
                     GuestAfterFailure::ResumeRequested => "a resume of the guest was requested",
@@ -561,11 +542,11 @@ impl<E: std::fmt::Display> ToolOutcome<E> {
                     "checkpoint {machine}/{label} failed while {at:?}: {error}; {guest}. No checkpoint was kept."
                 ))
             }
-            CheckpointEnd::Unknown { at, error } => Self::error(&format!(
+            CheckpointResult::Unknown { at, error } => Self::error(&format!(
                 "checkpoint {machine}/{label}: outcome UNKNOWN, the VMM stopped answering while {at:?} ({error}). Check status before relying on it."
             )),
-            CheckpointEnd::InProgress => Self::error(&format!(
-                "checkpoint {machine}/{label}: the procedure ended without a result"
+            CheckpointResult::InProgress { awaiting } => Self::error(&format!(
+                "checkpoint {machine}/{label}: outcome UNKNOWN, the procedure ended while {awaiting:?}, before it finished. Check status before relying on it."
             )),
         }
     }
@@ -746,6 +727,8 @@ pub(crate) mod tests {
     use doppel_desktop::geometry::Size;
     use doppel_desktop::mark::{DEFAULT_LASTS, Shape};
     use doppel_desktop::screen::ImageFormat;
+    use doppel_machine::checkpoint::Step;
+    use doppel_machine::screen_probe::HostScreen;
     use serde_json::{Map, Value, json};
 
     use super::*;
@@ -1189,7 +1172,7 @@ pub(crate) mod tests {
             result["content"][0]["text"].as_str().unwrap()
         }
 
-        fn checkpointed(result: CheckpointEnd<String>) -> Value {
+        fn checkpointed(result: CheckpointResult<String>) -> Value {
             TestOutcome::Checkpointed {
                 machine: dev(),
                 label: "ready".parse().unwrap(),
@@ -1338,18 +1321,17 @@ pub(crate) mod tests {
 
         #[test]
         fn checkpoint_results_say_whether_one_was_kept() {
-            let saved = checkpointed(CheckpointEnd::Completed {
+            let saved = checkpointed(CheckpointResult::Completed {
                 memory_bytes: 1_248 << 20,
                 sync_skipped: None,
-                left_paused: None,
-                screen: None,
+                guest: GuestAfter::AsAsked { screen: None },
             });
             assert_eq!(saved["isError"], false);
             assert_eq!(
                 text(&saved),
                 "checkpoint dev/ready saved (1248 MiB of memory); the guest was paused 4.7 s; the machine keeps running."
             );
-            let failed = checkpointed(CheckpointEnd::Failed {
+            let failed = checkpointed(CheckpointResult::Failed {
                 at: Step::Cloning,
                 error: "disk full".into(),
                 guest: GuestAfterFailure::ResumeRequested,
@@ -1361,7 +1343,7 @@ pub(crate) mod tests {
                 text(&failed)
             );
             // Never rounded up to success.
-            let unknown = checkpointed(CheckpointEnd::Unknown {
+            let unknown = checkpointed(CheckpointResult::Unknown {
                 at: Step::SavingMemory,
                 error: "VMM closed the connection".into(),
             });
@@ -1372,11 +1354,10 @@ pub(crate) mod tests {
                 "{}",
                 text(&unknown)
             );
-            let maybe_paused = checkpointed(CheckpointEnd::Completed {
+            let maybe_paused = checkpointed(CheckpointResult::Completed {
                 memory_bytes: 1 << 20,
                 sync_skipped: None,
-                left_paused: Some(Unconfirmed::Unknown("timed out".into())),
-                screen: None,
+                guest: GuestAfter::LeftPaused(Unconfirmed::Unknown("timed out".into())),
             });
             assert_eq!(maybe_paused["isError"], true);
             assert!(
@@ -1384,11 +1365,10 @@ pub(crate) mod tests {
                 "{}",
                 text(&maybe_paused)
             );
-            let unsynced = checkpointed(CheckpointEnd::Completed {
+            let unsynced = checkpointed(CheckpointResult::Completed {
                 memory_bytes: 1 << 20,
                 sync_skipped: Some("sync timed out".into()),
-                left_paused: None,
-                screen: None,
+                guest: GuestAfter::AsAsked { screen: None },
             });
             assert!(
                 text(&unsynced).contains("the guest wasn't synced (sync timed out)"),
@@ -1421,10 +1401,10 @@ pub(crate) mod tests {
             let locked = TestOutcome::Started {
                 machine: dev(),
                 from: NextStart::ResumeSavedState,
-                desktop: Desktop {
+                desktop: Ok(Desktop {
                     login: doppel_machine::login::LoginOutcome::NeedsPassword,
                     screen: None,
-                },
+                }),
             }
             .into_wire(&mut Refs::default());
             assert_eq!(locked["isError"], true);
@@ -1433,6 +1413,19 @@ pub(crate) mod tests {
                     .starts_with("dev resumed its saved state, but the desktop isn't ready"),
                 "{}",
                 text(&locked)
+            );
+            // A failed wait still says it started: the machine runs.
+            let unwaited = TestOutcome::Started {
+                machine: dev(),
+                from: NextStart::ColdBoot,
+                desktop: Err("the daemon closed the connection".into()),
+            }
+            .into_wire(&mut Refs::default());
+            assert_eq!(unwaited["isError"], true);
+            assert!(
+                text(&unwaited).starts_with("dev booted, but waiting for its desktop failed"),
+                "{}",
+                text(&unwaited)
             );
         }
     }

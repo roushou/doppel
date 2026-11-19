@@ -1,12 +1,13 @@
 use std::time::Duration;
 
+use doppel_desktop::outcome::{Failure as _, Unconfirmed};
 use doppel_machine::screen_probe::HostScreen;
 
 use super::ParseError;
 use crate::pb::daemon::v1 as daemon;
 use crate::report::{
-    Acted, CheckpointReport, CheckpointResult, Cleanup, HandedBack, MachineFailure, SessionInfo,
-    SessionStatus, StopReport, StopRequest,
+    Acted, CheckpointReport, CheckpointResult, Cleanup, GuestAfter, HandedBack, MachineFailure,
+    SessionId, SessionInfo, SessionStatus, StopReport, StopRequest,
 };
 
 impl TryFrom<daemon::MachineStopped> for StopReport {
@@ -43,8 +44,22 @@ impl TryFrom<daemon::CheckpointReport> for CheckpointReport {
             Some(Wire::Completed(completed)) => CheckpointResult::Completed {
                 memory_bytes: completed.memory_bytes,
                 sync_skipped: completed.sync_skipped,
-                left_paused: completed.left_paused.map(MachineFailure::from_wire),
-                screen: completed.screen.map(HostScreen::try_from).transpose()?,
+                guest: match (completed.left_paused, completed.screen) {
+                    (None, screen) => GuestAfter::AsAsked {
+                        screen: screen.map(HostScreen::try_from).transpose()?,
+                    },
+                    (Some(why), None) => {
+                        let why = MachineFailure::from_wire(why);
+                        GuestAfter::LeftPaused(Unconfirmed::new(why.certainty(), why))
+                    }
+                    // The screen is only looked at once the guest is resumed.
+                    (Some(_), Some(_)) => {
+                        return Err(ParseError::invalid(
+                            "checkpoint_completed.screen",
+                            "set for a guest left paused",
+                        ));
+                    }
+                },
             },
             Some(Wire::Failed(failed)) => CheckpointResult::Failed {
                 at: ParseError::checkpoint_step("checkpoint_failed.at", failed.at)?,
@@ -124,7 +139,7 @@ impl TryFrom<daemon::SessionEntry> for SessionInfo {
 
     fn try_from(entry: daemon::SessionEntry) -> Result<Self, ParseError> {
         Ok(Self {
-            id: entry.id,
+            id: SessionId::from(entry.id),
             machines: entry
                 .machines
                 .iter()
@@ -166,6 +181,54 @@ mod tests {
         assert_eq!(
             HandedBack::try_from(&daemon::HandedBack::from(&note)),
             Ok(note)
+        );
+    }
+
+    #[test]
+    fn a_completed_checkpoint_says_how_it_left_the_guest() {
+        let completed = |left_paused, screen| daemon::CheckpointReport {
+            result: Some(daemon::checkpoint_report::Result::Completed(
+                daemon::CheckpointCompleted {
+                    memory_bytes: 1,
+                    sync_skipped: None,
+                    left_paused,
+                    screen,
+                },
+            )),
+            paused_for_micros: None,
+            cleanup: Vec::new(),
+        };
+        let guest = |report| match CheckpointReport::try_from(report).map(|report| report.result) {
+            Ok(CheckpointResult::Completed { guest, .. }) => Ok(guest),
+            other => Err(format!("{other:?}")),
+        };
+        let paused = |certainty: daemon::Certainty| daemon::MachineFailure {
+            message: "resume failed".into(),
+            certainty: certainty as i32,
+            causes: Vec::new(),
+        };
+        let screen = daemon::HostScreen {
+            state: Some(daemon::host_screen::State::CurrentAfterMicros(1)),
+        };
+        assert!(matches!(
+            guest(completed(None, Some(screen.clone()))),
+            Ok(GuestAfter::AsAsked { screen: Some(_) })
+        ));
+        assert!(matches!(
+            guest(completed(Some(paused(daemon::Certainty::NotDone)), None)),
+            Ok(GuestAfter::LeftPaused(Unconfirmed::Failed(_)))
+        ));
+        assert!(matches!(
+            guest(completed(Some(paused(daemon::Certainty::MaybeDone)), None)),
+            Ok(GuestAfter::LeftPaused(Unconfirmed::Unknown(_)))
+        ));
+        // A screen is only looked at once the guest is resumed.
+        assert!(
+            CheckpointReport::try_from(completed(
+                Some(paused(daemon::Certainty::NotDone)),
+                Some(screen)
+            ))
+            .is_err()
         );
     }
 }

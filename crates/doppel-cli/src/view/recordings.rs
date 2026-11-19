@@ -6,7 +6,7 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-use doppel_console::{DaemonError, RecordingId, RecordingSummary, VideoName, answers};
+use doppel_console::{DaemonError, RecordingId, RecordingSummary, VideoFile, answers};
 
 use super::port::local;
 
@@ -29,32 +29,21 @@ impl Videos {
         self,
         data_root: impl FnOnce() -> Result<PathBuf, DaemonError>,
         id: &RecordingId,
-        file: &VideoName,
+        file: &VideoFile,
     ) -> Result<PathBuf, DaemonError> {
         match self {
-            Self::Here => {
-                let refused = |error: doppel_client::NotARecording| {
-                    DaemonError::Refused(error.to_string())
-                };
-                let id: doppel_client::RecordingId = id.as_str().parse().map_err(refused)?;
-                let file: doppel_client::VideoFile = file.as_str().parse().map_err(refused)?;
-                Ok(Self::under(&data_root()?, &id, &file))
-            }
+            Self::Here => Ok(Self::under(&data_root()?, id, file)),
             Self::Elsewhere => Err(DaemonError::Refused(
                 "its video is on the Mac the daemon runs on: replay it in the web console, or in `doppel view` there".into(),
             )),
         }
     }
 
-    fn under(
-        data_root: &Path,
-        id: &doppel_client::RecordingId,
-        file: &doppel_client::VideoFile,
-    ) -> PathBuf {
+    fn under(data_root: &Path, id: &RecordingId, file: &VideoFile) -> PathBuf {
         data_root
             .join("recordings")
-            .join(id.as_str())
-            .join(file.as_str())
+            .join(id.to_string())
+            .join(file.to_string())
     }
 }
 

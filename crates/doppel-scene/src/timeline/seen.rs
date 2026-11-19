@@ -37,14 +37,11 @@ impl Timeline {
         let started = moments
             .get(taken)
             .map_or(f64::INFINITY, |moment| moment.start_ms);
-        let acted_since = moments.iter().enumerate().any(|(index, moment)| {
-            index != taken && moment.start_ms >= started && moment.start_ms <= at && changes(moment)
-        });
         Some(SeenAt {
             seen: seen.clone(),
             refs: refs.clone(),
             since_ms,
-            acted_since,
+            acted_since: acted_between(moments, Some(taken), started, at),
         })
     }
 }
@@ -90,89 +87,116 @@ fn acted_between(moments: &[Moment], skip: Option<usize>, from: f64, to: f64) ->
     })
 }
 
-/// A person's own read of a machine's screen text, asked at `at_ms`.
+/// Which of a panel's asks an answer is for. Each ask takes the next one,
+/// so an earlier ask's answer never lands, even one asked in the same
+/// millisecond.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Ticket(u64);
+
+impl Ticket {
+    /// The ticket after this one.
+    #[must_use]
+    pub const fn next(self) -> Self {
+        Self(self.0 + 1)
+    }
+}
+
+/// A person's own ask about a machine's screen (a look at its elements, a
+/// read of its text), asked at `at_ms`, and its answer once it comes.
 #[derive(Debug, Clone, PartialEq)]
-pub struct TextLook {
+pub struct Asked<T> {
     pub at_ms: f64,
-    pub outcome: TextLooked,
+    ticket: Ticket,
+    pub outcome: Answer<T>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum TextLooked {
+pub enum Answer<T> {
     Loading,
-    Read(Arc<TextRead>),
+    Got(T),
     Failed(String),
 }
 
-/// What the text layer shows at `at`: the newer of the agent's latest read
-/// and the person's own.
+impl<T> Asked<T> {
+    /// An ask made at `at_ms` with `ticket`, its answer to come.
+    #[must_use]
+    pub const fn new(ticket: Ticket, at_ms: f64) -> Self {
+        Self {
+            at_ms,
+            ticket,
+            outcome: Answer::Loading,
+        }
+    }
+
+    /// Takes the answer to the ask with `ticket`: `false`, changing
+    /// nothing, when it is another ask's.
+    pub fn answer(&mut self, ticket: Ticket, outcome: Result<T, String>) -> bool {
+        if self.ticket != ticket {
+            return false;
+        }
+        self.outcome = match outcome {
+            Ok(value) => Answer::Got(value),
+            Err(why) => Answer::Failed(why),
+        };
+        true
+    }
+}
+
+/// A person's own look at a machine's elements.
+pub type Look = Asked<Arc<AxSnapshot>>;
+
+/// A person's own read of a machine's screen text.
+pub type TextLook = Asked<Arc<TextRead>>;
+
+/// What a layer (the elements panel, the text layer) shows at an instant: the newer of what the agent had (`A`)
+/// and the person's own ask.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Reading<'a> {
-    Agent(ReadAt),
+pub enum Layer<'a, A, T> {
+    Agent(A),
     Person {
-        look: &'a TextLook,
+        asked: &'a Asked<T>,
+        /// A call may have changed the screen since the ask.
         acted_since: bool,
     },
     Nothing,
 }
+
+/// What the elements panel shows.
+pub type Showing<'a> = Layer<'a, SeenAt, Arc<AxSnapshot>>;
+
+/// What the text layer shows.
+pub type Reading<'a> = Layer<'a, ReadAt, Arc<TextRead>>;
 
 impl Timeline {
     /// What the text layer shows at `at`, given the person's own read.
     #[must_use]
     pub fn reading<'a>(&self, look: Option<&'a TextLook>, at: f64) -> Reading<'a> {
-        match (self.read_at(at), look) {
-            (Some(agent), Some(look)) if agent.since_ms > look.at_ms => Reading::Agent(agent),
-            (Some(_) | None, Some(look)) => Reading::Person {
-                look,
-                acted_since: acted_between(&self.moments, None, look.at_ms, at),
-            },
-            (Some(agent), None) => Reading::Agent(agent),
-            (None, None) => Reading::Nothing,
-        }
+        self.shown(self.read_at(at), |agent| agent.since_ms, look, at)
     }
-}
 
-/// A person's own look at a machine's elements, asked at `at_ms`.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Look {
-    pub at_ms: f64,
-    pub outcome: Looked,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Looked {
-    Loading,
-    Seen(Arc<AxSnapshot>),
-    Failed(String),
-}
-
-/// What the elements panel shows at `at`: the newer of the agent's latest
-/// snapshot and the person's own look.
-#[derive(Debug, Clone, PartialEq)]
-pub enum Showing<'a> {
-    Agent(SeenAt),
-    Person {
-        look: &'a Look,
-        /// A call may have changed the screen since the look.
-        acted_since: bool,
-    },
-    Nothing,
-}
-
-impl Timeline {
     /// What the elements panel shows at `at`, given the person's own look.
     #[must_use]
     pub fn showing<'a>(&self, look: Option<&'a Look>, at: f64) -> Showing<'a> {
-        match (self.seen_at(at), look) {
-            (Some(agent), Some(look)) if agent.since_ms > look.at_ms => Showing::Agent(agent),
-            (Some(_) | None, Some(look)) => Showing::Person {
-                look,
-                acted_since: self.moments.iter().any(|moment| {
-                    moment.start_ms >= look.at_ms && moment.start_ms <= at && changes(moment)
-                }),
+        self.shown(self.seen_at(at), |agent| agent.since_ms, look, at)
+    }
+
+    /// The newer of the agent's latest (taken at `since_ms`) and the
+    /// person's own ask, at `at`.
+    fn shown<'a, A, T>(
+        &self,
+        agent: Option<A>,
+        since_ms: impl Fn(&A) -> f64,
+        asked: Option<&'a Asked<T>>,
+        at: f64,
+    ) -> Layer<'a, A, T> {
+        match (agent, asked) {
+            (Some(agent), Some(asked)) if since_ms(&agent) > asked.at_ms => Layer::Agent(agent),
+            (Some(_) | None, Some(asked)) => Layer::Person {
+                asked,
+                acted_since: acted_between(&self.moments, None, asked.at_ms, at),
             },
-            (Some(agent), None) => Showing::Agent(agent),
-            (None, None) => Showing::Nothing,
+            (Some(agent), None) => Layer::Agent(agent),
+            (None, None) => Layer::Nothing,
         }
     }
 }

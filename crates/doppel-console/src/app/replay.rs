@@ -823,7 +823,7 @@ impl Replay {
                         .text_color(theme.muted)
                         .cursor_pointer()
                         .hover(|chip| chip.bg(theme.hover).text_color(theme.text))
-                        .child(video.file.stem().to_owned())
+                        .child(video.file.stem())
                         .children(video.start_ms.map(|start| {
                             div()
                                 .text_color(theme.muted)

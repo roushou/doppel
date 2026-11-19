@@ -178,7 +178,10 @@ impl Recordings {
         let seconds = started
             .duration_since(SystemTime::UNIX_EPOCH)
             .map_or(0, |since| since.as_secs());
-        Library::in_root(root).folder(RecordingId::new(seconds, session))
+        Library::in_root(root).folder(RecordingId::new(
+            seconds,
+            doppel_machine::activity::SessionId::from(session),
+        ))
     }
 
     /// Recordings in `dir`, created if missing, for a session that started

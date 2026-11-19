@@ -28,6 +28,10 @@
 //! `E` is the shell's error. The procedure never inspects it, only carries it
 //! to the report.
 
+mod result;
+
+pub use result::{CheckpointResult, GuestAfter};
+
 use crate::bundle::{CheckpointFiles, CheckpointLabel, FileOp, ImageFiles, MachineBundle};
 use doppel_desktop::exec::Termination;
 use doppel_desktop::outcome::{Outcome, Unconfirmed};

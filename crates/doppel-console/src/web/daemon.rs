@@ -28,7 +28,7 @@ use super::local;
 use crate::{
     Activity, ActivityEvent, Answer, Daemon, DaemonError, Hold, Later, Machine, Order, Recording,
     RecordingId, RecordingSummary, Session, SessionId, SourceError, TextRead, Verdict, VideoAt,
-    VideoName, answers,
+    VideoFile, answers,
 };
 
 type Opening = Shared<LocalBoxFuture<'static, Result<Rc<Connection>, String>>>;
@@ -281,7 +281,7 @@ impl Daemon for WebDaemon {
     }
 
     fn hold(&self, session: SessionId, hold: Hold) -> Answer<()> {
-        let session = session.0;
+        let session = session.get();
         self.later(move |reach| async move {
             match hold {
                 Hold::Pause => reach.call(daemon::PauseSession { session }).await,
@@ -369,7 +369,7 @@ impl Daemon for WebDaemon {
     }
 
     fn open_recording(&self, id: &RecordingId) -> Answer<Recording> {
-        let id = id.as_str().to_owned();
+        let id = id.to_string();
         self.later(|reach| async move {
             let recording = reach.call(daemon::OpenRecording { id }).await?;
             kept::Recording::try_from(recording)
@@ -379,7 +379,7 @@ impl Daemon for WebDaemon {
     }
 
     fn seen_snapshot(&self, id: &RecordingId, line: u32) -> Answer<AxSnapshot> {
-        let recording = id.as_str().to_owned();
+        let recording = id.to_string();
         self.later(move |reach| async move {
             let snapshot = reach
                 .call(daemon::OpenSeenSnapshot { recording, line })
@@ -409,9 +409,9 @@ impl Daemon for WebDaemon {
         })
     }
 
-    fn video(&self, id: &RecordingId, file: &VideoName) -> Answer<VideoAt> {
+    fn video(&self, id: &RecordingId, file: &VideoFile) -> Answer<VideoAt> {
         // Both names were parsed from the daemon's answer: path-safe.
-        let url = format!("/recordings/{}/{}", id.as_str(), file.as_str());
+        let url = format!("/recordings/{id}/{file}");
         Box::pin(async move { Ok(url) })
     }
 }

@@ -11,11 +11,11 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
 use doppel_client::{
-    Listing, MachineFailure, Resumed, SessionInfo, SessionStatus, StopOutcome, StopReport,
-    StopRequest, TokenEntry,
+    GuestAfter, Listing, Resumed, SessionInfo, SessionStatus, StopOutcome, StopReport, StopRequest,
+    TokenEntry,
 };
 use doppel_desktop::guest_path::GuestPath;
-use doppel_desktop::outcome::{Certainty, Failure as _};
+use doppel_desktop::outcome::Unconfirmed;
 use doppel_host::agent_install::Installed;
 use doppel_host::guest_user::GuestUserName;
 use doppel_host::vmm::RecordingSummary;
@@ -23,7 +23,6 @@ use doppel_machine::bundle::CheckpointLabel;
 use doppel_machine::lineage::Lineage;
 use doppel_machine::login::Desktop;
 use doppel_machine::machine::MachineName;
-use doppel_machine::screen_probe::HostScreen;
 use doppel_machine::vm::{NextStart, RunState, Status};
 
 use crate::doctor::Diagnosis;
@@ -115,6 +114,8 @@ pub enum Report {
         memory_bytes: u64,
         /// How long the guest was paused for it, when the daemon said.
         paused_for: Option<Duration>,
+        /// Why the guest wasn't synced first, if it wasn't.
+        sync_skipped: Option<String>,
         guest: GuestAfter,
     },
     Checkpoints(Vec<Result<CheckpointLabel, OsString>>),
@@ -193,19 +194,6 @@ pub enum Report {
         p50_ms: f64,
         p99_ms: f64,
     },
-}
-
-/// How a completed checkpoint left the guest.
-#[derive(Debug)]
-pub enum GuestAfter {
-    /// As asked; with why its disk wasn't synced first, if it wasn't, and
-    /// whether screenshots show it as it is, if it was resumed.
-    AsAsked {
-        sync_skipped: Option<String>,
-        screen: Option<HostScreen>,
-    },
-    /// It may still be paused, and why.
-    LeftPaused(MachineFailure),
 }
 
 impl Report {
@@ -404,11 +392,8 @@ impl fmt::Display for Report {
                 label,
                 memory_bytes,
                 paused_for,
-                guest:
-                    GuestAfter::AsAsked {
-                        sync_skipped,
-                        screen,
-                    },
+                sync_skipped,
+                guest: GuestAfter::AsAsked { screen },
             } => {
                 let paused = paused_for.map_or_else(String::new, |paused| {
                     format!(", guest paused {:.1}s", paused.as_secs_f64())
@@ -430,10 +415,11 @@ impl fmt::Display for Report {
                 guest: GuestAfter::LeftPaused(why),
                 ..
             } => {
-                let left = match why.certainty() {
-                    Certainty::NotDone => "guest left paused",
-                    Certainty::MaybeDone => "guest may be left paused",
+                let left = match why {
+                    Unconfirmed::Failed(_) => "guest left paused",
+                    Unconfirmed::Unknown(_) => "guest may be left paused",
                 };
+                let why = why.error();
                 writeln!(
                     f,
                     "checkpoint {name}/{label}: {} MiB memory state; WARNING: {left}: {why}",

@@ -307,7 +307,7 @@ impl Root {
                     self._page_events =
                         Some(cx.subscribe(&page, |root, _, event, cx| match event {
                             RecordingsEvent::Open(id) => {
-                                root.navigate(Route::Replay(id.clone()), Arrival::Moved, cx);
+                                root.navigate(Route::Replay(*id), Arrival::Moved, cx);
                             }
                         }));
                     self.page = Page::Recordings(page);
@@ -321,8 +321,7 @@ impl Root {
                     Page::Machines | Page::Recordings(_) => false,
                 };
                 if !kept {
-                    let (daemon, clock, opened) =
-                        (self.daemon.clone(), self.clock.clone(), id.clone());
+                    let (daemon, clock, opened) = (self.daemon.clone(), self.clock.clone(), id);
                     let page = cx.new(|cx| ReplayPage::open(daemon, clock, opened, cx));
                     self._page_events =
                         Some(cx.subscribe(&page, |root, _, event, cx| match event {

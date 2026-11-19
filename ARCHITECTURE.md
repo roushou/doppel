@@ -39,11 +39,12 @@ Inside the larger crates:
 
 One home each; extend it rather than adding a parallel one.
 
-- A guest step (a write, or a run that must exit 0) and its runner:
-  `doppel_host::guest_step`; the guest's account name: `guest_user`.
-- Whether an agent answers yet: `AgentReach` in `machines/agent_connection`;
-  waiting for something to be ready: `Machines::poll` in `machines/poll`.
-- Whether a checkpoint is there: `doppel_machine::bundle::CheckpointPresence`.
-- Whether a failed request may have happened: `Failure` on each error,
-  `ClientError`'s included.
+- Guest steps: `doppel_host::guest_step`; the guest's account: `guest_user`.
+- An agent answering yet: `AgentReach`; waiting until ready: `Machines::poll`.
+- A checkpoint's files: `CheckpointPresence`; how one ended: `CheckpointResult`.
+- Ids: `activity::SessionId`, `recording::{RecordingId, VideoFile}` (machine).
+- A request as it arrives, its machine named: daemon `requests::arrival`.
+- A start, then the desktop: `doppel_client::BringUp`.
+- A person's look or read and its answer: `timeline::Asked`, by `Ticket`.
+- Whether a failed request may have happened: `Failure`, on each error.
 - What a picked action leads to, a question or an order: `app::ask::Next`.
