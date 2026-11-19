@@ -29,6 +29,8 @@ pub struct MachineReport {
     pub status: Status,
     pub agent: AgentReport,
     pub checkpoints: Vec<CheckpointLabel>,
+    /// Among `checkpoints`, those missing their memory or disk.
+    pub incomplete: Vec<CheckpointLabel>,
 }
 
 /// The VMM's view of the VM. Unrecognised values from a newer VMM are kept.

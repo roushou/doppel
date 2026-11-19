@@ -13,8 +13,8 @@ use doppel_desktop::exec::{ExecError, ExecOutput, ExecRequest, Termination};
 use doppel_desktop::guest_path::GuestPathError;
 use doppel_desktop::outcome::{Certainty, Failure, Outcome, Unconfirmed};
 use doppel_machine::bundle::{
-    CheckpointLabel, CheckpointPresence, FileOp, GuestRepair, KeptAux, MachineBundle, SocketPath,
-    Trash,
+    CheckpointFiles, CheckpointLabel, CheckpointPresence, FileOp, GuestRepair, KeptAux,
+    MachineBundle, SocketPath, Trash,
 };
 use doppel_machine::checkpoint::{
     Action, AfterCheckpoint, Aftermath, Checkpoint, CheckpointPlan, Event, GuestSync,
@@ -1322,9 +1322,8 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
         let name = claim.name();
         let bundle = &claim.bundle;
         let checkpoint = bundle.checkpoint(label);
-        let present = self.files.present(checkpoint.probes())?;
         // Even a partial one: its folder is taken.
-        let taken = match checkpoint.presence(&present) {
+        let taken = match self.checkpoint_presence(&checkpoint)? {
             CheckpointPresence::Absent => false,
             CheckpointPresence::Partial | CheckpointPresence::Complete => true,
         };
@@ -1446,15 +1445,22 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
         }
     }
 
+    /// Whether `checkpoint` is all there, from which of its files exist.
+    pub(crate) fn checkpoint_presence(
+        &self,
+        checkpoint: &CheckpointFiles,
+    ) -> Result<CheckpointPresence, MachineError> {
+        Ok(checkpoint.presence(&self.files.present(checkpoint.probes())?))
+    }
+
     fn existing_checkpoint(
         &self,
         bundle: &MachineBundle,
         label: &CheckpointLabel,
-    ) -> Result<doppel_machine::bundle::CheckpointFiles, MachineError> {
+    ) -> Result<CheckpointFiles, MachineError> {
         let checkpoint = bundle.checkpoint(label);
-        let present = self.files.present(checkpoint.probes())?;
         let (machine, label) = (bundle.name().clone(), label.clone());
-        match checkpoint.presence(&present) {
+        match self.checkpoint_presence(&checkpoint)? {
             CheckpointPresence::Complete => Ok(checkpoint),
             CheckpointPresence::Partial => Err(MachineError::PartialCheckpoint { machine, label }),
             CheckpointPresence::Absent => Err(MachineError::NoSuchCheckpoint { machine, label }),
@@ -1508,9 +1514,8 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
             return Err(StoreError::NoSuchMachine(name.clone()).into());
         }
         let checkpoint = bundle.checkpoint(label);
-        let present = self.files.present(checkpoint.probes())?;
         // A partial one can be deleted: it is the way out of one.
-        let gone = match checkpoint.presence(&present) {
+        let gone = match self.checkpoint_presence(&checkpoint)? {
             CheckpointPresence::Absent => true,
             CheckpointPresence::Partial | CheckpointPresence::Complete => false,
         };

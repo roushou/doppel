@@ -234,6 +234,8 @@ pub struct StatusReport {
     pub vm: String,
     pub agent: AgentReport,
     pub checkpoints: Vec<CheckpointLabel>,
+    /// Among `checkpoints`, those missing their memory or disk.
+    pub incomplete: Vec<CheckpointLabel>,
 }
 
 /// Which observation a finished wait renders.
@@ -718,10 +720,16 @@ impl StatusReport {
         if self.checkpoints.is_empty() {
             out.push_str("checkpoints: none\n");
         } else {
-            let labels: Vec<&str> = self
+            let labels: Vec<String> = self
                 .checkpoints
                 .iter()
-                .map(CheckpointLabel::as_str)
+                .map(|label| {
+                    if self.incomplete.contains(label) {
+                        format!("{label} (incomplete: can't be restored)")
+                    } else {
+                        label.to_string()
+                    }
+                })
                 .collect();
             let _ = writeln!(out, "checkpoints: {}", labels.join(", "));
         }
@@ -1126,6 +1134,7 @@ pub(crate) mod tests {
                 frontmost: None,
             }),
             checkpoints: vec!["ready".parse().unwrap(), "before-install".parse().unwrap()],
+            incomplete: vec!["before-install".parse().unwrap()],
         }
         .render();
         assert!(
@@ -1133,7 +1142,8 @@ pub(crate) mod tests {
             "{connected}"
         );
         assert!(
-            connected.ends_with("checkpoints: ready, before-install"),
+            connected
+                .ends_with("checkpoints: ready, before-install (incomplete: can't be restored)"),
             "{connected}"
         );
         let unreachable = StatusReport {
@@ -1141,6 +1151,7 @@ pub(crate) mod tests {
             vm: "running".into(),
             agent: AgentReport::Unreachable("x".into()),
             checkpoints: Vec::new(),
+            incomplete: Vec::new(),
         }
         .render();
         assert!(unreachable.contains("via=\"host\""), "{unreachable}");

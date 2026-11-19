@@ -266,9 +266,9 @@ impl Blocking {
     }
 
     fn checkpoints(&self, name: &MachineName) -> Result<Vec<CheckpointLabel>, DaemonError> {
-        Ok(self
-            .call(|client| client.report(name, within(CALL)))?
-            .checkpoints)
+        Ok(answers::usable_checkpoints(
+            self.call(|client| client.report(name, within(CALL)))?,
+        ))
     }
 
     fn report(&self, name: &MachineName) -> Result<MachineReport, DaemonError> {

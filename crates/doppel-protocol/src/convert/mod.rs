@@ -73,10 +73,48 @@ impl From<SnapshotSpec> for daemon::SnapshotSpec {
 
 // --- MachineReport -----------------------------------------------------------
 
+impl From<&MachineReport> for daemon::MachineReport {
+    fn from(report: &MachineReport) -> Self {
+        use daemon::machine_report::Agent;
+        Self {
+            status: Some(report.status.into()),
+            agent: Some(match &report.agent {
+                AgentReport::Connected(status) => Agent::Connected(status.into()),
+                AgentReport::Unreachable(why) => Agent::Unreachable(why.clone()),
+                AgentReport::NotRunning => Agent::NotRunning(daemon::Done {}),
+            }),
+            checkpoints: report.checkpoints.iter().map(ToString::to_string).collect(),
+            incomplete_checkpoints: report.incomplete.iter().map(ToString::to_string).collect(),
+        }
+    }
+}
+
+/// A report's labels, each parsed.
+fn labels(field: &'static str, raw: &[String]) -> Result<Vec<CheckpointLabel>, ParseError> {
+    raw.iter()
+        .map(|label| label.parse())
+        .collect::<Result<_, _>>()
+        .map_err(|error| ParseError::Invalid {
+            field,
+            reason: format!("{error}"),
+        })
+}
+
 impl TryFrom<daemon::MachineReport> for MachineReport {
     type Error = ParseError;
     fn try_from(report: daemon::MachineReport) -> Result<Self, ParseError> {
         use daemon::machine_report::Agent;
+        let checkpoints = labels("machine_report.checkpoints", &report.checkpoints)?;
+        let incomplete = labels(
+            "machine_report.incomplete_checkpoints",
+            &report.incomplete_checkpoints,
+        )?;
+        if let Some(stray) = incomplete.iter().find(|label| !checkpoints.contains(label)) {
+            return Err(ParseError::Invalid {
+                field: "machine_report.incomplete_checkpoints",
+                reason: format!("'{stray}' isn't among the checkpoints"),
+            });
+        }
         Ok(Self {
             status: report
                 .status
@@ -90,15 +128,8 @@ impl TryFrom<daemon::MachineReport> for MachineReport {
                 Agent::Unreachable(why) => AgentReport::Unreachable(why),
                 Agent::NotRunning(_) => AgentReport::NotRunning,
             },
-            checkpoints: report
-                .checkpoints
-                .iter()
-                .map(|label| label.parse())
-                .collect::<Result<_, _>>()
-                .map_err(|error| ParseError::Invalid {
-                    field: "machine_report.checkpoints",
-                    reason: format!("{error}"),
-                })?,
+            checkpoints,
+            incomplete,
         })
     }
 }
@@ -786,6 +817,23 @@ mod tests {
             RemoteError::from(missing(99)),
             RemoteError::PermissionMissing(Permission::Unrecognized(99))
         );
+    }
+
+    #[test]
+    fn a_machine_report_round_trips_and_its_incomplete_checkpoints_are_among_its_checkpoints() {
+        let report = MachineReport {
+            status: Status::Stopped(NextStart::ColdBoot),
+            agent: AgentReport::NotRunning,
+            checkpoints: vec!["ready".parse().unwrap(), "broken".parse().unwrap()],
+            incomplete: vec!["broken".parse().unwrap()],
+        };
+        let wire = daemon::MachineReport::from(&report);
+        assert_eq!(MachineReport::try_from(wire.clone()), Ok(report));
+        let stray = daemon::MachineReport {
+            incomplete_checkpoints: vec!["elsewhere".into()],
+            ..wire
+        };
+        assert!(MachineReport::try_from(stray).is_err());
     }
 
     #[test]

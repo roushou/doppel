@@ -9,7 +9,6 @@ pub(crate) mod operations;
 use std::os::unix::ffi::OsStrExt;
 use std::sync::Arc;
 
-use doppel_desktop::agent::AgentReport;
 use doppel_desktop::ax::refs::SnapshotRefs;
 use doppel_desktop::ax::tree::{SnapshotScope, SnapshotSpec};
 use doppel_desktop::input::Via;
@@ -1151,18 +1150,9 @@ where
         request: &daemon::GetMachineReport,
         call: &Call,
     ) -> Result<daemon::MachineReport, Refusal> {
-        use daemon::machine_report::Agent;
         let name = Refusal::name("name", &request.name)?;
         let report = self.status(&name, call)?;
-        Ok(daemon::MachineReport {
-            status: Some(report.status.into()),
-            agent: Some(match &report.agent {
-                AgentReport::Connected(status) => Agent::Connected(status.into()),
-                AgentReport::Unreachable(why) => Agent::Unreachable(why.clone()),
-                AgentReport::NotRunning => Agent::NotRunning(daemon::Done {}),
-            }),
-            checkpoints: report.checkpoints.iter().map(ToString::to_string).collect(),
-        })
+        Ok(daemon::MachineReport::from(&report))
     }
 
     pub(super) fn screenshot_request(

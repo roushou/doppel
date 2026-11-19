@@ -7,7 +7,7 @@ use crate::agent_install::plan::{AgentBuild, StepName};
 use crate::golden::plan::GoldenStepName;
 use crate::guest_user::GuestUserName;
 use doppel_desktop::deadline::Deadline;
-use doppel_machine::bundle::CheckpointLabel;
+use doppel_machine::bundle::{CheckpointLabel, CheckpointPresence};
 use doppel_machine::login::{LoginOutcome, LoginPolicy};
 use doppel_machine::machine::MachineName;
 use doppel_machine::screen_probe::HostScreen;
@@ -90,6 +90,18 @@ impl<'m, C: Clock, F: Filesystem> Machine<'m, C, F> {
         let bundle = store.bundle(&self.name);
         store.read_spec(&bundle)?;
         Ok(store.checkpoints(&bundle)?)
+    }
+
+    /// Whether its checkpoint `label` is all there.
+    ///
+    /// # Errors
+    /// Its files' existence couldn't be determined.
+    pub fn checkpoint_presence(
+        &self,
+        label: &CheckpointLabel,
+    ) -> Result<CheckpointPresence, MachineError> {
+        let checkpoint = self.machines.store().bundle(&self.name).checkpoint(label);
+        self.machines.checkpoint_presence(&checkpoint)
     }
 
     /// A connection to it while it runs.

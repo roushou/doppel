@@ -293,7 +293,7 @@ impl Daemon for WebDaemon {
 
     fn checkpoints(&self, name: &MachineName) -> Answer<Vec<CheckpointLabel>> {
         let report = self.report(name);
-        Box::pin(async move { Ok(report.await?.checkpoints) })
+        Box::pin(async move { Ok(answers::usable_checkpoints(report.await?)) })
     }
 
     fn report(&self, name: &MachineName) -> Answer<MachineReport> {

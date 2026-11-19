@@ -118,6 +118,7 @@ mod tests {
                 }),
             }),
             checkpoints: vec!["one".parse().unwrap(), "two".parse().unwrap()],
+            incomplete: Vec::new(),
         }
     }
 
@@ -179,6 +180,7 @@ mod tests {
                 status: Status::Stopped(NextStart::ColdBoot),
                 agent,
                 checkpoints: Vec::new(),
+                incomplete: Vec::new(),
             })
         };
         assert_eq!(

@@ -390,6 +390,7 @@ impl Calls<'_> {
                     vm: report.status.to_string(),
                     agent: report.agent,
                     checkpoints: report.checkpoints,
+                    incomplete: report.incomplete,
                     machine,
                 })
             }

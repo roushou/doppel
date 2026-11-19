@@ -302,7 +302,8 @@ impl Next {
             } => Self::Done(template.clone()),
             Role::Golden {
                 template,
-                template_found: Checkpoint::Missing | Checkpoint::Unknown(_),
+                template_found:
+                    Checkpoint::Missing | Checkpoint::Incomplete | Checkpoint::Unknown(_),
                 ..
             } => Self::Blocked(Blocked::TemplateMissing {
                 name: name.clone(),

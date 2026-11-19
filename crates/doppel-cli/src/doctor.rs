@@ -102,6 +102,8 @@ pub(crate) enum Role {
 pub(crate) enum Checkpoint {
     Present,
     Missing,
+    /// There, without its memory or disk.
+    Incomplete,
     /// Its checkpoints couldn't be read, with why.
     Unknown(String),
 }
@@ -386,6 +388,13 @@ fn golden_image(machines: &[Machine]) -> (Verdict, Vec<Golden>) {
                 ..
             } => unusable.push(format!("{name}: its template '{template}' is gone")),
             Role::Golden {
+                template,
+                template_found: Checkpoint::Incomplete,
+                ..
+            } => unusable.push(format!(
+                "{name}: its template '{template}' is incomplete (its memory or disk is missing)"
+            )),
+            Role::Golden {
                 template_found: Checkpoint::Unknown(why),
                 ..
             } => unusable.push(format!("{name}: its checkpoints can't be read ({why})")),
@@ -596,6 +605,12 @@ mod tests {
         let d = Diagnosis::of(&facts(Daemon::Answered(vec![golden(
             "g",
             Checkpoint::Missing,
+        )])));
+        assert_eq!(verdict(&d, Check::GoldenImage).status(), "fail");
+        assert!(d.goldens.is_empty());
+        let d = Diagnosis::of(&facts(Daemon::Answered(vec![golden(
+            "g",
+            Checkpoint::Incomplete,
         )])));
         assert_eq!(verdict(&d, Check::GoldenImage).status(), "fail");
         assert!(d.goldens.is_empty());

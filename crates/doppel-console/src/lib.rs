@@ -145,7 +145,7 @@ pub trait Daemon: 'static {
     /// See [`DaemonError`].
     fn hold(&self, session: SessionId, hold: Hold) -> Answer<()>;
 
-    /// A machine's checkpoints, oldest first.
+    /// A machine's checkpoints that can be used, oldest first.
     ///
     /// # Errors
     /// See [`DaemonError`].

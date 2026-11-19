@@ -4,9 +4,10 @@
 //! the same way.
 
 use doppel_desktop::outcome::Failure;
+use doppel_machine::bundle::CheckpointLabel;
 use doppel_machine::lineage::RecordedLineage;
 use doppel_machine::machine::MachineName;
-use doppel_machine::vm::{RunState, Status};
+use doppel_machine::vm::{MachineReport, RunState, Status};
 use doppel_protocol::report::{
     CheckpointResult, MachineFailure, SessionInfo, SessionStatus, StopOutcome,
 };
@@ -80,6 +81,21 @@ pub fn summary(
         calls: summary.calls,
         traced_ms: summary.traced_ms,
     }
+}
+
+/// The checkpoints in `report` that can be restored, forked or started
+/// from: an incomplete one is left out.
+#[must_use]
+pub fn usable_checkpoints(report: MachineReport) -> Vec<CheckpointLabel> {
+    let MachineReport {
+        checkpoints,
+        incomplete,
+        ..
+    } = report;
+    checkpoints
+        .into_iter()
+        .filter(|label| !incomplete.contains(label))
+        .collect()
 }
 
 /// An order that went as asked.
@@ -184,6 +200,22 @@ mod tests {
                 awaiting: doppel_machine::checkpoint::Step::SyncingGuest,
             }),
             Verdict::Unknown("the checkpoint ended before it finished".into())
+        );
+    }
+
+    #[test]
+    fn an_incomplete_checkpoint_is_not_offered() {
+        use doppel_desktop::agent::AgentReport;
+        use doppel_machine::vm::NextStart;
+        let report = MachineReport {
+            status: Status::Stopped(NextStart::ColdBoot),
+            agent: AgentReport::NotRunning,
+            checkpoints: vec!["ready".parse().unwrap(), "broken".parse().unwrap()],
+            incomplete: vec!["broken".parse().unwrap()],
+        };
+        assert_eq!(
+            usable_checkpoints(report),
+            vec!["ready".parse::<CheckpointLabel>().unwrap()]
         );
     }
 }
