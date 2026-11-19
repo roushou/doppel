@@ -123,6 +123,8 @@ export PATH="$PWD/target/debug:$PATH"
 
 ## Documentation
 
+- [Glossary](docs/doppeld.md#glossary): machine, VM, checkpoint, fork,
+  golden image and the rest
 - [MCP](docs/mcp.md): the agent's tools and how they fit together
 - [doppeld](docs/doppeld.md): the daemon, sessions, recordings and remote
   access

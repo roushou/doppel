@@ -7,7 +7,8 @@ consoles for the people watching.
 - **Direction:** [docs/roadmap.md](docs/roadmap.md) says what works and what
   comes next, in order. Start there, and update it when an item lands.
 - **How it works:** [docs/mcp.md](docs/mcp.md) for the agent's tools,
-  [docs/doppeld.md](docs/doppeld.md) for the daemon,
+  [docs/doppeld.md](docs/doppeld.md) for the daemon (its glossary defines
+  machine, VM, checkpoint and the rest),
   [docs/crates.md](docs/crates.md) for which crate owns what.
 - **Checks:** every change passes `scripts/check.sh`. To check on a live
   machine, rebuild with `scripts/build.sh`, restart the daemon with
