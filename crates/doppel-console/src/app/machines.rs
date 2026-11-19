@@ -21,7 +21,7 @@ use super::{
     FACTS, FACTS_NARROW, HEAD, HEADER, NARROW, RAIL, RIM, Segment, ToastTone, dot, end_cell, id,
     ink, segment,
 };
-use crate::app::ask::{Choice, Question};
+use crate::app::ask::{Choice, Next, Question};
 use crate::elements::Named;
 use crate::model::{
     Action, Bay, Group, Hold, Machine, MachineState, Order, Provenance, Run, Session,
@@ -369,11 +369,9 @@ impl MachinesPage {
             let _ = page.update(cx, |page, cx| {
                 page.panels.of(&name).finish();
                 match verdict {
-                    Verdict::Done { note, made } => {
+                    Verdict::Done { note } => {
                         let said = note.unwrap_or_else(|| order.done());
                         page.toast(ToastTone::Done, format!("{name}: {said}"), cx);
-                        // A machine made running takes an empty bay by itself.
-                        let _ = made;
                     }
                     Verdict::Refused(why) => {
                         page.toast(ToastTone::Refused, format!("{name}: {why}"), cx);
@@ -665,28 +663,8 @@ impl MachinesPage {
             return;
         };
         match Question::before(action, &machine) {
-            Some(question) => cx.emit(MachinesEvent::Ask(question)),
-            None => {
-                let order = match action {
-                    Action::Start => Order::Start,
-                    Action::Stop => Order::Stop,
-                    Action::Pause => Order::Pause,
-                    Action::Resume => Order::Resume,
-                    // Asked about first; a golden image no longer golden
-                    // by now is started as asked.
-                    Action::StartGolden => Order::Start,
-                    // Asked about first.
-                    Action::FromTemplate
-                    | Action::ForceStop
-                    | Action::Checkpoint
-                    | Action::RollBack
-                    | Action::Restore
-                    | Action::Fork
-                    | Action::NewCopy
-                    | Action::Delete => return,
-                };
-                self.run(name.clone(), order, cx);
-            }
+            Next::Ask(question) => cx.emit(MachinesEvent::Ask(question)),
+            Next::Run(order) => self.run(name.clone(), order, cx),
         }
     }
 

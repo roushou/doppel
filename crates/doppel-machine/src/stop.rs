@@ -30,6 +30,14 @@ pub enum StopMode {
     Force,
 }
 
+/// Where a stop left the machine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StopOutcome {
+    Stopped,
+    /// Asked to shut down, and still running.
+    ShutdownPending,
+}
+
 /// How the guest was asked to stop.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StopRequest<U> {

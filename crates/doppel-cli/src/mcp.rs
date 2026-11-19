@@ -16,13 +16,12 @@ use doppel_desktop::outcome::{Certainty, Failure, Outcome, Unconfirmed};
 use doppel_host::capabilities::{Clock, SystemClock};
 use doppel_machine::checkpoint::AfterCheckpoint;
 use doppel_machine::machine::MachineName;
-use doppel_machine::vm::NextStart;
 use doppel_protocol::transport::Cancel;
 
 use doppel_host::machines::CALL_TIMEOUT;
 use doppel_mcp::{
-    Cancellation, CheckpointEnd, ClientName, Notice, Ran, Runner, Server, StartedFrom,
-    StatusReport, ToolAction, ToolCall, ToolOutcome,
+    Cancellation, CheckpointEnd, ClientName, Notice, Ran, Runner, Server, StatusReport, ToolAction,
+    ToolCall, ToolOutcome,
 };
 use rmcp::ServiceExt;
 use tokio::sync::watch;
@@ -243,30 +242,11 @@ pub enum ToolError {
 impl Failure for ToolError {
     fn certainty(&self) -> Certainty {
         match self {
-            Self::Daemon(ClientError::Machine(failure)) => failure.certainty(),
+            Self::Daemon(error) => error.certainty(),
             // Refused before it ran.
-            Self::Daemon(
-                ClientError::NoDaemon(_)
-                | ClientError::Connect(_)
-                | ClientError::VersionMismatch { .. }
-                | ClientError::Encode(_)
-                | ClientError::Remote(_),
-            )
-            | Self::StaleRef { .. }
-            | Self::NotStarted(_) => Certainty::NotDone,
+            Self::StaleRef { .. } | Self::NotStarted(_) => Certainty::NotDone,
             // Sent, and no answer to trust.
-            Self::Daemon(
-                ClientError::Io(_)
-                | ClientError::Closed
-                | ClientError::Lost(_)
-                | ClientError::Timeout
-                | ClientError::Stream(_)
-                | ClientError::Protocol(_)
-                | ClientError::WrongAnswer(_)
-                | ClientError::Parse(_),
-            )
-            | Self::StillRunning(_)
-            | Self::Interrupted(_) => Certainty::MaybeDone,
+            Self::StillRunning(_) | Self::Interrupted(_) => Certainty::MaybeDone,
         }
     }
 }
@@ -518,13 +498,9 @@ impl Calls<'_> {
             }
             // Hidden: the model drives it. Then the desktop.
             ToolAction::Start => {
-                let (_, next) = client
+                let (_, from) = client
                     .start(&machine, Window::Hidden, at)
                     .map_err(ToolError::from)?;
-                let from = match next {
-                    NextStart::ColdBoot => StartedFrom::ColdBoot,
-                    NextStart::ResumeSavedState => StartedFrom::SavedState,
-                };
                 ToolOutcome::Started {
                     desktop: client
                         .await_desktop(&machine, at)

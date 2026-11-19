@@ -36,6 +36,48 @@ pub enum Paused {
     Cancelled,
 }
 
+/// Whether an agent answers yet. One still coming up (unreachable, or a
+/// handshake failure that passes) isn't an error: why it doesn't answer is
+/// kept for the report.
+#[derive(Debug)]
+pub(crate) enum AgentReach<A> {
+    Answers(A),
+    NotYet(String),
+}
+
+impl<A> AgentReach<A> {
+    /// How an attempt to reach an agent went.
+    ///
+    /// # Errors
+    /// The machine isn't running, or its agent answers wrongly.
+    fn of(attempt: Result<A, MachineError>) -> Result<Self, MachineError> {
+        match attempt {
+            Ok(agent) => Ok(Self::Answers(agent)),
+            Err(error @ MachineError::AgentUnreachable { .. }) => {
+                Ok(Self::NotYet(error.to_string()))
+            }
+            Err(MachineError::AgentHandshake { source, .. }) if source.is_transient() => {
+                Ok(Self::NotYet(source.to_string()))
+            }
+            Err(error) => Err(error),
+        }
+    }
+}
+
+impl<C: Clock, F: Filesystem> Machines<C, F> {
+    /// A fresh connection to `machine`'s agent, or why none answers yet.
+    ///
+    /// # Errors
+    /// The machine isn't running, or its agent answers wrongly.
+    pub(crate) fn reach_agent(
+        &self,
+        machine: &MachineName,
+        by: Deadline,
+    ) -> Result<AgentReach<AgentClient<&C>>, MachineError> {
+        AgentReach::of(self.agent(machine, by))
+    }
+}
+
 impl<C> Default for AgentConnection<C> {
     fn default() -> Self {
         Self { client: None }
@@ -267,5 +309,28 @@ mod tests {
             Paused::Due
         );
         assert!(connection.client.is_none(), "the next request reconnects");
+    }
+
+    #[test]
+    fn an_agent_not_up_yet_is_not_an_error_but_a_wrong_answer_is() {
+        let dev: MachineName = "dev".parse().unwrap();
+        let handshake = |source| MachineError::AgentHandshake {
+            machine: dev.clone(),
+            source,
+        };
+        let reach = |attempt: Result<(), MachineError>| AgentReach::of(attempt);
+        assert!(matches!(reach(Ok(())), Ok(AgentReach::Answers(()))));
+        assert!(matches!(
+            reach(Err(handshake(AgentError::Closed))),
+            Ok(AgentReach::NotYet(why)) if why == "agent closed the connection"
+        ));
+        assert!(matches!(
+            reach(Err(handshake(AgentError::Protocol("hello")))),
+            Err(MachineError::AgentHandshake { .. })
+        ));
+        assert!(matches!(
+            reach(Err(MachineError::NotRunning(dev.clone()))),
+            Err(MachineError::NotRunning(_))
+        ));
     }
 }

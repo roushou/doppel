@@ -204,10 +204,7 @@ async fn order(reach: &Reach, name: &MachineName, order: Order) -> Result<Verdic
                     into: into.to_string(),
                 })
                 .await?;
-            Verdict::Done {
-                note: None,
-                made: Some(into),
-            }
+            answers::done()
         }
         Order::NewCopy(label) => {
             let run = connection
@@ -217,20 +214,17 @@ async fn order(reach: &Reach, name: &MachineName, order: Order) -> Result<Verdic
                     count: 1,
                 })
                 .await?;
-            let mut made = None;
             let mut refused = Vec::new();
             for fork in run.forks {
                 match fork.outcome {
                     Some(daemon::run_fork::Outcome::Failure(failure)) => {
                         refused.push(format!("{}: {}", fork.name, failure.message));
                     }
-                    Some(daemon::run_fork::Outcome::Desktop(_)) | None => {
-                        made = made.or_else(|| fork.name.parse().ok());
-                    }
+                    Some(daemon::run_fork::Outcome::Desktop(_)) | None => {}
                 }
             }
             if refused.is_empty() {
-                Verdict::Done { note: None, made }
+                answers::done()
             } else {
                 Verdict::Refused(refused.join("; "))
             }

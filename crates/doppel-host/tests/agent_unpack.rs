@@ -13,7 +13,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use doppel_desktop::exec::{Completeness, ExecOutput, ExecRequest, Termination};
-use doppel_host::agent_install::plan::{AgentBuild, GuestAccount, InstallPlan, StepAction};
+use doppel_host::agent_install::plan::{AgentBuild, GuestAccount, InstallPlan};
+use doppel_host::guest_step::plan::GuestAction;
 
 struct Scratch(PathBuf);
 
@@ -89,11 +90,11 @@ fn install(home: &Path, build: &str, archive: Vec<u8>) -> std::process::Output {
     .unwrap();
     let build: AgentBuild = build.parse().unwrap();
     let plan = InstallPlan::new(archive, build, &account).unwrap();
-    let StepAction::Write(upload) = &plan.steps[0].action else {
+    let GuestAction::Write(upload) = &plan.steps[0].action else {
         panic!("upload first")
     };
     fs::write(upload.path.as_str(), upload.data()).unwrap();
-    let StepAction::Run(unpack) = &plan.steps[1].action else {
+    let GuestAction::Run(unpack) = &plan.steps[1].action else {
         panic!("then unpack")
     };
     let output = command(unpack).output().unwrap();
@@ -173,7 +174,7 @@ fn the_restart_script_is_valid_sh() {
     })
     .unwrap();
     let plan = InstallPlan::new(Vec::new(), "b".parse().unwrap(), &account).unwrap();
-    let StepAction::Run(restart) = &plan.steps[3].action else {
+    let GuestAction::Run(restart) = &plan.steps[3].action else {
         panic!("restart last")
     };
     let script = &restart.arguments()[1];

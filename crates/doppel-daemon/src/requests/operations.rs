@@ -45,13 +45,7 @@ use crate::requests::forks::{ForkPlan, MacError, PlanError};
 use crate::scheduler::Cancelled;
 use crate::scheduler::{Begun, Call, Turn};
 
-/// How an action on an element ended.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Acted {
-    Done,
-    /// The element is gone or changed since its snapshot; nothing was done.
-    StaleReference,
-}
+pub use doppel_protocol::report::Acted;
 
 /// Why an operation failed. Each says whether it may still have taken
 /// effect.

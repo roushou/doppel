@@ -485,10 +485,7 @@ where
             if let (Some(daemon::daemon_frame::Kind::Response(response)), Some(note)) =
                 (&mut response.kind, note)
             {
-                response.handed_back = Some(daemon::HandedBack {
-                    machine: note.machine.to_string(),
-                    held_millis: u64::try_from(note.held.as_millis()).unwrap_or(u64::MAX),
-                });
+                response.handed_back = Some(daemon::HandedBack::from(&note));
             }
             if let Err(error) = link.write(&response) {
                 eprintln!("doppeld: answering request {id}: {error}");

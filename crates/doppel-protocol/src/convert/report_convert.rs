@@ -5,8 +5,8 @@ use doppel_machine::screen_probe::HostScreen;
 use super::ParseError;
 use crate::pb::daemon::v1 as daemon;
 use crate::report::{
-    CheckpointReport, CheckpointResult, Cleanup, HandedBack, MachineFailure, SessionInfo,
-    SessionStatus, StopOutcome, StopReport, StopRequest,
+    Acted, CheckpointReport, CheckpointResult, Cleanup, HandedBack, MachineFailure, SessionInfo,
+    SessionStatus, StopReport, StopRequest,
 };
 
 impl TryFrom<daemon::MachineStopped> for StopReport {
@@ -23,16 +23,7 @@ impl TryFrom<daemon::MachineStopped> for StopReport {
             },
             Some(Request::PowerButton(why)) => StopRequest::PowerButton { why },
         };
-        let outcome = match daemon::StopOutcome::try_from(stopped.outcome) {
-            Ok(daemon::StopOutcome::Stopped) => StopOutcome::Stopped,
-            Ok(daemon::StopOutcome::ShutdownPending) => StopOutcome::ShutdownPending,
-            Ok(daemon::StopOutcome::Unspecified) | Err(_) => {
-                return Err(ParseError::UnknownEnum {
-                    field: "machine_stopped.outcome",
-                    value: stopped.outcome,
-                });
-            }
-        };
+        let outcome = ParseError::stop_outcome("machine_stopped.outcome", stopped.outcome)?;
         Ok(Self { request, outcome })
     }
 }
@@ -85,6 +76,35 @@ impl TryFrom<daemon::CheckpointReport> for CheckpointReport {
     }
 }
 
+impl From<Acted> for daemon::ActOutcome {
+    fn from(acted: Acted) -> Self {
+        match acted {
+            Acted::Done => Self::Done,
+            Acted::StaleReference => Self::StaleReference,
+        }
+    }
+}
+
+impl ParseError {
+    /// Parses a daemon `ActOutcome` field.
+    pub fn acted(field: &'static str, raw: i32) -> Result<Acted, Self> {
+        Self::enumeration(field, raw, |acted| match acted {
+            daemon::ActOutcome::Done => Some(Acted::Done),
+            daemon::ActOutcome::StaleReference => Some(Acted::StaleReference),
+            daemon::ActOutcome::Unspecified => None,
+        })
+    }
+}
+
+impl From<&HandedBack> for daemon::HandedBack {
+    fn from(note: &HandedBack) -> Self {
+        Self {
+            machine: note.machine.to_string(),
+            held_millis: u64::try_from(note.held.as_millis()).unwrap_or(u64::MAX),
+        }
+    }
+}
+
 impl TryFrom<&daemon::HandedBack> for HandedBack {
     type Error = ParseError;
 
@@ -121,5 +141,31 @@ impl TryFrom<daemon::SessionEntry> for SessionInfo {
                 }
             },
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn act_outcomes_round_trip_and_unspecified_is_rejected() {
+        for acted in [Acted::Done, Acted::StaleReference] {
+            let raw = daemon::ActOutcome::from(acted) as i32;
+            assert_eq!(ParseError::acted("a", raw), Ok(acted));
+        }
+        assert!(ParseError::acted("a", 0).is_err());
+    }
+
+    #[test]
+    fn a_handed_back_note_round_trips() {
+        let note = HandedBack {
+            machine: "dev".parse().unwrap(),
+            held: Duration::from_millis(1500),
+        };
+        assert_eq!(
+            HandedBack::try_from(&daemon::HandedBack::from(&note)),
+            Ok(note)
+        );
     }
 }

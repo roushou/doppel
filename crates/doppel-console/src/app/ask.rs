@@ -53,27 +53,40 @@ pub(crate) enum Question {
     Delete(MachineName),
 }
 
+/// What a picked action leads to: a question first, or its order at once.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Next {
+    Ask(Question),
+    Run(Order),
+}
+
 impl Question {
-    /// What to ask before `action` on `machine`, if anything.
-    pub(crate) fn before(action: Action, of: &Machine) -> Option<Self> {
+    /// What `action` on `machine` leads to: what to ask first, or the
+    /// order to run now.
+    pub(crate) fn before(action: Action, of: &Machine) -> Next {
         let machine = of.name.clone();
         let template = of.template().cloned();
         match action {
-            Action::Start | Action::Stop | Action::Pause | Action::Resume => None,
-            // No longer golden by the time it's picked: ask nothing more.
-            Action::StartGolden => template.map(|template| Self::StartGolden { machine, template }),
-            Action::FromTemplate => Some(Self::Choose {
+            Action::Start => Next::Run(Order::Start),
+            Action::Stop => Next::Run(Order::Stop),
+            Action::Pause => Next::Run(Order::Pause),
+            Action::Resume => Next::Run(Order::Resume),
+            // No longer golden by the time it's picked: started as asked.
+            Action::StartGolden => template.map_or(Next::Run(Order::Start), |template| {
+                Next::Ask(Self::StartGolden { machine, template })
+            }),
+            Action::FromTemplate => Next::Ask(Self::Choose {
                 choice: Choice::NewCopy,
                 machine: Some(machine),
                 template,
             }),
-            Action::ForceStop => Some(Self::ForceStop(machine)),
-            Action::Delete => Some(Self::Delete(machine)),
-            Action::Checkpoint => Some(Self::Checkpoint(machine)),
-            Action::RollBack => Some(Self::choose(Choice::RollBack, machine)),
-            Action::Restore => Some(Self::choose(Choice::Restore, machine)),
-            Action::Fork => Some(Self::choose(Choice::Fork, machine)),
-            Action::NewCopy => Some(Self::choose(Choice::NewCopy, machine)),
+            Action::ForceStop => Next::Ask(Self::ForceStop(machine)),
+            Action::Delete => Next::Ask(Self::Delete(machine)),
+            Action::Checkpoint => Next::Ask(Self::Checkpoint(machine)),
+            Action::RollBack => Next::Ask(Self::choose(Choice::RollBack, machine)),
+            Action::Restore => Next::Ask(Self::choose(Choice::Restore, machine)),
+            Action::Fork => Next::Ask(Self::choose(Choice::Fork, machine)),
+            Action::NewCopy => Next::Ask(Self::choose(Choice::NewCopy, machine)),
         }
     }
 
@@ -764,20 +777,23 @@ mod tests {
         };
         assert_eq!(
             Question::before(Action::StartGolden, &golden),
-            Some(Question::StartGolden {
+            Next::Ask(Question::StartGolden {
                 machine: golden.name.clone(),
                 template: "ready".parse().unwrap(),
             })
         );
         assert_eq!(
             Question::before(Action::FromTemplate, &golden),
-            Some(Question::Choose {
+            Next::Ask(Question::Choose {
                 choice: Choice::NewCopy,
                 machine: Some(golden.name.clone()),
                 template: Some("ready".parse().unwrap()),
             })
         );
-        assert_eq!(Question::before(Action::Start, &golden), None);
+        assert_eq!(
+            Question::before(Action::Start, &golden),
+            Next::Run(Order::Start)
+        );
     }
 
     #[test]

@@ -33,6 +33,8 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
+pub use checkpoint_files::{CheckpointFiles, CheckpointPresence};
+
 use crate::machine::MachineName;
 use crate::vm::RunState;
 
@@ -579,23 +581,6 @@ impl ResumeAttempt {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CheckpointFiles {
-    pub dir: PathBuf,
-    pub image: ImageFiles,
-    pub memory: PathBuf,
-}
-
-impl CheckpointFiles {
-    fn in_dir(dir: PathBuf) -> Self {
-        Self {
-            image: ImageFiles::in_dir(&dir),
-            memory: dir.join("memory.vzsave"),
-            dir,
-        }
-    }
-}
-
 /// A new bundle assembled out of sight: the shell runs `build`, writes the
 /// spec at `spec` and the lineage at `lineage`, then runs `commit`, the
 /// rename that makes it appear.
@@ -832,6 +817,8 @@ pub enum FileOp {
     /// deleted checkpoint's in `checkpoints/.deleting`.
     RemoveTree { path: PathBuf },
 }
+
+mod checkpoint_files;
 
 #[cfg(test)]
 pub(crate) mod model;

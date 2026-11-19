@@ -17,7 +17,7 @@ use doppel_client::{
 use doppel_desktop::guest_path::GuestPath;
 use doppel_desktop::outcome::{Certainty, Failure as _};
 use doppel_host::agent_install::Installed;
-use doppel_host::golden::plan::GuestUserName;
+use doppel_host::guest_user::GuestUserName;
 use doppel_host::vmm::RecordingSummary;
 use doppel_machine::bundle::CheckpointLabel;
 use doppel_machine::lineage::Lineage;

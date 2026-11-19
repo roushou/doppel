@@ -120,6 +120,14 @@ pub enum NextStart {
     ResumeSavedState,
 }
 
+/// How a resume found the guest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Resumed {
+    Resumed,
+    /// It was running already: nothing to do.
+    AlreadyRunning,
+}
+
 /// A machine's status: its VMM's run state, or how it would start.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {

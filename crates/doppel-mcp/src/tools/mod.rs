@@ -23,6 +23,7 @@ use doppel_machine::checkpoint::{GuestAfterFailure, GuestSync, Step};
 use doppel_machine::login::Desktop;
 use doppel_machine::machine::MachineName;
 use doppel_machine::screen_probe::HostScreen;
+use doppel_machine::vm::NextStart;
 use rmcp::model::{CallToolResult, ContentBlock};
 
 use crate::refs::Refs;
@@ -235,13 +236,6 @@ pub struct StatusReport {
     pub checkpoints: Vec<CheckpointLabel>,
 }
 
-/// How a started machine came up.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StartedFrom {
-    ColdBoot,
-    SavedState,
-}
-
 /// Which observation a finished wait renders.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum WaitMoment {
@@ -333,7 +327,7 @@ pub enum ToolOutcome<E> {
     },
     Started {
         machine: MachineName,
-        from: StartedFrom,
+        from: NextStart,
         desktop: Desktop,
     },
     Stopped {
@@ -468,8 +462,8 @@ impl<E: std::fmt::Display> ToolOutcome<E> {
                 desktop,
             } => {
                 let how = match from {
-                    StartedFrom::ColdBoot => "booted",
-                    StartedFrom::SavedState => "resumed its saved state",
+                    NextStart::ColdBoot => "booted",
+                    NextStart::ResumeSavedState => "resumed its saved state",
                 };
                 Self::desktop(&format!("{machine} {how}"), &desktop)
             }
@@ -1415,7 +1409,7 @@ pub(crate) mod tests {
             );
             let locked = TestOutcome::Started {
                 machine: dev(),
-                from: StartedFrom::SavedState,
+                from: NextStart::ResumeSavedState,
                 desktop: Desktop {
                     login: doppel_machine::login::LoginOutcome::NeedsPassword,
                     screen: None,

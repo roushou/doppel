@@ -32,5 +32,17 @@ Inside the larger crates:
 - console: `app` → {`screen`, `route`, `input`, `answers`} → `ui`;
   `macos`/`web` (the `platform`) and `screen` meet at the frame feed
 - scene: `film`, `panel`, `attention`, `recordings` → `timeline`
-- host: provisioning procedures → `machines` → {`vmm`, `agent`, `store`}
-  → {`capabilities`, `files`}
+- host: provisioning procedures → `guest_step` → `machines` → {`vmm`,
+  `agent`, `store`} → {`capabilities`, `files`, `guest_user`}
+
+## Named concepts
+
+One home each; extend it rather than adding a parallel one.
+
+- A guest step (a write, or a run that must exit 0) and its runner:
+  `doppel_host::guest_step`; the guest's account name: `guest_user`.
+- Whether an agent answers yet: `AgentReach` in `machines/agent_connection`.
+- Whether a checkpoint is there: `doppel_machine::bundle::CheckpointPresence`.
+- Whether a failed request may have happened: `Failure` on each error,
+  `ClientError`'s included.
+- What a picked action leads to, a question or an order: `app::ask::Next`.

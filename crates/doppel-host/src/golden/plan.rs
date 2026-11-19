@@ -17,66 +17,16 @@
 //! only shows on resume, where `doppel login` handles it.
 
 use std::fmt;
-use std::str::FromStr;
 use std::time::Duration;
 
-use doppel_desktop::exec::{ExecError, ExecOutput, ExecRequest, Termination};
+use doppel_desktop::exec::{ExecError, ExecRequest};
 use doppel_desktop::files::{FileError, FileMode, WritePolicy, WriteRequest};
 use doppel_desktop::guest_path::{GuestPath, GuestPathError};
 use doppel_machine::login::LoginPassword;
 
-/// A macOS account short name.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GuestUserName(String);
-
-impl FromStr for GuestUserName {
-    type Err = GoldenError;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let valid = (1..=64).contains(&s.len())
-            && s.bytes()
-                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b'-'))
-            && !s.starts_with('-');
-        if valid {
-            Ok(Self(s.to_owned()))
-        } else {
-            Err(GoldenError::Probe(format!(
-                "{s:?} is not an account short name"
-            )))
-        }
-    }
-}
-
-impl GuestUserName {
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    /// Prints the user's short name.
-    ///
-    /// # Errors
-    /// Never in practice: the request is fixed.
-    pub fn probe() -> Result<ExecRequest, GoldenError> {
-        Ok(ExecRequest::new(
-            "/usr/bin/id".parse()?,
-            vec!["-un".into()],
-            Duration::from_secs(10),
-            1024,
-        )?)
-    }
-
-    /// # Errors
-    /// [`GoldenError::Probe`] unless `id -un` exited 0 with a short name.
-    pub fn parse(output: &ExecOutput) -> Result<Self, GoldenError> {
-        if output.termination != Termination::Exited(0) {
-            return Err(GoldenError::Probe(output.termination.to_string()));
-        }
-        std::str::from_utf8(&output.stdout)
-            .map_err(|_| GoldenError::Probe("not UTF-8".into()))?
-            .trim()
-            .parse()
-    }
-}
+use crate::guest_step::plan::{GuestAction, GuestStep, RunFailed};
+use crate::guest_user::GuestUserError;
+pub use crate::guest_user::GuestUserName;
 
 /// The obfuscated password file macOS auto-login reads (`/etc/kcpassword`):
 /// the password XORed with a fixed key, padded with NULs to a multiple of 12.
@@ -117,19 +67,17 @@ impl fmt::Debug for KcPassword {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum GoldenError {
     #[error("couldn't read the guest user: {0}")]
-    Probe(String),
+    User(#[from] GuestUserError),
     #[error(transparent)]
     Path(#[from] GuestPathError),
     #[error(transparent)]
     File(#[from] FileError),
     #[error(transparent)]
     Exec(#[from] ExecError),
-    #[error("{step} failed: {termination}{stderr}")]
+    #[error("{step} failed: {failed}")]
     StepFailed {
         step: GoldenStepName,
-        termination: Termination,
-        /// `": <stderr>"`, or empty.
-        stderr: String,
+        failed: RunFailed,
     },
 }
 
@@ -153,47 +101,9 @@ impl fmt::Display for GoldenStepName {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum GoldenAction {
-    Write(WriteRequest),
-    /// Must exit 0.
-    Run(ExecRequest),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GoldenStep {
-    pub name: GoldenStepName,
-    pub action: GoldenAction,
-}
-
-impl GoldenStep {
-    /// # Errors
-    /// [`GoldenError::StepFailed`] unless it exited 0.
-    pub fn check(&self, output: &ExecOutput) -> Result<(), GoldenError> {
-        match output.termination {
-            Termination::Exited(0) => Ok(()),
-            termination @ (Termination::Exited(_)
-            | Termination::Signaled(_)
-            | Termination::TimedOut) => {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                let stderr = stderr.trim();
-                Err(GoldenError::StepFailed {
-                    step: self.name,
-                    termination,
-                    stderr: if stderr.is_empty() {
-                        String::new()
-                    } else {
-                        format!(": {stderr}")
-                    },
-                })
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 #[must_use]
 pub struct GoldenPlan {
-    pub steps: Vec<GoldenStep>,
+    pub steps: Vec<GuestStep<GoldenStepName>>,
 }
 
 /// As root. `$1` user, `$2` the uploaded kcpassword (removed either way).
@@ -260,9 +170,9 @@ impl GoldenPlan {
         stdin.push(b'\n');
         Ok(Self {
             steps: vec![
-                GoldenStep {
+                GuestStep {
                     name: GoldenStepName::Screensaver,
-                    action: GoldenAction::Run(run(
+                    action: GuestAction::Run(run(
                         "/usr/bin/defaults".parse()?,
                         [
                             "-currentHost",
@@ -276,24 +186,24 @@ impl GoldenPlan {
                         .to_vec(),
                     )?),
                 },
-                GoldenStep {
+                GuestStep {
                     name: GoldenStepName::UploadAutoLogin,
-                    action: GoldenAction::Write(WriteRequest::new(
+                    action: GuestAction::Write(WriteRequest::new(
                         kc,
                         KcPassword::encode(password).into_bytes(),
                         FileMode::new(0o600)?,
                         WritePolicy::Replace,
                     )?),
                 },
-                GoldenStep {
+                GuestStep {
                     name: GoldenStepName::AdminSettings,
-                    action: GoldenAction::Run(
+                    action: GuestAction::Run(
                         run("/usr/bin/sudo".parse()?, sudo_args)?.with_stdin(stdin),
                     ),
                 },
-                GoldenStep {
+                GuestStep {
                     name: GoldenStepName::Verify,
-                    action: GoldenAction::Run(run(sh, script(VERIFY, &[user.as_str()]))?),
+                    action: GuestAction::Run(run(sh, script(VERIFY, &[user.as_str()]))?),
                 },
             ],
         })
@@ -303,7 +213,7 @@ impl GoldenPlan {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use doppel_desktop::exec::Completeness;
+    use doppel_desktop::exec::{Completeness, ExecOutput, Termination};
 
     fn password() -> LoginPassword {
         LoginPassword::parse(b"s3cret-pass").unwrap()
@@ -340,31 +250,6 @@ mod tests {
     }
 
     #[test]
-    fn user_names_parse_from_the_probe() {
-        let out = |code, text: &str| ExecOutput {
-            termination: Termination::Exited(code),
-            stdout: text.into(),
-            stderr: Vec::new(),
-            completeness: Completeness::Full,
-        };
-        assert_eq!(
-            GuestUserName::parse(&out(0, "doppelsandbox\n"))
-                .unwrap()
-                .as_str(),
-            "doppelsandbox"
-        );
-        for bad in [
-            out(1, "x\n"),
-            out(0, ""),
-            out(0, "a b\n"),
-            out(0, "-x\n"),
-            out(0, "a;rm\n"),
-        ] {
-            assert!(GuestUserName::parse(&bad).is_err(), "{bad:?}");
-        }
-    }
-
-    #[test]
     fn the_password_reaches_sudo_on_stdin_and_never_an_argument() {
         let user: GuestUserName = "doppelsandbox".parse().unwrap();
         let plan = GoldenPlan::new(&user, &password()).unwrap();
@@ -380,7 +265,7 @@ mod tests {
         );
         for step in &plan.steps {
             match &step.action {
-                GoldenAction::Run(request) => {
+                GuestAction::Run(request) => {
                     for argument in request.arguments() {
                         assert!(
                             !argument.contains("s3cret"),
@@ -390,7 +275,7 @@ mod tests {
                     }
                     assert!(!format!("{request:?}").contains("s3cret"));
                 }
-                GoldenAction::Write(write) => {
+                GuestAction::Write(write) => {
                     assert!(!format!("{write:?}").contains("s3cret"));
                     assert!(
                         !write.data().windows(6).any(|w| w == b"s3cret"),
@@ -400,7 +285,7 @@ mod tests {
                 }
             }
         }
-        let GoldenAction::Run(admin) = &plan.steps[2].action else {
+        let GuestAction::Run(admin) = &plan.steps[2].action else {
             panic!("admin runs")
         };
         assert_eq!(admin.program().as_str(), "/usr/bin/sudo");
@@ -415,14 +300,17 @@ mod tests {
     #[test]
     fn failed_steps_name_themselves() {
         let plan = GoldenPlan::new(&"u".parse().unwrap(), &password()).unwrap();
-        let error = plan.steps[3]
-            .check(&ExecOutput {
-                termination: Termination::Exited(1),
-                stdout: Vec::new(),
-                stderr: b"pmset sleep is not 0\n".to_vec(),
-                completeness: Completeness::Full,
-            })
-            .unwrap_err();
+        let failed = RunFailed::judge(&ExecOutput {
+            termination: Termination::Exited(1),
+            stdout: Vec::new(),
+            stderr: b"pmset sleep is not 0\n".to_vec(),
+            completeness: Completeness::Full,
+        })
+        .unwrap_err();
+        let error = GoldenError::StepFailed {
+            step: plan.steps[3].name,
+            failed,
+        };
         assert_eq!(
             error.to_string(),
             "checking the settings failed: exited with status 1: pmset sleep is not 0"

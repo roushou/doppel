@@ -85,10 +85,7 @@ pub fn summary(
 /// An order that went as asked.
 #[must_use]
 pub const fn done() -> Verdict {
-    Verdict::Done {
-        note: None,
-        made: None,
-    }
+    Verdict::Done { note: None }
 }
 
 /// How a stop went.
@@ -98,7 +95,6 @@ pub fn stopped(outcome: StopOutcome) -> Verdict {
         StopOutcome::Stopped => done(),
         StopOutcome::ShutdownPending => Verdict::Done {
             note: Some("asked to shut down; it hasn't yet".into()),
-            made: None,
         },
     }
 }
@@ -112,7 +108,6 @@ pub fn checkpoint(result: CheckpointResult) -> Verdict {
             ..
         } => Verdict::Done {
             note: Some(format!("saved, but it may be left paused: {failure}")),
-            made: None,
         },
         CheckpointResult::Completed {
             left_paused: None, ..
@@ -182,7 +177,6 @@ mod tests {
             stopped(StopOutcome::ShutdownPending),
             Verdict::Done {
                 note: Some("asked to shut down; it hasn't yet".into()),
-                made: None,
             }
         );
         assert_eq!(

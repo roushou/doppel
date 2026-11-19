@@ -154,8 +154,6 @@ pub enum Verdict {
     Done {
         /// Anything worth saying about how it went.
         note: Option<String>,
-        /// A machine it made, to show.
-        made: Option<MachineName>,
     },
     Refused(String),
     /// It may or may not have happened: the person should look.

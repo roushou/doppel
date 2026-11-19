@@ -15,6 +15,7 @@ use doppel_console::{
     LocalTime, Machine, MachineReport, Order, Recording, RecordingId, RecordingSummary, Screen,
     Session, SessionId, SourceError, TextRead, Verdict, VideoName, answers,
 };
+use doppel_desktop::outcome::{Certainty, Failure};
 use doppel_host::capabilities::{Clock, SystemClock, WallClock};
 use doppel_machine::checkpoint::AfterCheckpoint;
 use doppel_machine::machine::MachineName;
@@ -162,10 +163,7 @@ impl Blocking {
             }
             Order::Fork { label, into } => {
                 client.fork(name, label, into, by())?;
-                Verdict::Done {
-                    note: None,
-                    made: Some(into.clone()),
-                }
+                answers::done()
             }
             Order::NewCopy(label) => {
                 let forks = client.run_forks(name, label, 1, by())?;
@@ -179,10 +177,7 @@ impl Blocking {
                     })
                     .collect();
                 if failed.is_empty() {
-                    Verdict::Done {
-                        note: None,
-                        made: forks.into_iter().next().map(|fork| fork.name),
-                    }
+                    answers::done()
                 } else {
                     Verdict::Refused(failed.join("; "))
                 }
@@ -229,22 +224,13 @@ impl Reach {
 /// was done; unknown when it may have been (the connection broke after the
 /// order went out, or the answer can't be read).
 fn failed(error: &ClientError) -> Verdict {
+    if let ClientError::Machine(failure) = error {
+        return answers::failed(failure);
+    }
     let words = error.to_string();
-    match error {
-        ClientError::Machine(failure) => answers::failed(failure),
-        ClientError::NoDaemon(_)
-        | ClientError::Connect(_)
-        | ClientError::VersionMismatch { .. }
-        | ClientError::Encode(_)
-        | ClientError::Remote(_) => Verdict::Refused(words),
-        ClientError::Io(_)
-        | ClientError::Closed
-        | ClientError::Lost(_)
-        | ClientError::Timeout
-        | ClientError::Stream(_)
-        | ClientError::Protocol(_)
-        | ClientError::WrongAnswer(_)
-        | ClientError::Parse(_) => Verdict::Unknown(words),
+    match error.certainty() {
+        Certainty::NotDone => Verdict::Refused(words),
+        Certainty::MaybeDone => Verdict::Unknown(words),
     }
 }
 

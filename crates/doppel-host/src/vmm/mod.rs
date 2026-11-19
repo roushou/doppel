@@ -238,10 +238,7 @@ impl<'c, C: Clock> VmmClient<'c, C> {
     /// # Errors
     /// See [`VmmError`].
     pub fn stop(&mut self, mode: StopMode, by: Deadline) -> Result<(), VmmError> {
-        let mode = match mode {
-            StopMode::Graceful => vmm::StopMode::Graceful,
-            StopMode::Force => vmm::StopMode::Force,
-        };
+        let mode = vmm::StopMode::from(mode);
         let outcome = self.call_outcome(
             vmm::vmm_request::Operation::Stop(vmm::Stop { mode: mode as i32 }),
             by,

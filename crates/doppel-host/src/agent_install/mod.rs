@@ -5,9 +5,8 @@ pub mod plan;
 
 use std::time::{Duration, Instant};
 
-use crate::agent_install::plan::{
-    AgentBuild, GuestAccount, InstallError, InstallPlan, StepAction, StepName,
-};
+use crate::agent_install::plan::{AgentBuild, GuestAccount, InstallError, InstallPlan, StepName};
+use crate::guest_step::StepError;
 use doppel_machine::machine::MachineName;
 
 use crate::agent::AgentError;
@@ -62,7 +61,7 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
         machine: &MachineName,
         archive: Vec<u8>,
         build: AgentBuild,
-        mut progress: impl FnMut(StepName),
+        progress: impl FnMut(StepName),
     ) -> Result<Installed, AgentInstallError> {
         let agent = |step: &'static str| {
             move |source: AgentError| AgentInstallError::Agent { step, source }
@@ -74,24 +73,17 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
             .map_err(agent("reading the guest account"))?;
         let plan = InstallPlan::new(archive, build, &GuestAccount::parse(&output)?)?;
 
-        for step in &plan.steps {
-            progress(step.name);
-            let mut client = self.agent(machine, self.deadline())?;
-            match &step.action {
-                StepAction::Write(request) => {
-                    client
-                        .write_file(request, self.deadline())
-                        .map_err(agent("writing"))?;
+        self.run_steps(machine, &plan.steps, progress)
+            .map_err(|error| match error {
+                StepError::Machine(error) => AgentInstallError::Machine(error),
+                StepError::Agent { doing, source } => AgentInstallError::Agent {
+                    step: doing,
+                    source,
+                },
+                StepError::Failed { step, failed } => {
+                    AgentInstallError::Plan(InstallError::StepFailed { step, failed })
                 }
-                StepAction::Run(request) => {
-                    step.check(
-                        &client
-                            .exec(request, &Cancel::never())
-                            .map_err(agent("running"))?,
-                    )?;
-                }
-            }
-        }
+            })?;
         self.await_build(machine, plan.build)
     }
 

@@ -11,6 +11,5 @@ mod tools;
 
 pub use server::{Cancellation, ClientName, Notice, Ran, Runner, Server};
 pub use tools::{
-    CheckpointEnd, SnapshotListing, StartedFrom, StatusReport, ToolAction, ToolCall, ToolOutcome,
-    Why,
+    CheckpointEnd, SnapshotListing, StatusReport, ToolAction, ToolCall, ToolOutcome, Why,
 };

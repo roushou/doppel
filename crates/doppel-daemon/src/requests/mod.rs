@@ -19,11 +19,7 @@ use doppel_desktop::screen::ScreenshotSize;
 use doppel_host::capabilities::WallClock;
 use doppel_host::files::Filesystem;
 use doppel_host::login::AwaitDesktopError;
-use doppel_host::machines::{
-    CheckpointReport, Listing, MachineError, Resumed, StopOutcome, StopReport, StopRequest,
-};
-use doppel_host::vmm::StopMode;
-use doppel_host::vmm::launcher::Window;
+use doppel_host::machines::{CheckpointReport, Listing, MachineError, StopReport, StopRequest};
 use doppel_machine::bundle::CheckpointLabel;
 use doppel_machine::checkpoint::{Aftermath, Checkpoint, GuestSync};
 use doppel_machine::machine::MachineName;
@@ -52,7 +48,7 @@ use crate::scheduler::session::SessionState;
 use crate::scheduler::{Cancelled, Cleared, HandedBack, HeldUp};
 use crate::web::tokens::TokenFileError;
 use crate::web::{WebPort, WebSetting, WebStatus};
-use crate::{Acted, CallError, Daemon, Link};
+use crate::{CallError, Daemon, Link};
 
 /// Why a request didn't succeed.
 #[derive(Debug)]
@@ -445,13 +441,8 @@ where
         call: &Call,
     ) -> Result<daemon::MachineStarted, Refusal> {
         let name = Refusal::name("name", &request.name)?;
-        let window = match daemon::Window::try_from(request.window) {
-            Ok(daemon::Window::Hidden) => Window::Hidden,
-            Ok(daemon::Window::Shown) => Window::Shown,
-            Ok(daemon::Window::Unspecified) | Err(_) => {
-                return Err(Refusal::argument("window", &request.window));
-            }
-        };
+        let window = ParseError::window("window", request.window)
+            .map_err(|_| Refusal::argument("window", &request.window))?;
         let (state, next) = self.start(&name, window, call)?;
         Ok(daemon::MachineStarted {
             state: Some(state.into()),
@@ -475,13 +466,8 @@ where
         call: &Call,
     ) -> Result<daemon::MachineStopped, Refusal> {
         let name = Refusal::name("name", &request.name)?;
-        let mode = match vmm::StopMode::try_from(request.mode) {
-            Ok(vmm::StopMode::Graceful) => StopMode::Graceful,
-            Ok(vmm::StopMode::Force) => StopMode::Force,
-            Ok(vmm::StopMode::Unspecified) | Err(_) => {
-                return Err(Refusal::argument("mode", &request.mode));
-            }
-        };
+        let mode = ParseError::stop_mode("mode", request.mode)
+            .map_err(|_| Refusal::argument("mode", &request.mode))?;
         let report = self.stop(&name, mode, call)?;
         Ok(Self::stopped(report))
     }
@@ -502,10 +488,7 @@ where
         call: &Call,
     ) -> Result<daemon::MachineResumed, Refusal> {
         let name = Refusal::name("name", &request.name)?;
-        let outcome = match self.resume(&name, call)? {
-            Resumed::Resumed => daemon::ResumeOutcome::Resumed,
-            Resumed::AlreadyRunning => daemon::ResumeOutcome::AlreadyRunning,
-        };
+        let outcome = daemon::ResumeOutcome::from(self.resume(&name, call)?);
         Ok(daemon::MachineResumed {
             outcome: outcome as i32,
         })
@@ -797,10 +780,7 @@ where
             }
             StopRequest::PowerButton { session } => Request::PowerButton(session.to_string()),
         };
-        let outcome = match report.outcome {
-            StopOutcome::Stopped => daemon::StopOutcome::Stopped,
-            StopOutcome::ShutdownPending => daemon::StopOutcome::ShutdownPending,
-        };
+        let outcome = daemon::StopOutcome::from(report.outcome);
         daemon::MachineStopped {
             request: Some(request),
             outcome: outcome as i32,
@@ -1290,10 +1270,7 @@ where
             .action
             .ok_or(ParseError::Missing("action"))?
             .try_into()?;
-        let outcome = match self.act(&name, &act, call)? {
-            Acted::Done => daemon::ActOutcome::Done,
-            Acted::StaleReference => daemon::ActOutcome::StaleReference,
-        };
+        let outcome = daemon::ActOutcome::from(self.act(&name, &act, call)?);
         Ok(daemon::ActResult {
             outcome: outcome as i32,
         })

@@ -9,6 +9,8 @@ use crate::pb::daemon::v1 as daemon;
 use doppel_desktop::outcome::{Certainty, Failure};
 use doppel_machine::checkpoint::{GuestAfterFailure, GuestSync, Step};
 use doppel_machine::machine::MachineName;
+pub use doppel_machine::stop::{StopMode, StopOutcome};
+pub use doppel_machine::vm::{Resumed, Window};
 
 /// Why a machine operation failed on the daemon's side: its description,
 /// whether the operation may still have taken effect, and its causes.
@@ -91,21 +93,6 @@ impl Failure for MachineFailure {
     }
 }
 
-/// Whether the VMM shows the VM in a native window.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Window {
-    Hidden,
-    Shown,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StopMode {
-    /// Ask the guest to shut down.
-    Graceful,
-    /// Power off: unsaved guest work is lost.
-    Force,
-}
-
 /// How the guest was asked to stop.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StopRequest {
@@ -122,24 +109,10 @@ pub enum StopRequest {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StopOutcome {
-    Stopped,
-    /// Asked to shut down, and still running.
-    ShutdownPending,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StopReport {
     pub request: StopRequest,
     pub outcome: StopOutcome,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Resumed {
-    Resumed,
-    /// It was running already: nothing to do.
-    AlreadyRunning,
 }
 
 /// How a checkpoint ended.

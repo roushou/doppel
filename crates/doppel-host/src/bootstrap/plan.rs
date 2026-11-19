@@ -16,7 +16,7 @@ use std::fmt;
 use std::net::Ipv4Addr;
 use std::path::Path;
 
-use crate::golden::plan::GuestUserName;
+use crate::guest_user::GuestUserName;
 use doppel_desktop::guest_path::GuestPath;
 
 const STAGING_PREFIX: &str = "/tmp/doppel-bootstrap.";

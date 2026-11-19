@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use anyhow::{Context as _, Result, bail};
 use clap::Args;
 use doppel_host::capabilities::OsEntropy;
-use doppel_host::golden::plan::GuestUserName;
+use doppel_host::guest_user::GuestUserName;
 use doppel_host::machines::{CALL_TIMEOUT, CLAIM_TIMEOUT, ImportSource};
 use doppel_host::provision::FullName;
 use doppel_machine::machine::{

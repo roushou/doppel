@@ -9,7 +9,7 @@ use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
-use crate::golden::plan::GuestUserName;
+use crate::guest_user::GuestUserName;
 use crate::provision::FullName;
 use crate::restore_image::plan::{LatestImage, RestoreImageError};
 use doppel_machine::bundle::{ImageFiles, SocketPath};

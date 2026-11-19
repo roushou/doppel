@@ -63,11 +63,7 @@ pub(crate) struct ConnectionId(u64);
 pub(crate) struct CallId(u64);
 
 /// A note a session is owed: a person had control of `machine` for `held`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct HandedBack {
-    pub(crate) machine: MachineName,
-    pub(crate) held: Duration,
-}
+pub(crate) use doppel_protocol::report::HandedBack;
 
 /// A session's call may act.
 #[derive(Debug, Clone, PartialEq, Eq)]

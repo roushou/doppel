@@ -20,7 +20,7 @@ use crate::bootstrap::plan::{
     AskpassPrompt, BootstrapError as PlanError, RemoteStep, SshTarget, StagingDir, Stdin, StepName,
 };
 use crate::dhcp_leases::{self, DhcpLeases};
-use crate::golden::plan::GuestUserName;
+use crate::guest_user::GuestUserName;
 use doppel_desktop::guest_path::GuestPath;
 use doppel_machine::machine::{MacAddress, MachineName, NetworkSpec};
 
@@ -28,7 +28,7 @@ use crate::agent_install::{AgentInstallError, Installed};
 use crate::capabilities::Clock;
 use crate::files::Filesystem;
 use crate::login::{PasswordFile, PasswordFileError};
-use crate::machines::{MachineError, Machines};
+use crate::machines::{AgentReach, MachineError, Machines};
 use crate::store::StoreError;
 
 /// From the start to giving up on a DHCP lease for the machine's MAC.
@@ -262,14 +262,10 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
     /// Why no agent answers, or `None` when one does. Errors only when
     /// the machine isn't running or the agent answers wrongly.
     fn agent_absent(&self, machine: &MachineName) -> Result<Option<String>, MachineError> {
-        match self.agent(machine, self.deadline()) {
-            Ok(_) => Ok(None),
-            Err(error @ MachineError::AgentUnreachable { .. }) => Ok(Some(error.to_string())),
-            Err(MachineError::AgentHandshake { source, .. }) if source.is_transient() => {
-                Ok(Some(source.to_string()))
-            }
-            Err(error) => Err(error),
-        }
+        Ok(match self.reach_agent(machine, self.deadline())? {
+            AgentReach::Answers(_) => None,
+            AgentReach::NotYet(why) => Some(why),
+        })
     }
 
     fn await_agent(&self, machine: &MachineName) -> Result<(), BootstrapError> {

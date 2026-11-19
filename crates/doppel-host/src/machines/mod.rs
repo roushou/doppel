@@ -13,7 +13,8 @@ use doppel_desktop::exec::{ExecError, ExecOutput, ExecRequest, Termination};
 use doppel_desktop::guest_path::GuestPathError;
 use doppel_desktop::outcome::{Certainty, Failure, Outcome, Unconfirmed};
 use doppel_machine::bundle::{
-    CheckpointLabel, FileOp, GuestRepair, KeptAux, MachineBundle, SocketPath, Trash,
+    CheckpointLabel, CheckpointPresence, FileOp, GuestRepair, KeptAux, MachineBundle, SocketPath,
+    Trash,
 };
 use doppel_machine::checkpoint::{
     Action, AfterCheckpoint, Aftermath, Checkpoint, CheckpointPlan, Event, GuestSync,
@@ -42,6 +43,7 @@ use crate::agent_grant::plan::AgentGrant;
 use crate::agent_grant::{AgentGrantError, DiskImage};
 use crate::capabilities::Clock;
 use crate::files::{FileOpError, Filesystem};
+use crate::guest_step::plan::RunFailed;
 use crate::login::{AwaitDesktopError, PasswordFile, PasswordFileError};
 use crate::store::{Listed, Store, StoreError};
 use crate::vmm::display::DisplayError;
@@ -53,6 +55,7 @@ mod agent_connection;
 mod machine;
 mod running;
 
+pub(crate) use agent_connection::AgentReach;
 pub use agent_connection::{AgentConnection, AgentConnectionError, Paused};
 pub use machine::Machine;
 pub use running::RunningMachine;
@@ -88,14 +91,8 @@ pub const CHECKPOINT_TIMEOUT: Duration = CALL_TIMEOUT
     .saturating_add(SAVE_TIMEOUT);
 pub const FINISH_RECORDING_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// How [`Machines::resume`] found the guest.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[must_use]
-pub enum Resumed {
-    Resumed,
-    /// It was running already: nothing to do.
-    AlreadyRunning,
-}
+pub use doppel_machine::stop::StopOutcome;
+pub use doppel_machine::vm::Resumed;
 
 #[derive(Debug, thiserror::Error)]
 pub enum MachineError {
@@ -276,13 +273,6 @@ pub enum Listing {
     },
     /// Not a valid machine name: ignored.
     Unrecognized(std::ffi::OsString),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StopOutcome {
-    Stopped,
-    /// Graceful shutdown was requested but the guest hasn't finished.
-    ShutdownPending,
 }
 
 /// How the guest was asked to stop; when through the power button, why
@@ -1236,15 +1226,17 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
                 by,
             )
             .map_err(SessionUnavailable::NotRun)?;
-        match output.termination {
-            Termination::Exited(0) => Ok(()),
-            termination @ (Termination::Exited(_)
-            | Termination::Signaled(_)
-            | Termination::TimedOut) => Err(SessionUnavailable::Ended {
-                termination,
-                stderr: String::from_utf8_lossy(&output.stderr).trim().to_owned(),
-            }),
-        }
+        RunFailed::judge(&output).map_err(
+            |RunFailed {
+                 termination,
+                 stderr,
+             }| {
+                SessionUnavailable::Ended {
+                    termination,
+                    stderr,
+                }
+            },
+        )
     }
 
     /// A fresh connection to the agent in a running machine, for the
@@ -1319,7 +1311,14 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
     ) -> Result<CheckpointReport, MachineError> {
         let name = claim.name();
         let bundle = &claim.bundle;
-        if self.files.exists(&bundle.checkpoint(label).dir)? {
+        let checkpoint = bundle.checkpoint(label);
+        let present = self.files.present(checkpoint.probes())?;
+        // Even a partial one: its folder is taken.
+        let taken = match checkpoint.presence(&present) {
+            CheckpointPresence::Absent => false,
+            CheckpointPresence::Partial | CheckpointPresence::Complete => true,
+        };
+        if taken {
             return Err(MachineError::CheckpointExists {
                 machine: name.clone(),
                 label: label.clone(),
@@ -1423,11 +1422,10 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
     /// valid for resuming.
     fn sync_guest(&self, name: &MachineName, by: Deadline) -> GuestSync<MachineError> {
         match self.run_in_guest(name, "/bin/sync", Vec::new(), SYNC_TIMEOUT, by) {
-            Ok(output) => match output.termination {
-                Termination::Exited(0) => GuestSync::Synced,
-                ended @ (Termination::Exited(_)
-                | Termination::Signaled(_)
-                | Termination::TimedOut) => GuestSync::Skipped(SyncSkipped::Ended(ended)),
+            // Its stderr isn't kept: a skipped sync says only how it ended.
+            Ok(output) => match RunFailed::judge(&output) {
+                Ok(()) => GuestSync::Synced,
+                Err(failed) => GuestSync::Skipped(SyncSkipped::Ended(failed.termination)),
             },
             Err(error) => GuestSync::Skipped(SyncSkipped::NotRun(error)),
         }
@@ -1439,7 +1437,12 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
         label: &CheckpointLabel,
     ) -> Result<doppel_machine::bundle::CheckpointFiles, MachineError> {
         let checkpoint = bundle.checkpoint(label);
-        if checkpoint.memory.exists() && checkpoint.image.disk.exists() {
+        let present = self.files.present(checkpoint.probes())?;
+        let usable = match checkpoint.presence(&present) {
+            CheckpointPresence::Complete => true,
+            CheckpointPresence::Absent | CheckpointPresence::Partial => false,
+        };
+        if usable {
             Ok(checkpoint)
         } else {
             Err(MachineError::NoSuchCheckpoint {
@@ -1495,7 +1498,14 @@ impl<C: Clock, F: Filesystem> Machines<C, F> {
         if !self.files.exists(bundle.dir())? {
             return Err(StoreError::NoSuchMachine(name.clone()).into());
         }
-        if !self.files.exists(&bundle.checkpoint(label).dir)? {
+        let checkpoint = bundle.checkpoint(label);
+        let present = self.files.present(checkpoint.probes())?;
+        // A partial one can be deleted: it is the way out of one.
+        let gone = match checkpoint.presence(&present) {
+            CheckpointPresence::Absent => true,
+            CheckpointPresence::Partial | CheckpointPresence::Complete => false,
+        };
+        if gone {
             return Err(MachineError::NoSuchCheckpoint {
                 machine: name.clone(),
                 label: label.clone(),

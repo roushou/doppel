@@ -288,12 +288,10 @@ impl Replay {
         cx.notify();
     }
 
-    /// The player has something new: a frame, or the end.
     /// The player has something new: a frame, or the end. Past a video's
     /// end the clock plays on over its last frame.
     fn woken(&mut self, cx: &mut Context<Self>) {
         if let Some(playing) = &self.playing {
-            let _ = playing.player.take_ended();
             playing.player.release_stale(cx);
         }
         cx.notify();

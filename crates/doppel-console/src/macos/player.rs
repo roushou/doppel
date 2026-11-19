@@ -65,8 +65,6 @@ struct Shared {
     /// The video's length in seconds, once it's open.
     duration: Option<f64>,
     frame: Option<Buffer>,
-    /// The video played to its end.
-    ended: bool,
     failed: Option<String>,
 }
 
@@ -107,7 +105,6 @@ impl Player {
             head: Head::Held(seconds),
             duration: None,
             frame: None,
-            ended: false,
             failed: None,
         }));
         let thread = Playback {
@@ -173,11 +170,6 @@ impl Player {
         self.shared().frame.clone()
     }
 
-    /// Whether it played to its end since last asked.
-    pub(crate) fn take_ended(&self) -> bool {
-        std::mem::take(&mut self.shared().ended)
-    }
-
     pub(crate) fn failed(&self) -> Option<String> {
         self.shared().failed.clone()
     }
@@ -234,10 +226,7 @@ impl Playback {
                         Step::Done => {
                             playing = false;
                             position = duration;
-                            self.update(|shared| {
-                                shared.ended = true;
-                                shared.head = Head::Held(duration);
-                            });
+                            self.update(|shared| shared.head = Head::Held(duration));
                             None
                         }
                     }

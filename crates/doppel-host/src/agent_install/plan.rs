@@ -14,6 +14,8 @@ use doppel_desktop::exec::{ExecError, ExecOutput, ExecRequest, Termination};
 use doppel_desktop::files::{FileError, FileMode, WritePolicy, WriteRequest};
 use doppel_desktop::guest_path::{GuestPath, GuestPathError};
 
+use crate::guest_step::plan::{GuestAction, GuestStep, RunFailed};
+
 /// The LaunchAgent's label, also the app's bundle identifier.
 pub const LABEL: &str = "dev.doppel.agent";
 const APP: &str = "Doppel Agent.app";
@@ -38,13 +40,8 @@ pub enum InstallError {
     File(#[from] FileError),
     #[error(transparent)]
     Exec(#[from] ExecError),
-    #[error("{step} failed: {termination}{stderr}")]
-    StepFailed {
-        step: StepName,
-        termination: Termination,
-        /// `": <stderr>"`, or empty.
-        stderr: String,
-    },
+    #[error("{step} failed: {failed}")]
+    StepFailed { step: StepName, failed: RunFailed },
 }
 
 impl GuestAccount {
@@ -100,51 +97,11 @@ impl fmt::Display for StepName {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum StepAction {
-    Write(WriteRequest),
-    /// Must exit 0.
-    Run(ExecRequest),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InstallStep {
-    pub name: StepName,
-    pub action: StepAction,
-}
-
-impl InstallStep {
-    /// Judges a `Run` step's output.
-    ///
-    /// # Errors
-    /// [`InstallError::StepFailed`] unless it exited 0.
-    pub fn check(&self, output: &ExecOutput) -> Result<(), InstallError> {
-        match output.termination {
-            Termination::Exited(0) => Ok(()),
-            termination @ (Termination::Exited(_)
-            | Termination::Signaled(_)
-            | Termination::TimedOut) => {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                let stderr = stderr.trim();
-                Err(InstallError::StepFailed {
-                    step: self.name,
-                    termination,
-                    stderr: if stderr.is_empty() {
-                        String::new()
-                    } else {
-                        format!(": {stderr}")
-                    },
-                })
-            }
-        }
-    }
-}
-
 /// The steps that install one build, and the build to wait for afterwards.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[must_use]
 pub struct InstallPlan {
-    pub steps: Vec<InstallStep>,
+    pub steps: Vec<GuestStep<StepName>>,
     pub build: AgentBuild,
     /// Where the app ends up.
     pub app: GuestPath,
@@ -199,25 +156,25 @@ impl InstallPlan {
             ExecRequest::new(sh.clone(), all, Duration::from_secs(60), 64 * 1024)
         };
         let steps = vec![
-            InstallStep {
+            GuestStep {
                 name: StepName::UploadArchive,
-                action: StepAction::Write(WriteRequest::new(
+                action: GuestAction::Write(WriteRequest::new(
                     zip.clone(),
                     archive,
                     FileMode::new(0o600)?,
                     WritePolicy::Replace,
                 )?),
             },
-            InstallStep {
+            GuestStep {
                 name: StepName::Unpack,
-                action: StepAction::Run(script(
+                action: GuestAction::Run(script(
                     UNPACK,
                     &[zip.as_str(), apps.as_str(), agents.as_str()],
                 )?),
             },
-            InstallStep {
+            GuestStep {
                 name: StepName::WriteLaunchAgent,
-                action: StepAction::Write(WriteRequest::new(
+                action: GuestAction::Write(WriteRequest::new(
                     plist.clone(),
                     LaunchAgent {
                         program: &program,
@@ -229,9 +186,9 @@ impl InstallPlan {
                     WritePolicy::Replace,
                 )?),
             },
-            InstallStep {
+            GuestStep {
                 name: StepName::Restart,
-                action: StepAction::Run(script(
+                action: GuestAction::Run(script(
                     RESTART,
                     &[&account.uid.to_string(), plist.as_str()],
                 )?),
@@ -334,14 +291,14 @@ mod tests {
             "/Users/a & <b>/Applications/Doppel Agent.app"
         );
 
-        let StepAction::Write(upload) = &plan.steps[0].action else {
+        let GuestAction::Write(upload) = &plan.steps[0].action else {
             panic!("upload is a write")
         };
         assert_eq!(upload.path.as_str(), "/tmp/dev.doppel.agent-b1.zip");
         assert_eq!(upload.data(), b"zip");
 
         // Paths reach the scripts as arguments, never spliced into the script text.
-        let StepAction::Run(unpack) = &plan.steps[1].action else {
+        let GuestAction::Run(unpack) = &plan.steps[1].action else {
             panic!("unpack runs")
         };
         assert_eq!(unpack.program().as_str(), "/bin/sh");
@@ -355,7 +312,7 @@ mod tests {
             ]
         );
 
-        let StepAction::Write(job) = &plan.steps[2].action else {
+        let GuestAction::Write(job) = &plan.steps[2].action else {
             panic!("job is a write")
         };
         assert_eq!(
@@ -368,7 +325,7 @@ mod tests {
         assert!(!plist.contains("a & <b>"), "unescaped path in {plist}");
         assert!(plist.contains("<key>KeepAlive</key><true/>"));
 
-        let StepAction::Run(restart) = &plan.steps[3].action else {
+        let GuestAction::Run(restart) = &plan.steps[3].action else {
             panic!("restart runs")
         };
         assert_eq!(&restart.arguments()[3..], ["501", job.path.as_str()]);
@@ -377,25 +334,17 @@ mod tests {
     #[test]
     fn a_failed_step_names_itself_and_its_stderr() {
         let plan = InstallPlan::new(Vec::new(), "b".parse().unwrap(), &account()).unwrap();
-        let unpack = &plan.steps[1];
-        assert_eq!(
-            unpack.check(&output(Termination::Exited(0), "", "noise")),
-            Ok(())
-        );
-        let error = unpack
-            .check(&output(
-                Termination::Exited(1),
-                "",
-                "codesign: invalid signature\n",
-            ))
-            .unwrap_err();
+        let step = plan.steps[1].name;
+        let failed = |termination, stderr| InstallError::StepFailed {
+            step,
+            failed: RunFailed::judge(&output(termination, "", stderr)).unwrap_err(),
+        };
+        let error = failed(Termination::Exited(1), "codesign: invalid signature\n");
         assert_eq!(
             error.to_string(),
             "unpacking the app failed: exited with status 1: codesign: invalid signature"
         );
-        let error = unpack
-            .check(&output(Termination::Signaled(9), "", ""))
-            .unwrap_err();
+        let error = failed(Termination::Signaled(9), "");
         assert_eq!(
             error.to_string(),
             "unpacking the app failed: killed by signal 9"
