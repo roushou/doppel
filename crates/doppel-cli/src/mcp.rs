@@ -11,6 +11,7 @@ use doppel_client::{
 };
 use doppel_desktop::ax::refs::{Ref, RefTarget, SnapshotRefs};
 use doppel_desktop::deadline::Deadline;
+use doppel_desktop::input::Via;
 use doppel_desktop::outcome::{Certainty, Failure, Outcome, Unconfirmed};
 use doppel_host::capabilities::{Clock, SystemClock};
 use doppel_machine::checkpoint::AfterCheckpoint;
@@ -19,8 +20,8 @@ use doppel_protocol::transport::Cancel;
 
 use doppel_host::machines::CALL_TIMEOUT;
 use doppel_mcp::{
-    Cancellation, ClientName, Notice, Ran, Runner, Server, StatusReport, ToolAction, ToolCall,
-    ToolOutcome,
+    Afterwards, Cancellation, ClientName, Notice, Ran, Runner, Server, StatusReport, ToolAction,
+    ToolCall, ToolOutcome,
 };
 use rmcp::ServiceExt;
 use tokio::sync::watch;
@@ -387,6 +388,19 @@ struct Calls<'a> {
 }
 
 impl Calls<'_> {
+    /// The frontmost app shortly after an input, so the result shows its
+    /// effect. Blocks for [`Afterwards::SETTLE`] first.
+    fn look_afterwards(&self, machine: &MachineName) -> Afterwards<ToolError> {
+        std::thread::sleep(Afterwards::<ToolError>::SETTLE);
+        match self
+            .client
+            .snapshot(machine, Afterwards::<ToolError>::LOOK, self.call)
+        {
+            Ok(snapshot) => Afterwards::Seen(snapshot),
+            Err(error) => Afterwards::Unseen(ToolError::from(error)),
+        }
+    }
+
     fn outcome(&self, call: ToolCall) -> Outcome<ToolOutcome<ToolError>, ToolError> {
         let client = self.client;
         let at = self.call;
@@ -418,7 +432,16 @@ impl Calls<'_> {
                 client
                     .input(&machine, via, &input, at)
                     .map_err(ToolError::from)?;
-                ToolOutcome::Sent { input, via }
+                let after = match via {
+                    Via::Agent => self.look_afterwards(&machine),
+                    Via::Host => Afterwards::NotLooked,
+                };
+                ToolOutcome::Sent {
+                    machine,
+                    input,
+                    via,
+                    after,
+                }
             }
             ToolAction::Snapshot(spec) => ToolOutcome::Snapshot {
                 snapshot: client
@@ -429,7 +452,13 @@ impl Calls<'_> {
             },
             ToolAction::Act { r, target, act } => {
                 match client.act(&machine, &act, at).map_err(ToolError::from)? {
-                    Acted::Done => ToolOutcome::Acted { r, target, act },
+                    Acted::Done => ToolOutcome::Acted {
+                        after: self.look_afterwards(&machine),
+                        machine,
+                        r,
+                        target,
+                        act,
+                    },
                     // Name the ref the model used, not the agent's internal ids.
                     Acted::StaleReference => {
                         return Err(ToolError::StaleRef { r, target }.into());

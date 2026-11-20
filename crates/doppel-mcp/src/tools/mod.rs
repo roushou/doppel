@@ -26,7 +26,9 @@ use doppel_machine::vm::NextStart;
 use rmcp::model::{CallToolResult, ContentBlock};
 
 use crate::refs::Refs;
+pub use afterwards::Afterwards;
 
+mod afterwards;
 mod catalog;
 
 pub(crate) use catalog::ToolName;
@@ -258,8 +260,10 @@ pub enum ToolOutcome<E> {
         query: Option<TextQuery>,
     },
     Sent {
+        machine: MachineName,
         input: Input,
         via: Via,
+        after: Afterwards<E>,
     },
     Snapshot {
         machine: MachineName,
@@ -267,9 +271,11 @@ pub enum ToolOutcome<E> {
         policy: CompactionPolicy,
     },
     Acted {
+        machine: MachineName,
         r: Ref,
         target: RefTarget,
         act: ActOn,
+        after: Afterwards<E>,
     },
     Executed(ExecOutput),
     FileRead {
@@ -338,10 +344,13 @@ impl<E: std::fmt::Display> ToolOutcome<E> {
                 snapshot,
                 policy,
             } => Self::ok(&refs.show(&machine, &snapshot, policy).text),
-            Self::Acted { r, target, act } => Self::ok(&format!(
-                "{} {r} ({target}). The effect is asynchronous: wait_for or snapshot to see it.",
-                act.action
-            )),
+            Self::Acted {
+                machine,
+                r,
+                target,
+                act,
+                after,
+            } => Self::ok(&after.render(&format!("{} {r} ({target})", act.action), &machine, refs)),
             Self::Waited {
                 machine,
                 condition,
@@ -388,9 +397,16 @@ impl<E: std::fmt::Display> ToolOutcome<E> {
                 ContentBlock::text(format!("via {}: {}", via.as_str(), shot.coordinate_note())),
             ]),
             Self::TextFound { text, query } => Self::ok(&text.render(query.as_ref())),
-            Self::Sent { input, via } => {
-                Self::ok(&format!("{} via {}", Self::describe(&input), via.as_str()))
-            }
+            Self::Sent {
+                machine,
+                input,
+                via,
+                after,
+            } => Self::ok(&after.render(
+                &format!("{} via {}", Self::describe(&input), via.as_str()),
+                &machine,
+                refs,
+            )),
             Self::Executed(output) => match output.termination {
                 Termination::TimedOut => Self::error(&Self::render_exec(&output)),
                 Termination::Exited(_) | Termination::Signaled(_) => {

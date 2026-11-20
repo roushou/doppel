@@ -23,6 +23,9 @@ impl Tokens {
     /// Below this, a listing can't show anything useful.
     pub const MIN_BUDGET: Self = Self(200);
     pub const DEFAULT_BUDGET: Self = Self(4_000);
+    /// For a listing that comes with something else, such as an input's
+    /// result.
+    pub const SMALL_BUDGET: Self = Self(1_500);
 
     #[must_use]
     pub fn estimate(text: &str) -> Self {

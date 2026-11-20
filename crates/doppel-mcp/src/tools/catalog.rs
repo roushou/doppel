@@ -279,7 +279,7 @@ const MACHINE: &str =
 const VIA: &str = "agent (default): doppel-agent inside the logged-in guest. host: the VM's own display and virtual keyboard/pointer; works before login and without the agent, but types US-layout characters only.";
 const SCOPE: &str = "window (default): the frontmost app's focused window. app: all of the frontmost app's windows.";
 const MENUS: &str = "Menus are most of a native app's tree; excluded by default.";
-const SHOW: &str = "all (default): every element. changes: only what appeared, changed or went since this machine's previous listing; the rest keeps its refs. Use it after acting, to see what the act did.";
+const SHOW: &str = "all (default): every element. changes: only what appeared, changed or went since this machine's previous listing; the rest keeps its refs. act, click, type and key already return it.";
 const CHECKPOINT: &str = "Checkpoint label: 1–64 of a-z, 0-9, '-' and '_'. The status tool lists a machine's checkpoints.";
 
 fn max_tokens_description() -> String {
@@ -550,7 +550,7 @@ struct ActArgs {
 
 impl Tool for Act {
     const NAME: &'static str = "act";
-    const DESCRIPTION: &'static str = "Act on an element by its ref from the latest snapshot: press (buttons, links, menu items), select (rows in lists, tables, sidebars; a cell or its text selects its row), focus, set_value (text fields; give value), show_menu, raise (windows), increment/decrement (sliders, steppers), confirm, cancel, pick. A ref from an older snapshot, or to an element that has gone, is an error: snapshot again. Effects are asynchronous: use wait_for or snapshot to see them.";
+    const DESCRIPTION: &'static str = "Act on an element by its ref from the latest snapshot: press (buttons, links, menu items), select (rows in lists, tables, sidebars; a cell or its text selects its row), focus, set_value (text fields; give value), show_menu, raise (windows), increment/decrement (sliders, steppers), confirm, cancel, pick. A ref from an older snapshot, or to an element that has gone, is an error: snapshot again. Returns what changed in the frontmost app half a second later, with refs, so there is no need to snapshot after it; wait_for slower effects.";
     type Args = ActArgs;
 
     fn call(args: ActArgs, at: &Parsing<'_>) -> Result<ToolCall, ArgumentError> {
@@ -1025,8 +1025,7 @@ struct ClickArgs {
 
 impl Tool for Click {
     const NAME: &'static str = "click";
-    const DESCRIPTION: &'static str =
-        "Click at a point in display points (top-left origin), as read off a default screenshot.";
+    const DESCRIPTION: &'static str = "Click at a point in display points (top-left origin), as read off a default screenshot. Through the agent, returns what changed in the frontmost app half a second later, with refs.";
     type Args = ClickArgs;
 
     fn call(args: ClickArgs, at: &Parsing<'_>) -> Result<ToolCall, ArgumentError> {
@@ -1064,8 +1063,7 @@ struct TypeArgs {
 
 impl Tool for Type {
     const NAME: &'static str = "type";
-    const DESCRIPTION: &'static str =
-        "Type text into whatever has keyboard focus. Newlines press Return.";
+    const DESCRIPTION: &'static str = "Type text into whatever has keyboard focus. Newlines press Return. Through the agent, returns what changed in the frontmost app half a second later, with refs.";
     type Args = TypeArgs;
 
     fn call(args: TypeArgs, at: &Parsing<'_>) -> Result<ToolCall, ArgumentError> {
@@ -1098,8 +1096,7 @@ struct KeyArgs {
 
 impl Tool for Key {
     const NAME: &'static str = "key";
-    const DESCRIPTION: &'static str =
-        "Press a key or chord: e.g. return, escape, tab, left, f5, cmd+space, cmd+shift+4, ctrl+c.";
+    const DESCRIPTION: &'static str = "Press a key or chord: e.g. return, escape, tab, left, f5, cmd+space, cmd+shift+4, ctrl+c. Through the agent, returns what changed in the frontmost app half a second later, with refs.";
     type Args = KeyArgs;
 
     fn call(args: KeyArgs, at: &Parsing<'_>) -> Result<ToolCall, ArgumentError> {
