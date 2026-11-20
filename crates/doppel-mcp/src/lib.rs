@@ -10,4 +10,6 @@ mod server;
 mod tools;
 
 pub use server::{Cancellation, ClientName, Notice, Ran, Runner, Server};
-pub use tools::{SnapshotListing, StatusReport, ToolAction, ToolCall, ToolOutcome, Why};
+pub use tools::{
+    Afterwards, SnapshotListing, StatusReport, ToolAction, ToolCall, ToolOutcome, Why,
+};

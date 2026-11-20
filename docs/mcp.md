@@ -115,10 +115,16 @@ dense text may then be misread.
 
 ## Acting, then waiting
 
-Input and the screen are asynchronous: a call returns when its input is
-sent, not when the screen shows its effect. Don't sleep; wait on evidence
-with `wait_for`, which polls until its condition holds or its timeout (5 s by
-default, at most 60 s) runs out, and then says what it last saw.
+`act`, `click`, `type` and `key` through the agent look once, half a
+second after the input, and their result lists what changed in the frontmost
+app since the model's previous listing, with refs. Most effects show by
+then, so the model acts on the result directly, with no `snapshot` in
+between. Input through the host isn't followed by a look.
+
+A slower effect (a page loading, an app opening) may not show yet. Don't
+sleep; wait on evidence with `wait_for`, which polls until its condition
+holds or its timeout (5 s by default, at most 60 s) runs out, and then says
+what it last saw.
 
 ## Outcomes
 
