@@ -79,9 +79,16 @@ impl Refs {
     /// [`RefError`]: no snapshot of this machine yet, a stale ref, or an unknown one.
     pub(crate) fn resolve(&self, machine: &MachineName, r: Ref) -> Result<&RefTarget, RefError> {
         let latest = self.latest.get(machine).ok_or(RefError::NoSnapshot)?;
-        match latest.carried.get(r) {
-            Some(target) => Ok(target),
-            None => latest.table.resolve(r),
+        if let Some(target) = latest.carried.get(r) {
+            return Ok(target);
         }
+        if let Some(what) = latest.carried.gone(r) {
+            return Err(RefError::Gone {
+                r,
+                what: what.to_owned(),
+                by: latest.table.generation(),
+            });
+        }
+        latest.table.resolve(r)
     }
 }
