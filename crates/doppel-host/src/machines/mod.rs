@@ -496,8 +496,7 @@ impl<C: Clock, F: Filesystem> Claim<'_, C, F> {
     }
 
     /// Writes `grant` into this machine's disk: the guest boots with the
-    /// agent's Accessibility and Screen Recording, and no prompt is answered
-    /// by a person. The machine must be stopped with no saved memory, which
+    /// agent's permissions, and no prompt is answered by a person. The machine must be stopped with no saved memory, which
     /// expects its disk as it was.
     ///
     /// # Errors

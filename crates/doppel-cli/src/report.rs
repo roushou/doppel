@@ -164,7 +164,7 @@ pub enum Report {
         over_ssh: Option<Ipv4Addr>,
         installed: Installed,
     },
-    /// Accessibility and Screen Recording written into a stopped machine.
+    /// The agent's permissions written into a stopped machine.
     AgentGranted {
         name: MachineName,
         user: GuestUserName,
@@ -496,7 +496,7 @@ impl fmt::Display for Report {
             }
             Self::AgentGranted { name, user } => writeln!(
                 f,
-                "{name}: the agent has Accessibility and Screen Recording for {}; they apply from its next start",
+                "{name}: the agent has its permissions for {} (Accessibility, Screen Recording, Downloads, Desktop, Documents, Finder, System Events); they apply from its next start",
                 user.as_str()
             ),
             Self::Service(status) => writeln!(f, "{status}"),

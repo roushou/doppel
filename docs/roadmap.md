@@ -48,11 +48,13 @@ files. People watch and take over from a desktop or web console.
 
 ### 1. A fresh install reaches agent-ready with no person
 
-`doppel agent grant` gives the guest agent Accessibility and Screen
-Recording with no person: on a shut-down machine it writes the guest's own
-records of both into its Data volume (the system TCC database, held to the
-agent's code requirement, and replayd's capture approvals, so the "bypass
-the private window picker" alert never comes up). It refuses a TCC layout it
+`doppel agent grant` gives the guest agent its permissions with no person:
+on a shut-down machine it writes the guest's own records into its Data
+volume. The system TCC database gets Accessibility and Screen Recording; the
+user's (in tccd's container on macOS 27) gets Downloads, Desktop, Documents
+and scripting Finder and System Events; all held to the agent's code
+requirement. replayd's capture approvals are set too, so the "bypass the
+private window picker" alert never comes up. It refuses a TCC layout it
 doesn't know. Checked on a fork of a hand-made golden image: grants removed
 offline are gone at the next boot, and written by `grant` they're all there,
 with no alert.

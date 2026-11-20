@@ -2,20 +2,26 @@
 //! machine's Data volume, so the guest boots with them and no person
 //! answers a prompt.
 //!
-//! Two records hold them, both Apple's own and undocumented, so each is
-//! checked before either is written, and an unknown shape is refused:
+//! Three records hold them, all Apple's own and undocumented, so each is
+//! checked before any is written, and an unknown shape is refused:
 //!
-//! - **TCC**: the system privacy database's `access` table gets a row per
-//!   service (Accessibility, Screen Recording) for the agent's bundle id,
-//!   allowed, held to the agent's code requirement, as System Settings
-//!   writes it.
+//! - **System TCC**: the system privacy database's `access` table gets a
+//!   row per service the agent works through (Accessibility, Screen
+//!   Recording).
+//! - **User TCC**: the guest user's privacy database gets a row per folder
+//!   an agent works in (Downloads, Desktop, Documents) and per app it
+//!   scripts (Finder, System Events), so the agent's first `ls ~/Downloads`
+//!   or AppleScript to Finder doesn't stop at a prompt.
 //! - **Screen capture approvals**: replayd's record of when the user last
 //!   saw the "bypass the system private window picker" alert. Without an
 //!   entry the alert comes up once the agent captures; with a hint date far
 //!   ahead it never does.
 //!
+//! Every TCC row is for the agent's bundle id, allowed, held to the agent's
+//! code requirement, as System Settings writes it.
+//!
 //! An [`AgentGrant`] is the request. Given what the guest has (its
-//! [`TccSchema`] and its approvals), [`AgentGrant::check`] gives the
+//! [`TccSchema`]s and its approvals), [`AgentGrant::check`] gives the
 //! [`CheckedGrant`]: the only thing the shell writes.
 
 use std::collections::BTreeSet;
@@ -25,14 +31,94 @@ use std::time::{Duration, SystemTime};
 use crate::agent_install::plan::LABEL;
 use doppel_desktop::guest_user::GuestUserName;
 
-/// The system TCC database, from the Data volume's root.
+/// A TCC database, from the directory it belongs to: the Data volume's
+/// root for the system's; the user's home, or tccd's data container on
+/// macOS 27, for a user's.
 pub const TCC_DB: &str = "Library/Application Support/com.apple.TCC/TCC.db";
 
-/// The services the agent needs.
-const SERVICES: [&str; 2] = ["kTCCServiceAccessibility", "kTCCServiceScreenCapture"];
+/// Where macOS 27 keeps system daemons' data containers, from the Data
+/// volume's root: tccd's holds the user's TCC database under `Data/`.
+pub const PROTECTED_CONTAINERS: &str = "private/var/containers/Data/ProtectedSystem";
+
+/// The file in each container that says whose it is.
+pub const CONTAINER_METADATA: &str = ".com.apple.containermanagerd.metadata.plist";
+
+/// What the agent is allowed in the system database.
+const SYSTEM: [Allowance; 2] = [
+    Allowance::Service("kTCCServiceAccessibility"),
+    Allowance::Service("kTCCServiceScreenCapture"),
+];
+
+/// What the agent is allowed in the user's database.
+const USER: [Allowance; 5] = [
+    Allowance::Service("kTCCServiceSystemPolicyDownloadsFolder"),
+    Allowance::Service("kTCCServiceSystemPolicyDesktopFolder"),
+    Allowance::Service("kTCCServiceSystemPolicyDocumentsFolder"),
+    Allowance::AppleEvents(ScriptedApp {
+        bundle_id: "com.apple.finder",
+        // identifier "com.apple.finder" and anchor apple
+        requirement: &[
+            0xfa, 0xde, 0x0c, 0x00, 0x00, 0x00, 0x00, 0x2c, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
+            0x00, 0x06, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x10, b'c', b'o', b'm', b'.',
+            b'a', b'p', b'p', b'l', b'e', b'.', b'f', b'i', b'n', b'd', b'e', b'r', 0x00, 0x00,
+            0x00, 0x03,
+        ],
+    }),
+    Allowance::AppleEvents(ScriptedApp {
+        bundle_id: "com.apple.systemevents",
+        // identifier "com.apple.systemevents" and anchor apple
+        requirement: &[
+            0xfa, 0xde, 0x0c, 0x00, 0x00, 0x00, 0x00, 0x34, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
+            0x00, 0x06, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x16, b'c', b'o', b'm', b'.',
+            b'a', b'p', b'p', b'l', b'e', b'.', b's', b'y', b's', b't', b'e', b'm', b'e', b'v',
+            b'e', b'n', b't', b's', 0x00, 0x00, 0x00, 0x00, 0x00, 0x03,
+        ],
+    }),
+];
+
+/// One thing the agent is allowed: a row of a TCC database's `access`
+/// table.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Allowance {
+    /// A service with no object: a permission, or a folder.
+    Service(&'static str),
+    /// Sending Apple events to an app (Automation).
+    AppleEvents(ScriptedApp),
+}
+
+/// An app the agent may script, held to its code requirement (`csreq -b`
+/// of its designated requirement), so only Apple's own app answers to it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ScriptedApp {
+    bundle_id: &'static str,
+    requirement: &'static [u8],
+}
+
+impl Allowance {
+    /// Its service, then the object columns: the type, the identifier, and
+    /// the code identity. A plain service has none, as tccd writes it.
+    fn columns(self) -> (&'static str, String) {
+        match self {
+            Self::Service(service) => (service, "NULL, 'UNUSED', NULL".to_owned()),
+            // Type 0: a bundle id.
+            Self::AppleEvents(app) => (
+                "kTCCServiceAppleEvents",
+                format!("0, '{}', X'{}'", app.bundle_id, hex(app.requirement)),
+            ),
+        }
+    }
+}
+
+fn hex(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+    bytes.iter().fold(String::new(), |mut hex, byte| {
+        let _ = write!(hex, "{byte:02x}");
+        hex
+    })
+}
 
 /// Columns a grant row sets: the rest keep their defaults.
-const WRITTEN: [&str; 10] = [
+const WRITTEN: [&str; 13] = [
     "service",
     "client",
     "client_type",
@@ -43,6 +129,9 @@ const WRITTEN: [&str; 10] = [
     "flags",
     "last_modified",
     "last_reminded",
+    "indirect_object_identifier_type",
+    "indirect_object_identifier",
+    "indirect_object_code_identity",
 ];
 
 /// How long until replayd would remind the user of the agent's capture:
@@ -59,6 +148,14 @@ pub enum GrantPlanError {
         "the guest's TCC database has a layout this Doppel doesn't know ({0}); nothing was written"
     )]
     Schema(String),
+    #[error(
+        "the guest user has no TCC database yet (log in to the machine once, then grant again); nothing was written"
+    )]
+    NoUserTcc,
+    #[error(
+        "the guest has several users' TCC databases ({0}) and which is this user's isn't known; nothing was written"
+    )]
+    SeveralUserTcc(String),
     #[error("the guest's screen capture approvals aren't a dictionary; nothing was written")]
     Approvals,
     #[error("the disk image attached without one Data volume ({0})")]
@@ -87,11 +184,7 @@ impl CodeRequirement {
     }
 
     fn hex(&self) -> String {
-        use std::fmt::Write as _;
-        self.0.iter().fold(String::new(), |mut hex, byte| {
-            let _ = write!(hex, "{byte:02x}");
-            hex
-        })
+        hex(&self.0)
     }
 }
 
@@ -187,26 +280,28 @@ impl AgentGrant {
         self.approvals_dir().join("ScreenCaptureApprovals.plist")
     }
 
-    /// What to write, given a TCC database known to take it and the
-    /// approvals the guest has (if any).
+    /// What to write, given the system's and the user's TCC databases,
+    /// each known to take it, and the approvals the guest has (if any).
     ///
     /// # Errors
     /// [`GrantPlanError::Approvals`] when the approvals aren't a
     /// dictionary, [`GrantPlanError::Time`] for a time before 1970.
     pub fn check(
         &self,
-        _layout: &TccSchema,
+        _system: &TccSchema,
+        _user: &TccSchema,
         approvals: Option<plist::Value>,
     ) -> Result<CheckedGrant, GrantPlanError> {
         Ok(CheckedGrant {
-            sql: self.sql()?,
+            system_sql: self.sql(&SYSTEM)?,
+            user_sql: self.sql(&USER)?,
             approvals: self.approvals(approvals)?,
         })
     }
 
-    /// The rows for both services in one transaction, replacing any the
-    /// guest wrote (a denial after a prompt, an older grant).
-    fn sql(&self) -> Result<String, GrantPlanError> {
+    /// The rows for `allowed` in one transaction, replacing any the guest
+    /// wrote (a denial after a prompt, an older grant).
+    fn sql(&self, allowed: &[Allowance]) -> Result<String, GrantPlanError> {
         let at = self
             .at
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -214,11 +309,12 @@ impl AgentGrant {
             .as_secs();
         let csreq = self.requirement.hex();
         let mut sql = String::from("BEGIN;\n");
-        for service in SERVICES {
+        for allowance in allowed {
+            let (service, object) = allowance.columns();
             // client_type 0: a bundle id. auth_value 2: allowed.
             // auth_reason 4: set in System Settings. auth_version 1.
             sql.push_str(&format!(
-                "INSERT OR REPLACE INTO access ({}) VALUES ('{service}', '{LABEL}', 0, 2, 4, 1, X'{csreq}', 0, {at}, {at});\n",
+                "INSERT OR REPLACE INTO access ({}) VALUES ('{service}', '{LABEL}', 0, 2, 4, 1, X'{csreq}', 0, {at}, {at}, {object});\n",
                 WRITTEN.join(", ")
             ));
         }
@@ -254,27 +350,83 @@ impl AgentGrant {
     }
 }
 
-/// A grant checked against what the guest has: both records' new contents.
-/// Only [`AgentGrant::check`] makes one, so nothing is written unless both
-/// records were known.
+/// A grant checked against what the guest has: every record's new
+/// contents. Only [`AgentGrant::check`] makes one, so nothing is written
+/// unless every record was known.
 #[derive(Debug, Clone, PartialEq)]
 #[must_use]
 pub struct CheckedGrant {
-    sql: String,
+    system_sql: String,
+    user_sql: String,
     approvals: plist::Value,
 }
 
 impl CheckedGrant {
-    /// For `sqlite3`'s standard input.
+    /// For `sqlite3`'s standard input, on the system's TCC database.
     #[must_use]
-    pub fn sql(&self) -> &str {
-        &self.sql
+    pub fn system_sql(&self) -> &str {
+        &self.system_sql
+    }
+
+    /// For `sqlite3`'s standard input, on the user's TCC database.
+    #[must_use]
+    pub fn user_sql(&self) -> &str {
+        &self.user_sql
     }
 
     /// The approvals plist's new contents.
     #[must_use]
     pub const fn approvals(&self) -> &plist::Value {
         &self.approvals
+    }
+}
+
+/// Where the guest user's TCC database is, from the Data volume's root.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UserTcc(PathBuf);
+
+impl UserTcc {
+    /// Whether a container's metadata plist names it tccd's.
+    #[must_use]
+    pub fn is_tccd_container(metadata: &[u8]) -> bool {
+        plist::from_bytes::<plist::Dictionary>(metadata).is_ok_and(|metadata| {
+            metadata
+                .get("MCMMetadataIdentifier")
+                .and_then(plist::Value::as_string)
+                == Some("com.apple.tccd")
+        })
+    }
+
+    /// The database, given the protected containers that are tccd's (by
+    /// directory name) and whether `grant`'s home has one of its own. macOS
+    /// 27 keeps it in tccd's container; earlier releases, in the home.
+    ///
+    /// # Errors
+    /// [`GrantPlanError::NoUserTcc`] when neither has it,
+    /// [`GrantPlanError::SeveralUserTcc`] when tccd has more than one
+    /// container (one per user: which is this user's isn't known).
+    pub fn find(
+        grant: &AgentGrant,
+        tccd_containers: &[String],
+        in_home: bool,
+    ) -> Result<Self, GrantPlanError> {
+        match tccd_containers {
+            [container] => Ok(Self(
+                PathBuf::from(PROTECTED_CONTAINERS)
+                    .join(container)
+                    .join("Data")
+                    .join(TCC_DB),
+            )),
+            [] if in_home => Ok(Self(grant.home().join(TCC_DB))),
+            [] => Err(GrantPlanError::NoUserTcc),
+            several => Err(GrantPlanError::SeveralUserTcc(several.join(", "))),
+        }
+    }
+
+    /// From the Data volume's root.
+    #[must_use]
+    pub fn path(&self) -> &std::path::Path {
+        &self.0
     }
 }
 
@@ -336,6 +488,8 @@ impl AttachedDevices {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use super::*;
 
     /// As macOS 27 lists its `access` table.
@@ -384,23 +538,103 @@ mod tests {
     }
 
     fn checked(approvals: Option<plist::Value>) -> Result<CheckedGrant, GrantPlanError> {
-        grant().check(&TccSchema::parse(MACOS_27).unwrap(), approvals)
+        let schema = TccSchema::parse(MACOS_27).unwrap();
+        grant().check(&schema, &schema, approvals)
     }
 
+    const ALLOWED: &str =
+        "'dev.doppel.agent', 0, 2, 4, 1, X'fade0c0001', 0, 1800000000, 1800000000";
+
     #[test]
-    fn the_grant_replaces_both_services_rows_in_one_transaction() {
+    fn the_system_database_gets_the_agent_s_two_services_in_one_transaction() {
         let checked = checked(None).unwrap();
-        let sql = checked.sql();
+        let sql = checked.system_sql();
         assert!(sql.starts_with("BEGIN;\n") && sql.ends_with("COMMIT;\n"));
-        for service in SERVICES {
+        for service in ["kTCCServiceAccessibility", "kTCCServiceScreenCapture"] {
             assert!(
                 sql.contains(&format!(
-                    "VALUES ('{service}', 'dev.doppel.agent', 0, 2, 4, 1, X'fade0c0001', 0, 1800000000, 1800000000);"
+                    "VALUES ('{service}', {ALLOWED}, NULL, 'UNUSED', NULL);"
                 )),
                 "{sql}"
             );
         }
         assert_eq!(sql.matches("INSERT OR REPLACE INTO access").count(), 2);
+    }
+
+    #[test]
+    fn the_user_database_gets_the_folders_and_the_scripted_apps() {
+        let checked = checked(None).unwrap();
+        let sql = checked.user_sql();
+        assert!(sql.starts_with("BEGIN;\n") && sql.ends_with("COMMIT;\n"));
+        for folder in ["Downloads", "Desktop", "Documents"] {
+            assert!(
+                sql.contains(&format!(
+                    "VALUES ('kTCCServiceSystemPolicy{folder}Folder', {ALLOWED}, NULL, 'UNUSED', NULL);"
+                )),
+                "{sql}"
+            );
+        }
+        // As `csreq -b` compiles each app's designated requirement.
+        for (app, requirement) in [
+            (
+                "com.apple.finder",
+                "fade0c000000002c00000001000000060000000200000010636f6d2e6170706c652e66696e64657200000003",
+            ),
+            (
+                "com.apple.systemevents",
+                "fade0c000000003400000001000000060000000200000016636f6d2e6170706c652e73797374656d6576656e7473000000000003",
+            ),
+        ] {
+            assert!(
+                sql.contains(&format!(
+                    "VALUES ('kTCCServiceAppleEvents', {ALLOWED}, 0, '{app}', X'{requirement}');"
+                )),
+                "{sql}"
+            );
+        }
+        assert_eq!(sql.matches("INSERT OR REPLACE INTO access").count(), 5);
+        assert!(!sql.contains("kTCCServiceAccessibility"));
+    }
+
+    #[test]
+    fn the_user_database_is_tccd_s_container_or_else_the_home_s() {
+        let grant = grant();
+        let container = UserTcc::find(&grant, &["ABC".to_owned()], true).unwrap();
+        assert_eq!(
+            container.path(),
+            Path::new(
+                "private/var/containers/Data/ProtectedSystem/ABC/Data/Library/Application Support/com.apple.TCC/TCC.db"
+            )
+        );
+        let home = UserTcc::find(&grant, &[], true).unwrap();
+        assert_eq!(
+            home.path(),
+            Path::new("Users/doppel/Library/Application Support/com.apple.TCC/TCC.db")
+        );
+        assert_eq!(
+            UserTcc::find(&grant, &[], false),
+            Err(GrantPlanError::NoUserTcc)
+        );
+        assert!(matches!(
+            UserTcc::find(&grant, &["A".to_owned(), "B".to_owned()], false),
+            Err(GrantPlanError::SeveralUserTcc(which)) if which == "A, B"
+        ));
+    }
+
+    #[test]
+    fn a_container_is_tccd_s_by_its_metadata() {
+        let metadata = |identifier: &str| {
+            let mut dict = plist::Dictionary::new();
+            dict.insert("MCMMetadataIdentifier".into(), identifier.into());
+            let mut bytes = Vec::new();
+            plist::to_writer_binary(&mut bytes, &plist::Value::Dictionary(dict)).unwrap();
+            bytes
+        };
+        assert!(UserTcc::is_tccd_container(&metadata("com.apple.tccd")));
+        assert!(!UserTcc::is_tccd_container(&metadata(
+            "com.apple.deviceconfigurationd"
+        )));
+        assert!(!UserTcc::is_tccd_container(b"not a plist"));
     }
 
     #[test]
@@ -443,7 +677,11 @@ mod tests {
             SystemTime::UNIX_EPOCH - Duration::from_secs(1),
         );
         assert!(matches!(
-            early.check(&TccSchema::parse(MACOS_27).unwrap(), None),
+            early.check(
+                &TccSchema::parse(MACOS_27).unwrap(),
+                &TccSchema::parse(MACOS_27).unwrap(),
+                None
+            ),
             Err(GrantPlanError::Time(_))
         ));
     }
