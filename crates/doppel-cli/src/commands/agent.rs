@@ -37,8 +37,10 @@ pub(crate) enum AgentCommand {
         #[arg(long)]
         archive: Option<PathBuf>,
     },
-    /// Grant the agent Accessibility and Screen Recording in a stopped
-    /// machine, so it boots with them and no person answers a prompt. Writes
+    /// Grant the agent its permissions in a stopped machine: Accessibility,
+    /// Screen Recording, the user's Downloads, Desktop and Documents, and
+    /// scripting Finder and System Events. It boots with them and no person
+    /// answers a prompt. Writes
     /// the guest's own privacy records into its disk, for the agent build
     /// beside `doppel` (its code requirement, `<archive>.csreq`). The machine
     /// must be shut down (`doppel stop`), not paused or saved. After

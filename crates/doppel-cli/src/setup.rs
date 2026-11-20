@@ -60,7 +60,7 @@ pub(crate) enum Phase {
     Created,
     /// The agent is installed as a LaunchAgent.
     Bootstrapped,
-    /// The agent has Accessibility and Screen Recording.
+    /// The agent has its permissions.
     Granted,
 }
 
