@@ -73,6 +73,14 @@ pub enum RefError {
     Stale { stale: Ref, latest: Generation },
     #[error("{0} is not in the latest snapshot")]
     Unknown(Ref),
+    #[error(
+        "{r} ({what}) is no longer on screen: snapshot {by} listed it as gone. Act on something in {by}"
+    )]
+    Gone {
+        r: Ref,
+        what: String,
+        by: Generation,
+    },
 }
 
 impl FromStr for Ref {

@@ -80,25 +80,38 @@ impl Known {
     }
 }
 
-/// Refs from earlier listings that still name an element: it hasn't moved
-/// in the tree, nor changed its role or name.
+/// What refs from earlier listings name now: an element that hasn't moved
+/// in the tree, nor changed its role or name; or, for an element this
+/// listing reported gone, what it was.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Carried(HashMap<Ref, RefTarget>);
+pub struct Carried {
+    here: HashMap<Ref, RefTarget>,
+    gone: HashMap<Ref, String>,
+}
 
 impl Carried {
+    /// The element an earlier ref still names.
     #[must_use]
     pub fn get(&self, r: Ref) -> Option<&RefTarget> {
-        self.0.get(&r)
+        self.here.get(&r)
     }
 
+    /// What an earlier ref named, when this listing reported it gone:
+    /// `button "Save"`.
+    #[must_use]
+    pub fn gone(&self, r: Ref) -> Option<&str> {
+        self.gone.get(&r).map(String::as_str)
+    }
+
+    /// Earlier refs that still name an element.
     #[must_use]
     pub fn len(&self) -> usize {
-        self.0.len()
+        self.here.len()
     }
 
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.here.is_empty()
     }
 }
 
@@ -381,11 +394,19 @@ impl CompactSnapshot {
                 issued[at].or(earlier.filter(|_| now.target.is_some()))
             })
             .collect();
+        // Every earlier ref whose element went, listed or not.
+        let gone = (0..before.entries.len())
+            .filter(|&b| !kept[b])
+            .filter_map(|b| before.refs[b].map(|r| (r, before.entries[b].label())))
+            .collect();
         let tokens = Tokens::estimate(&lines.text);
         Self {
             text: lines.text,
             refs,
-            carried: Carried(carried),
+            carried: Carried {
+                here: carried,
+                gone,
+            },
             known: Known::new(generation, snapshot.app.pid, after, holds),
             shown: lines.shown,
             omitted: left,
@@ -604,6 +625,12 @@ mod tests {
             ["- list \"Drafts\" · from window \"Compose\", with 2 inside"]
         );
         assert!(after.carried.get("s1e5".parse().unwrap()).is_none());
+        // The refs of what went inside it, listed or not, say what went.
+        assert_eq!(
+            after.carried.gone("s1e5".parse().unwrap()),
+            Some("button \"Draft\"")
+        );
+        assert!(after.carried.gone("s1e2".parse().unwrap()).is_none());
     }
 
     #[test]

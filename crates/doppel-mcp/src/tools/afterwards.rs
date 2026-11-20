@@ -87,6 +87,28 @@ mod tests {
     }
 
     #[test]
+    fn a_ref_to_what_an_input_made_go_says_it_is_gone() {
+        let mut refs = Refs::default();
+        let first =
+            Afterwards::<String>::Seen(snapshot(1, "Save")).render("pressed", &dev(), &mut refs);
+        assert!(first.contains("button \"Save\" [s1e2]"), "{first}");
+        // The next input replaces Save with Open.
+        let second =
+            Afterwards::<String>::Seen(snapshot(2, "Open")).render("pressed", &dev(), &mut refs);
+        assert!(second.contains("- button \"Save\" (was s1e2)"), "{second}");
+        let gone = refs
+            .resolve(&dev(), "s1e2".parse().unwrap())
+            .unwrap_err()
+            .to_string();
+        assert_eq!(
+            gone,
+            "s1e2 (button \"Save\") is no longer on screen: snapshot s2 listed it as gone. Act on something in s2"
+        );
+        // The window, as it was, keeps its ref.
+        assert!(refs.resolve(&dev(), "s1e1".parse().unwrap()).is_ok());
+    }
+
+    #[test]
     fn without_a_look_the_model_is_told_to_look_itself() {
         let mut refs = Refs::default();
         let host = Afterwards::<String>::NotLooked.render("clicked", &dev(), &mut refs);
