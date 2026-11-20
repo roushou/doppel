@@ -62,6 +62,33 @@ struct AgentArguments: ParsableCommand {
     }
 }
 
+/// A socket path in a fresh directory beside another, that only this user
+/// can enter: where a socket is bound before it is moved into place.
+struct StagedSocket {
+    let directory: String
+    let socket: UnixSocketPath
+
+    init(beside path: UnixSocketPath) throws(AgentServerError) {
+        let parent = (path.path as NSString).deletingLastPathComponent
+        var template = Array("\(parent)/.doppel-XXXXXX".utf8CString)
+        // mkdtemp makes it 0700.
+        guard mkdtemp(&template) != nil else { throw .system("mkdtemp in \(parent)", errno) }
+        let directory = String(decoding: template.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
+        guard let socket = try? UnixSocketPath("\(directory)/s") else {
+            rmdir(directory)
+            throw .noRoomToStage(path)
+        }
+        self.directory = directory
+        self.socket = socket
+    }
+
+    /// Removes what's left: the socket, unless it was moved, and the directory.
+    func remove() {
+        unlink(socket.path)
+        rmdir(directory)
+    }
+}
+
 /// An absolute path short enough for a unix socket's address.
 public struct UnixSocketPath: Sendable, Equatable, CustomStringConvertible {
     /// The longest path `sockaddr_un` holds, without its terminating NUL.
@@ -128,26 +155,32 @@ extension Listener {
     /// Binds a socket only this user can connect to. A socket left at the
     /// path by an agent that exited is replaced; a live one, or anything
     /// that isn't a socket, is refused and left alone.
+    ///
+    /// The socket is bound in a directory beside the path that only this
+    /// user can enter, made owner-only there, then renamed into place: it
+    /// is never reachable by others, and the process's umask, which every
+    /// thread shares, is left alone. (`fchmod` before `bind` would be
+    /// simpler, but macOS refuses it on sockets.)
     private static func bindUnix(_ path: UnixSocketPath) throws(AgentServerError) -> Int32 {
-        var address = path.address
         var existing = stat()
         if lstat(path.path, &existing) == 0 {
             guard existing.st_mode & S_IFMT == S_IFSOCK else { throw .notASocket(path) }
+            var address = path.address
             guard !isServed(&address) else { throw .alreadyServed(path) }
-            guard unlink(path.path) == 0 || errno == ENOENT else { throw .system("unlink \(path)", errno) }
         }
+        let staged = try StagedSocket(beside: path)
+        defer { staged.remove() }
         let listener = socket(AF_UNIX, SOCK_STREAM, 0)
         guard listener >= 0 else { throw .system("socket(AF_UNIX)", errno) }
-        // The socket is created owner-only, never briefly open to others:
-        // whoever can connect can run programs as this user.
-        let previous = umask(0o177)
+        var address = staged.socket.address
         let bound = withUnsafePointer(to: &address) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { Darwin.bind(listener, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
         }
-        let bindError = errno
-        umask(previous)
-        errno = bindError
-        return try listening(listener, bound: bound)
+        guard bound == 0 else { let code = errno; close(listener); throw .system("bind", code) }
+        guard chmod(staged.socket.path, 0o600) == 0 else { let code = errno; close(listener); throw .system("chmod \(staged.socket)", code) }
+        // Replaces a socket an exited agent left, in one step.
+        guard rename(staged.socket.path, path.path) == 0 else { let code = errno; close(listener); throw .system("rename to \(path)", code) }
+        return try listening(listener, bound: 0)
     }
 
     /// Whether something accepts connections at this address now.

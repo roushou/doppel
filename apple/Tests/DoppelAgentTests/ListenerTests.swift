@@ -53,7 +53,16 @@ func theCommandLineRefusesAnythingElse(arguments: [String]) {
 @Test func aSocketLeftByAnAgentThatExitedIsReplaced() throws {
     try withSocketPath { path in
         // An agent that exited leaves its socket file behind, with no listener.
-        do { _ = try AgentServer(listening: .unix(path)) }
+        // Made here by binding without listening: a listening socket closed
+        // in this process can stay alive a moment while another test's
+        // posix_spawn holds a copy of it.
+        let left = socket(AF_UNIX, SOCK_STREAM, 0)
+        var address = path.address
+        let bound = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(left, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
+        }
+        #expect(bound == 0)
+        close(left)
         var info = stat()
         #expect(lstat(path.path, &info) == 0)
 
@@ -79,6 +88,56 @@ func theCommandLineRefusesAnythingElse(arguments: [String]) {
         #expect(throws: AgentServerError.notASocket(path)) { try AgentServer(listening: .unix(path)) }
         #expect(FileManager.default.contents(atPath: path.path) == Data("keep".utf8))
     }
+}
+
+@Test func bindingLeavesOnlyTheSocketBeside() throws {
+    try withSocketPath { path in
+        _ = try AgentServer(listening: .unix(path))
+        let parent = (path.path as NSString).deletingLastPathComponent
+        #expect(try FileManager.default.contentsOfDirectory(atPath: parent) == [(path.path as NSString).lastPathComponent])
+    }
+}
+
+@Test func bindingLeavesOtherThreadsFileModesAlone() throws {
+    // Binding once changed the process's umask for a moment, so a directory
+    // made on another thread then could come out unusable.
+    try withSocketPath { path in
+        let parent = (path.path as NSString).deletingLastPathComponent
+        let expected = Int(0o777 & ~currentUmask())
+        let made = DispatchGroup()
+        let modes = Modes()
+        DispatchQueue.global().async(group: made) {
+            for n in 0..<400 {
+                let directory = "\(parent)/d\(n)"
+                mkdir(directory, 0o777)
+                var info = stat()
+                if stat(directory, &info) == 0 { modes.add(Int(info.st_mode & 0o777)) }
+                rmdir(directory)
+            }
+        }
+        for n in 0..<200 {
+            let socket = try UnixSocketPath("\(parent)/s\(n)")
+            _ = try AgentServer(listening: .unix(socket))
+            unlink(socket.path)
+        }
+        made.wait()
+        #expect(modes.all.allSatisfy { $0 == expected }, "modes seen: \(Set(modes.all))")
+    }
+}
+
+/// The process's umask, read without changing it for long: only this
+/// test's thread reads it, before anything else runs in the test.
+private func currentUmask() -> mode_t {
+    let mask = umask(0o022)
+    umask(mask)
+    return mask
+}
+
+private final class Modes: @unchecked Sendable {
+    private let lock = NSLock()
+    private var seen: [Int] = []
+    func add(_ mode: Int) { lock.withLock { seen.append(mode) } }
+    var all: [Int] { lock.withLock { seen } }
 }
 
 /// A fresh socket path in a directory of its own, removed afterwards. The
